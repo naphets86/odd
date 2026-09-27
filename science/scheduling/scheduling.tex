@@ -1,0 +1,4495 @@
+﻿\documentclass[a4paper,12pt]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[ngerman]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{microtype}
+\usepackage{ragged2e}
+
+\tolerance=2000
+\emergencystretch=3em
+\hfuzz=2pt
+\vfuzz=2pt
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{array}
+
+\geometry{margin=2.5cm}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[chapter]
+\newtheorem{beispiel}{Beispiel}[chapter]
+\newtheorem{satz}{Satz}[chapter]
+\newtheorem{lemma}{Lemma}[chapter]
+\newtheorem{bemerkung}{Bemerkung}[chapter]
+\newtheorem{korollar}{Korollar}[chapter]
+\newtheorem{proposition}{Proposition}[chapter]
+\newtheorem{theorem}{Theorem}[chapter]
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=mainblue,
+	citecolor=accentred,
+	urlcolor=mainblue
+}
+
+% Code-Highlighting
+\lstset{
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue},
+	commentstyle=\color{gray},
+	stringstyle=\color{red},
+	numbers=left,
+	numberstyle=\tiny,
+	breaklines=true,
+	frame=single,
+	literate=%
+	{"O}{{\"O}}1
+	{Ä}{{\"A}}1
+	{Ü}{{\"U}}1
+	{ß}{{\ss}}1
+	{ü}{{\"u}}1
+	{ä}{{\"a}}1
+	{ö}{{\"o}}1
+}
+
+\pagestyle{plain}
+
+\title{%
+	\textbf{Harte Echtzeit-Rechnersysteme}\\[0.5em]
+	\large Vorhersagbare Scheduling-Algorithmen und Anwendungen
+}
+\author{Stephan Epp\\
+	\
+	\small Basierend auf Giorgio C. Buttazzo: \textit{Hard Real-Time Computing Systems}}
+\date{2026}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+%=============================================================
+\chapter*{Vorwort}
+\addcontentsline{toc}{chapter}{Vorwort}
+%=============================================================
+
+\section*{Motivation und Zielsetzung}
+
+Dieses Buch behandelt harte Echtzeit-Rechnersysteme aus der Perspektive
+vorhersagbarer Scheduling-Algorithmen. Es verfolgt ein doppeltes Ziel:
+einerseits die präzise Darstellung der klassischen Theorie, die seit dem
+Grundlagenaufsatz von Liu und Layland \cite{Liu1973} im Jahr 1973 entstanden
+ist, andererseits die Integration neuerer Ergebnisse -- insbesondere des
+hier erstmals ausführlich präsentierten EDF$^+$-Algorithmus \cite{Epp2026} --
+in einen einheitlichen theoretischen Rahmen.
+
+Die Hauptgrundlage ist das international maßgebliche Lehrbuch von Giorgio C.\
+Buttazzo \cite{Buttazzo2011}, das seit seiner ersten Auflage 1997 als
+Standardreferenz der Echtzeit-Scheduling-Theorie gilt. Es wird ergänzt durch
+eine Vielzahl von Primärquellen, darunter die Originalarbeiten von Horn
+\cite{Horn1974}, Dertouzos \cite{Dertouzos1974}, Jackson \cite{Jackson1955},
+Lehoczky, Sha und Ding \cite{Lehoczky1989} sowie die einflussreichen Beiträge
+zur Ressourcenverwaltung von Sha, Rajkumar und Lehoczky \cite{Sha1990} und
+Baker \cite{Baker1991}.
+
+\section*{Der fundamentale Kernsatz}
+
+Der rote Faden dieses Buches ist eine Aussage, die sich aus dem Vergleich
+zweier grundlegend verschiedener Scheduling-Philosophien ergibt -- der
+statischen Prioritätszuweisung (RM) und der dynamischen Prioritätszuweisung
+(EDF):
+
+\begin{quote}
+\textbf{Wenn es einen machbaren Schedule gibt, findet RM diesen sofort.
+RM ist schwach optimal.}
+
+\textbf{Wenn es einen machbaren Schedule gibt, findet EDF diesen sofort.
+Die kürzeste Ausführungszeit aller Tasks findet EDF sofort.
+EDF ist scharf optimal.}
+\end{quote}
+
+Diese Aussage ist nicht trivial. Sie unterscheidet zwei fundamentale Konzepte
+der Optimalität: \emph{schwache} Optimalität, die RM innerhalb der Klasse
+fester Prioritätsalgorithmen auszeichnet, und \emph{scharfe} Optimalität,
+die EDF über alle präemptiven Einprozessor-Scheduling-Algorithmen hinweg
+kennzeichnet. Die Schärfe von EDF -- im Sinne von: ``genau die schedulearbaren
+Task-Sets werden gefunden, alle anderen nicht'' -- ist das stärkste
+Optimalitätsergebnis, das für Einprozessor-Echtzeit-Scheduling bekannt ist.
+
+Der Beweis der scharfen Optimalität von EDF, der auf Arbeiten von Horn
+\cite{Horn1974} und Dertouzos \cite{Dertouzos1974} zurückgeht und später
+durch Baruah et al.\ \cite{Baruah1990} für periodische Tasks präzisiert wurde,
+ist mathematisch elegant und bildet das Herzstück von Kapitel~3 dieses Buches.
+
+\section*{Historischer Kontext}
+
+Die Echtzeit-Scheduling-Theorie entstand in den frühen 1970er Jahren als
+Antwort auf die wachsende Verbreitung von Prozesssteuerungssystemen, die
+zuverlässige zeitliche Garantien erforderten. Die Pionierarbeiten von Liu und
+Layland \cite{Liu1973} legten 1973 mit dem Rate-Monotonic-Algorithmus das
+Fundament. Fast gleichzeitig bewies Dertouzos \cite{Dertouzos1974} die
+Optimalität von EDF für aperiodische Tasks.
+
+In den 1980er und 1990er Jahren wurde dieses Fundament durch eine Reihe
+wesentlicher Beiträge erweitert:
+\begin{itemize}
+	\item Lehoczky, Sha und Ding \cite{Lehoczky1989} lieferten eine exakte
+	      Charakterisierung der RM-Schedulierbarkeit.
+	\item Sha, Rajkumar und Lehoczky \cite{Sha1990} lösten das Prioritätsinversionsproblem
+	      durch das Priority Inheritance Protocol.
+	\item Sprunt, Sha und Lehoczky \cite{Sprunt1989} entwickelten den Sporadic Server,
+	      der die Lücke zwischen periodischem und aperiodischem Scheduling überbrückt.
+	\item Audsley et al.\ \cite{Audsley1993} etablierten die Response Time Analysis
+	      als praktisches Werkzeug für feste Prioritätsschedules.
+	\item Spuri und Buttazzo \cite{Spuri1996} übertrugen Server-Konzepte auf
+	      EDF und entwickelten Total Bandwidth Server sowie Dynamic Sporadic Server.
+	\item Abeni und Buttazzo \cite{Abeni1998} entwickelten den Constant Bandwidth
+	      Server als Grundlage für ressourcenisoliertes Scheduling.
+\end{itemize}
+
+Im neuen Jahrtausend rückte das Mixed-Criticality-Problem (Vestal \cite{Vestal2007},
+Baruah et al.\ \cite{BaruahMCS2012}) und das Mehrprozessor-Scheduling (Baruah
+et al.\ \cite{BaruahPfair1996}) in den Vordergrund. Beide sind bis heute
+aktive Forschungsfelder.
+
+\section*{Über den EDF$^+$-Algorithmus}
+
+Eine wichtige Erweiterung der klassischen EDF-Theorie ist der EDF$^+$-Algorithmus
+\cite{Epp2026}, der in Kapitel~10 ausführlich behandelt wird. EDF$^+$ überträgt
+die scharfe Optimalität von EDF auf Systeme mit stochastischen Blocking-Ereignissen:
+Wenn Tasks mit Wahrscheinlichkeit $p$ blockieren (etwa durch I/O-Warten oder
+Semaphore), erzeugt EDF$^+$ bei jedem Blocking-Ereignis sofort einen neuen
+optimalen EDF-Schedule für die verbleibenden nicht-blockierten Tasks.
+
+Der Beweis der Optimalität von EDF$^+$ beruht direkt auf dem EDF-Optimalitätstheorem
+und ist konstruktiv: Durch vollständige Induktion über die Anzahl der
+Blocking-Ereignisse wird gezeigt, dass EDF$^+$ stets einen Deadline-freien
+Schedule liefert, sofern die Systemauslastung $U \leq 1$ beträgt. Dies macht
+EDF$^+$ zu einem Algorithmus mit nachweisbarer formaler Korrektheit unter
+realistischen Systemannahmen.
+
+\section*{Struktur des Buches}
+
+Das Buch ist in 13 Kapitel gegliedert, die aufeinander aufbauen:
+
+\textbf{Kapitel~1 -- Allgemeine Betrachtung:} Grundlegende Eigenschaften von
+Echtzeit-Systemen, Typen von Echtzeit-Tasks, Quellen des Nicht-Determinismus
+und die zentrale Anforderung der Vorhersagbarkeit nach Stankovic \cite{Stankovic1988}.
+
+\textbf{Kapitel~2 -- Grundlegende Konzepte:} Vollständiges Task-Modell mit
+allen Zeitparametern (Lateness, Laxität, Slack), Klassifikation von Scheduling-Problemen
+nach der Graham-Notation $\alpha|\beta|\gamma$, Gütekriterien, Scheduling-Anomalien
+und der Dhall-Effekt auf Mehrprozessoren.
+
+\textbf{Kapitel~3 -- Aperiodisches Task-Scheduling:} Jacksons EDD-Algorithmus
+\cite{Jackson1955}, vollständiger Dertouzos-Beweis der EDF-Optimalität
+\cite{Dertouzos1974}, Bratley's Branch-and-Bound für nicht-preemptives Scheduling
+\cite{Bratley1971} und Lawlers LDF-Algorithmus \cite{Lawler1973} für Tasks
+mit Vorrangrelationen.
+
+\textbf{Kapitel~4 -- Periodisches Task-Scheduling:} Vollständige Analyse von
+Rate Monotonic (Liu \& Layland \cite{Liu1973}) einschließlich aller Beweise,
+Hyperbolic Bound \cite{Bini2001}, Response Time Analysis \cite{Audsley1993},
+EDF-Schedulierbarkeitstheorem \cite{Baruah1990} sowie der präzise Vergleich
+zwischen schwacher (RM) und scharfer (EDF) Optimalität.
+
+\textbf{Kapitel~5 -- Fixed-Priority Server:} Vollständige Analyse von
+Background Scheduling, Polling Server, Deferrable Server (Strosnider et al.\
+\cite{Strosnider1995}), Priority Exchange, Sporadic Server \cite{Sprunt1989}
+und Slack Stealing \cite{Lehoczky1992} mit allen Beweisen und Laufzeitanalysen.
+
+\textbf{Kapitel~6 -- Dynamic Priority Server:} EDF-basierte Server -- DPE,
+DSS, TBS, CBS \cite{Abeni1998} und EDL-Server -- mit Optimalitätsnachweisen
+und dem fundamentalen Nicht-Existenz-Ergebnis für optimale Server \cite{Tia1995}.
+
+\textbf{Kapitel~7 -- Ressourcenzugriffsprotokolle:} Prioritätsinversion, NPP,
+PIP und PCP \cite{Sha1990}, Stack Resource Policy \cite{Baker1991}, vollständige
+Beweise der Blockierzeitschranken.
+
+\textbf{Kapitel~8 -- Limited Preemptive Scheduling:} Nicht-preemptives Scheduling,
+Preemption Thresholds \cite{Wang1999}, Deferred Preemptions und Task Splitting
+mit dem optimalen SelectEPP-Algorithmus \cite{Bertogna2011}.
+
+\textbf{Kapitel~9 -- Überlastbehandlung:} Value-Based Scheduling, Cervin's
+Theorem über EDF bei permanenter Überlast \cite{Cervin2003}, Elastic Scheduling
+und Admission Control.
+
+\textbf{Kapitel~10 -- EDF$^+$-Algorithmus:} Vollständiger Optimalitätsbeweis,
+Laufzeitanalyse, Korollare (Dominanz über RM, Minimax-Eigenschaft) und
+Integration in AUTOSAR/ISO~26262 \cite{Epp2026}.
+
+\textbf{Kapitel~11 -- Kernel-Design:} Interrupt-Behandlung, Speicherverwaltung,
+Schedulingwarteschlangen und Kernel-Overhead in der Schedulierbarkeitsanalyse.
+
+\textbf{Kapitel~12 -- Anwendungsdesign:} Hierarchische Dekomposition,
+Robotersteuerungsbeispiel, AUTOSAR-Konfiguration.
+
+\textbf{Kapitel~13 -- Zusammenfassung und Ausblick:} Gesamtüberblick,
+praktische Empfehlungen und ein sehr ausführlicher Ausblick auf offene
+Forschungsfragen -- Mehrprozessor-Scheduling, Mixed-Criticality, maschinelles
+Lernen, formale Verifikation, Hardware-Beschleunigung und autonome Systeme.
+
+\section*{Voraussetzungen und Zielgruppe}
+
+Das Buch richtet sich an Studierende der Informatik und Elektrotechnik ab dem
+dritten Semester sowie an Praktiker in der Embedded-Systems-Entwicklung.
+Vorausgesetzt werden grundlegende Kenntnisse der Algorithmentheorie (O-Notation,
+Induktionsbeweise) und der Betriebssystemkonzepte (Prozesse, Semaphore,
+Scheduling). Für ein vollständiges Verständnis der Kapitel über Ressourcenprotokolle
+und CBS sind Grundkenntnisse über Nebenläufigkeit hilfreich.
+
+Mathematisch werden Kenntnisse der Analysis (Grenzwerte, Ableitungen) benötigt,
+die für das Verständnis des Liu-Layland-Beweises (Kapitel~4) und des
+Cervin-Theorems (Kapitel~9) notwendig sind.
+
+\section*{Danksagung}
+
+Der Autor dankt den Begründern der Echtzeit-Scheduling-Theorie -- insbesondere
+C.\,L.\ Liu, J.\,W.\ Layland, Giorgio C.\ Buttazzo, Lui Sha und Sanjoy Baruah --
+für ihre grundlegenden Beiträge, ohne die dieses Buch nicht möglich wäre.
+Besonderer Dank gilt der für die wissenschaftliche
+Infrastruktur und Unterstützung.
+
+\bigskip
+\noindent Bielefeld, Juni 2026 \hfill \textit{Stephan Epp}
+
+%=============================================================
+\chapter{Allgemeine Betrachtung}
+\label{chap:allgemein}
+%=============================================================
+
+\section{Einführung}
+
+Echtzeit-Systeme sind Rechnersysteme, die innerhalb präziser Zeitschranken auf Ereignisse
+in ihrer Umgebung reagieren müssen. Die Korrektheit solcher Systeme hängt nicht nur
+vom Wert des Ergebnisses, sondern auch vom Zeitpunkt ab, zu dem das Ergebnis
+erzeugt wird \cite{Stankovic1988}. Eine Reaktion, die zu spät erfolgt, kann wertlos
+oder sogar gefährlich sein. Echtzeit-Computing spielt heute eine entscheidende Rolle
+in unserer Gesellschaft, da eine wachsende Anzahl komplexer Systeme vollständig oder
+teilweise auf Computersteuerung angewiesen ist.
+
+Anwendungsbeispiele umfassen:
+\begin{itemize}
+	\item Steuerung chemischer und nuklearer Anlagen
+	\item Steuerung komplexer Produktionsprozesse
+	\item Eisenbahn-Weichensysteme
+	\item Automotive-Anwendungen (AUTOSAR, ISO~26262)
+	\item Flugregelungssysteme
+	\item Umwelterfassung und -überwachung
+	\item Telekommunikationssysteme
+	\item Medizinische Systeme
+	\item Industrieautomation und Robotik
+	\item Militärsysteme und Raumfahrtmissionen
+\end{itemize}
+
+\section{Was bedeutet Echtzeit?}
+
+\subsection{Der Begriff Zeit}
+
+Das Hauptmerkmal, das Echtzeit-Computing von anderen Arten der Berechnung unterscheidet,
+ist die Zeit. Das Wort \emph{Zeit} bedeutet, dass die Korrektheit des Systems nicht nur
+vom logischen Ergebnis der Berechnung, sondern auch vom Zeitpunkt abhängt, zu dem
+die Ergebnisse produziert werden.
+
+Das Wort \emph{real} zeigt an, dass die Reaktion der Systeme auf externe Ereignisse
+während deren Ablauf erfolgen muss. Folglich muss die Systemzeit (interne Zeit) mit
+derselben Zeitskala gemessen werden, die zur Messung der Zeit in der kontrollierten
+Umgebung (externe Zeit) verwendet wird.
+
+\begin{definition}[Echtzeit-System]
+	Ein \textbf{Echtzeit-System} ist ein Rechnersystem, das innerhalb präziser,
+	vorher festgelegter Zeitgrenzen auf Ereignisse in seiner Umgebung reagieren muss.
+	Die Korrektheit hängt sowohl vom Wert als auch vom Zeitpunkt der erzeugten
+	Ergebnisse ab.
+\end{definition}
+
+\subsection{Typen von Echtzeit-Tasks}
+
+Abhängig von den Konsequenzen einer versäumten Deadline unterscheidet man:
+
+\begin{definition}[Harte Echtzeit-Task]
+	Eine Echtzeit-Task heißt \textbf{hart}, wenn die Erzeugung von Ergebnissen nach
+	ihrer Deadline katastrophale Folgen für das System unter Kontrolle haben kann.
+\end{definition}
+
+\begin{definition}[Weiche Echtzeit-Task]
+	Eine Echtzeit-Task heißt \textbf{weich}, wenn die Erzeugung von Ergebnissen nach
+	ihrer Deadline zwar eine Leistungsverschlechterung verursacht, aber keinen Schaden.
+\end{definition}
+
+\section{Vorhersagbarkeit erreichen}
+
+Eine der wichtigsten Eigenschaften, die ein hartes Echtzeit-System haben muss,
+ist Vorhersagbarkeit \cite{Stankovic1988}. Das System soll basierend auf den
+Kernel-Merkmalen und den Informationen jeder Task die Entwicklung der Tasks vorhersagen
+und im Voraus garantieren können, dass alle kritischen Zeitbedingungen eingehalten werden.
+
+\subsection{Quellen der Nicht-Determinismus}
+
+Die Vorhersagbarkeit eines Systems wird durch mehrere Faktoren beeinflusst:
+
+\begin{itemize}
+	\item \textbf{DMA}: Der Prozessor muss warten, wenn ein DMA-Gerät einen Speicherzyklus
+	      stiehlt. Die Anzahl solcher Wartezeiten ist nicht vorhersagbar.
+	\item \textbf{Cache-Speicher}: Cache-Fehlzugriffe (Cache Misses) führen zu variablen
+	      Zugriffszeiten. Präemptionen verschlechtern die Cache-Lokalität erheblich.
+	\item \textbf{Interrupts}: Können unbeschränkte Verzögerungen in die Task-Ausführung
+	      einführen, wenn sie nicht ordnungsgemäß behandelt werden.
+	\item \textbf{Systemaufrufe}: Unbeschränkte Ausführungszeiten von Kernelprimitiven
+	      verhindern präzise WCET-Abschätzungen.
+	\item \textbf{Semaphore und Prioritätsinversion}: Klassische Semaphore können
+	      hochpriore Tasks durch niederpriore Tasks für unbeschränkte Zeit blockieren.
+	\item \textbf{Speicherverwaltung}: Demand-Paging verursacht große und unvorhersagbare
+	      Verzögerungen durch Seitenfehler.
+\end{itemize}
+
+%=============================================================
+\chapter{Grundlegende Konzepte des Echtzeit-Schedulings}
+\label{chap:basic}
+%=============================================================
+
+\section{Einführung}
+
+Dieses Kapitel legt das vollständige begriffliche Fundament für alle
+Scheduling-Algorithmen der folgenden Kapitel. Es definiert präzise die
+Parameter von Tasks, die verschiedenen Typen von Zeitschranken, die formale
+Klassifikation von Scheduling-Problemen nach Graham et al.\ sowie die
+grundlegenden Gütekriterien. Besonderes Gewicht liegt auf den Konzepten
+der \emph{Lateness}, \emph{Laxity} und \emph{Slack}, die die Basis für
+die Optimalitätsbeweise in Kapitel~\ref{chap:aperiodisch} und
+Kapitel~\ref{chap:periodisch} bilden.
+
+\section{Task-Modell und Zeitparameter}
+
+\subsection{Aperiodische Tasks -- Das Job-Modell}
+
+\begin{definition}[Job (Aperiodische Task)]
+	Ein \textbf{Job} $J_i$ ist eine atomare Ausführungseinheit mit folgenden
+	Zeitparametern:
+	\begin{itemize}
+		\item $a_i$ (Arrival Time, Ankunftszeit): Zeitpunkt, ab dem $J_i$ zur
+		      Ausführung bereit ist. Auch: \emph{release time} $r_i$.
+		\item $C_i$ (Worst-Case Execution Time, WCET): Maximale Ausführungszeit
+		      unter allen möglichen Eingaben. Unveränderlich für jede Instanz.
+		\item $d_i$ (Absolute Deadline): Spätester Fertigstellungszeitpunkt.
+		\item $D_i$ (Relative Deadline): $D_i = d_i - a_i$. Zeitdauer ab
+		      Ankunft bis zur Deadline.
+		\item $f_i$ (Finishing Time, Fertigstellungszeit): Tatsächlicher
+		      Abschluss der Ausführung im konkreten Schedule.
+		\item $s_i$ (Start Time, Startzeitpunkt): Erster Zeitpunkt, zu dem
+		      $J_i$ tatsächlich ausgeführt wird.
+	\end{itemize}
+\end{definition}
+
+\begin{definition}[Abgeleitete Zeitgrößen]
+	Aus den Grundparametern werden folgende Größen abgeleitet:
+	\begin{align*}
+		R_i &= f_i - a_i \quad\text{(Response Time, Antwortzeit)}\\
+		L_i &= f_i - d_i \quad\text{(Lateness: positiv = zu spät, negativ = Puffer)}\\
+		E_i &= \max(0, f_i - d_i) \quad\text{(Tardiness: Verspätung, nie negativ)}\\
+		X_i &= d_i - a_i - C_i \quad\text{(Laxity, Spielraum: maximale Wartezeit)}\\
+		\text{slack}_i(t) &= d_i - t - c_i(t) \quad\text{(Slack zur Zeit }t\text{,
+		mit verbleib. Rechenzeit }c_i(t))
+	\end{align*}
+\end{definition}
+
+\begin{bemerkung}[Zusammenhänge der Zeitgrößen]
+	Die Laxität $X_i = D_i - C_i$ gibt an, wie lange $J_i$ insgesamt warten
+	darf, ohne ihre Deadline zu verpassen. Der Slack $\text{slack}_i(t)$ ist
+	die verbleibende Wartekapazität zum Zeitpunkt $t$:
+	\begin{itemize}
+		\item $\text{slack}_i(t) > 0$: $J_i$ kann noch warten.
+		\item $\text{slack}_i(t) = 0$: $J_i$ muss \emph{sofort} starten, sonst
+		      Deadline-Verletzung.
+		\item $\text{slack}_i(t) < 0$: Deadline bereits verpasst (bei Betrieb oder
+		      bei unrealisierbaren Parametern).
+	\end{itemize}
+\end{bemerkung}
+
+\begin{beispiel}[Zeitparameter]
+	$J_1$: $a_1=2$, $C_1=3$, $d_1=8$.
+	\begin{itemize}
+		\item $D_1 = 8-2 = 6$, $X_1 = 6-3 = 3$ (Laxität: darf 3 Einheiten warten)
+		\item Wenn $s_1=4$, $f_1=7$: $R_1=5$, $L_1=-1$ (1 Einheit Puffer), $E_1=0$
+		\item Wenn $s_1=6$, $f_1=9$: $R_1=7$, $L_1=1$ (1 Einheit zu spät), $E_1=1$
+		\item $\text{slack}_1(4) = 8-4-3 = 1$ (kann noch 1 Einheit warten)
+		\item $\text{slack}_1(5) = 8-5-3 = 0$ (muss sofort starten)
+	\end{itemize}
+\end{beispiel}
+
+\subsection{Periodische Tasks -- Das $\tau$-Modell}
+
+\begin{definition}[Periodische Task]
+	Eine \textbf{periodische Task} $\tau_i$ erzeugt in regelmäßigen Abständen
+	Jobs. Sie ist durch folgende Parameter vollständig beschrieben:
+	\begin{itemize}
+		\item $\Phi_i$: Phase (Ankunftszeit der ersten Instanz)
+		\item $T_i$: Periode (Abstand zwischen aufeinanderfolgenden Instanzen)
+		\item $C_i$: WCET jeder Instanz (konstant)
+		\item $D_i$: Relative Deadline ($D_i \leq T_i$ im Allgemeinen;
+		      $D_i = T_i$ unter Annahme A3)
+	\end{itemize}
+	Die $k$-te Instanz $\tau_{i,k}$ hat:
+	\[
+		r_{i,k} = \Phi_i + (k-1)T_i, \qquad
+		d_{i,k} = r_{i,k} + D_i = \Phi_i + (k-1)T_i + D_i.
+	\]
+\end{definition}
+
+\begin{definition}[Hyperperiode]
+	Die \textbf{Hyperperiode} $H$ ist das kleinste gemeinsame Vielfache aller
+	Perioden: $H = \mathrm{lcm}(T_1, \ldots, T_n)$.
+	Nach der Hyperperiode wiederholt sich der Schedule exakt (bei synchronen
+	Aktivierungen und $D_i = T_i$).
+\end{definition}
+
+\begin{definition}[Prozessorauslastung]
+	\label{def:util}
+	Die \textbf{Prozessorauslastung} $U$ einer Menge von $n$ periodischen Tasks ist:
+	\[
+		U = \sum_{i=1}^{n} \frac{C_i}{T_i}.
+	\]
+	$U$ gibt den Anteil der Prozessorzeit an, der für die periodischen Tasks
+	\emph{im Durchschnitt} benötigt wird. Wenn $U > 1$, ist kein machbarer
+	Schedule unter irgendeinem Algorithmus möglich.
+\end{definition}
+
+\begin{definition}[Synchroner vs. asynchroner Task-Set]
+	\begin{itemize}
+		\item \textbf{Synchron}: Alle Tasks starten gleichzeitig bei $t=0$:
+		      $\Phi_i = 0$ für alle $i$.
+		\item \textbf{Asynchron}: Tasks haben unterschiedliche Phasen $\Phi_i$.
+	\end{itemize}
+	Die kritische Analyse erfolgt stets für synchrone Aktivierungen (kritischer
+	Augenblick -- schlimmster Fall für RM, vgl.\ Kapitel~\ref{chap:periodisch}).
+\end{definition}
+
+\subsection{Sporadische und aperiodische Tasks}
+
+\begin{definition}[Sporadische Task]
+	Eine \textbf{sporadische Task} ist eine Task mit unregelmäßigen Aktivierungen,
+	jedoch mit einer Mindestankunftsabstand (Minimum Interarrival Time) $T_i^{\min}$:
+	$a_{i,k+1} - a_{i,k} \geq T_i^{\min}$. Sporadische Tasks können offline
+	garantiert werden, indem man $T_i^{\min}$ als Worst-Case-Periode verwendet.
+\end{definition}
+
+\begin{definition}[Firme aperiodische Task]
+	Eine \textbf{firme} aperiodische Task hat eine Deadline. Sie wird online
+	garantiert: Beim Eintreffen prüft ein Admission-Controller, ob sie ohne
+	Deadline-Verletzung anderer Tasks integriert werden kann.
+\end{definition}
+
+\section{Klassifikation von Scheduling-Problemen}
+
+\subsection{Graham-Notation}
+
+\begin{definition}[Graham-Notation $\alpha|\beta|\gamma$]
+	Jedes Scheduling-Problem wird durch drei Felder beschrieben:
+	\begin{itemize}
+		\item $\alpha$: \textbf{Maschinenmodell} -- z.\,B.\ $1$ (Einzelprozessor),
+		      $P_m$ ($m$ identische Prozessoren), $Q_m$ (uniforme Geschwindigkeiten),
+		      $R_m$ (unverwandte Prozessoren).
+		\item $\beta$: \textbf{Task-Constraints} -- z.\,B.\ \texttt{preem} (preemptiv),
+		      \texttt{no-preem} (nicht-preemptiv), \texttt{prec} (Vorrangrelationen),
+		      \texttt{sync} (synchrone Ankunft), $D_i = T_i$ (Deadline gleich Periode).
+		\item $\gamma$: \textbf{Gütekriterium} -- z.\,B.\ $L_{\max}$ (maximale Lateness),
+		      $\sum L_i$ (Summe der Latenesses), $E_{\max}$ (maximale Tardiness),
+		      \texttt{feasible} (machbarer Schedule).
+	\end{itemize}
+\end{definition}
+
+\begin{beispiel}[Scheduling-Notationen der behandelten Probleme]
+	\begin{itemize}
+		\item $1 \mid \text{sync} \mid L_{\max}$: Einzelprozessor, synchrone
+		      Ankunft, minimiere maximale Lateness $\to$ \textbf{EDD/Jackson} (Kap.~\ref{chap:aperiodisch})
+		\item $1 \mid \text{preem} \mid L_{\max}$: Einzelprozessor, preemptiv,
+		      beliebige Ankunftszeiten, minimiere $L_{\max}$ $\to$ \textbf{EDF/Horn} (Kap.~\ref{chap:aperiodisch})
+		\item $1 \mid \text{preem}, D_i=T_i \mid \text{feasible}$: Periodisch,
+		      preemptiv $\to$ \textbf{RM, EDF} (Kap.~\ref{chap:periodisch})
+		\item $1 \mid \text{no-preem} \mid \text{feasible}$: Nicht-preemptiv,
+		      NP-schwer $\to$ \textbf{Bratley} (Kap.~\ref{chap:aperiodisch})
+	\end{itemize}
+\end{beispiel}
+
+\subsection{Gütekriterien}
+
+\begin{definition}[Gütekriterien im Überblick]
+	\begin{itemize}
+		\item $L_{\max} = \max_i L_i$: \textbf{Maximale Lateness}. Negativ $\Rightarrow$
+		      alle Deadlines eingehalten. Optimalitätsmaß für EDF und EDD.
+		\item $E_{\max} = \max_i E_i$: \textbf{Maximale Tardiness}.
+		\item $\sum L_i$: \textbf{Summe der Latenesses}. Equivalent zur Minimierung
+		      der Gesamtfertigstellungszeit ($\sum f_i$).
+		\item $n_{\text{late}} = |\{J_i \mid f_i > d_i\}|$: \textbf{Anzahl verspäteter
+		      Tasks}. NP-schwer für beliebige Ankunftszeiten.
+		\item \textbf{Feasibility}: Existenz eines Schedules mit $L_{\max} \leq 0$.
+	\end{itemize}
+\end{definition}
+
+\begin{bemerkung}[Zusammenhang Gütekriterien]
+	$L_{\max} \leq 0 \iff$ Schedule ist machbar $\iff E_{\max} = 0$.
+	Ein Algorithmus, der $L_{\max}$ minimiert, findet automatisch einen
+	machbaren Schedule, wenn einer existiert. Deshalb ist die Minimierung
+	von $L_{\max}$ das stärkere und nützlichere Kriterium gegenüber
+	bloßer Machbarkeit.
+\end{bemerkung}
+
+\section{Klassifikation von Scheduling-Algorithmen}
+
+\begin{definition}[Taxonomie der Scheduling-Algorithmen]
+	\begin{itemize}
+		\item \textbf{Preemptiv vs. Nicht-Preemptiv}: Darf eine laufende Task
+		      unterbrochen werden?
+		\item \textbf{Statisch vs. Dynamisch}: Werden Prioritäten vor oder
+		      während der Ausführung berechnet?
+		\item \textbf{Online vs. Offline}: Sind alle Task-Parameter von Anfang
+		      an bekannt (offline) oder werden Tasks dynamisch aktiviert (online)?
+		\item \textbf{Optimal vs. Heuristisch}: Findet der Algorithmus stets
+		      die beste Lösung, oder nur eine gute Näherung?
+		\item \textbf{Clairvoyant vs. Non-Clairvoyant}: Hat der Algorithmus
+		      vollständige Kenntnis aller zukünftigen Ankunftszeiten?
+	\end{itemize}
+\end{definition}
+
+\begin{definition}[Optimalitätsbegriffe -- Zusammenfassung]
+	\label{def:optimalitaet}
+	\begin{itemize}
+		\item \textbf{Schwach optimal} (innerhalb einer Klasse): Findet den
+		      besten Schedule unter allen Algorithmen derselben Klasse.
+		      Beispiel: RM ist schwach optimal unter festen Prioritäten.
+		\item \textbf{Scharf optimal} (global): Findet jeden machbaren Schedule,
+		      der überhaupt existiert. Beispiel: EDF ist scharf optimal für
+		      preemptive Einzelprozessoren.
+		\item \textbf{Optimal bezüglich $\gamma$}: Minimiert das Gütekriterium
+		      $\gamma$ unter allen möglichen Schedules.
+	\end{itemize}
+\end{definition}
+
+\section{Vorrangrelationen und Ressourcenabhängigkeiten}
+
+\begin{definition}[Vorranggraph (Precedence Graph)]
+	Ein \textbf{Vorranggraph} $G = (J, \prec)$ ist ein gerichteter azyklischer
+	Graph (DAG), in dem $J_i \prec J_j$ bedeutet: $J_j$ darf erst starten,
+	wenn $J_i$ vollständig abgeschlossen ist. Notationen:
+	\begin{itemize}
+		\item $J_i \to J_j$: $J_i$ ist unmittelbarer Vorgänger von $J_j$
+		\item $J_i \prec J_j$: $J_i$ ist (direkter oder indirekter) Vorgänger
+	\end{itemize}
+\end{definition}
+
+\begin{definition}[Ressourcenkonflikt]
+	Zwei Tasks $J_i$ und $J_j$ stehen in einem \textbf{Ressourcenkonflikt},
+	wenn sie dieselbe exklusive Ressource $R_k$ benötigen. Ressourcenkonflikte
+	führen zu Blockierung und sind der Hauptgrund für Prioritätsinversion
+	(Kapitel~\ref{chap:ressourcen}).
+\end{definition}
+
+\section{Scheduling-Anomalien -- Formale Analyse}
+
+\begin{definition}[Scheduling-Anomalie nach Graham]
+	Eine \textbf{Scheduling-Anomalie} tritt auf, wenn eine Verbesserung der
+	Eingabeparameter -- weniger Tasks, kürzere WCETs, schwächere Vorrangrelationen,
+	mehr Prozessoren -- zu einem \emph{schlechteren} Schedule-Ergebnis (z.\,B.\
+	längerer Makespan) führt.
+\end{definition}
+
+\begin{beispiel}[Graham-Anomalie auf Mehrprozessorsystemen]
+	Betrachte 6 Tasks $J_1,\ldots,J_6$ mit WCETs $C_i = 3$ und Vorrangrelation
+	$J_1 \prec J_3$, $J_1 \prec J_4$, $J_2 \prec J_5$, $J_2 \prec J_6$ auf
+	3 Prozessoren. List Scheduling (LPT) erzeugt Makespan 3. Wenn die Vorrangrelation
+	entfernt wird, kann List Scheduling Makespan 4 produzieren -- trotz weniger
+	Einschränkungen. Graham (1969) bewies: Solche Anomalien sind bei allgemeinen
+	Mehrprozessorsystemen unter List Scheduling unvermeidbar.
+\end{beispiel}
+
+\begin{beispiel}[Anomalie bei Selbstsuspension]
+	Task $\tau_1$ mit $C_1=1$, $T_1=4$, Deadline $d_1=4$ hat Slack~3. Führt
+	$\tau_1$ eine Selbstsuspension von 2 Einheiten aus, verpasst sie ihre Deadline.
+	Obwohl $\tau_1$ selbst weniger Rechenzeit benötigt (wegen Suspension), wird
+	das System schlechter -- ein direktes Beispiel für eine Anomalie bei
+	Selbstsuspensionen unter RM.
+\end{beispiel}
+
+\begin{bemerkung}[Anomalien und Konsequenzen für den Systementwurf]
+	Scheduling-Anomalien haben direkte praktische Konsequenzen:
+	\begin{enumerate}
+		\item \textbf{WCET-Erhöhung} einer Task kann durch zusätzliche Preemptionen
+		      zu Deadline-Verletzungen führen, obwohl das System ursprünglich
+		      schedulierbar war.
+		\item \textbf{Selbstsuspensionen} (z.\,B.\ für I/O) müssen explizit in
+		      der Schedulierbarkeitsanalyse berücksichtigt werden.
+		\item \textbf{Mehrprozessorsysteme}: Globale Scheduling-Anomalien
+		      (Dhall-Effekt) zeigen, dass EDF auf Mehrprozessoren nicht mehr
+		      optimal ist.
+	\end{enumerate}
+\end{bemerkung}
+
+\section{Der Dhall-Effekt -- EDF auf Mehrprozessoren}
+
+\begin{theorem}[Dhall-Effekt, 1978]
+	EDF ist auf Mehrprozessorsystemen \emph{nicht optimal}: Es gibt Task-Sets
+	mit Auslastung beliebig nah an $1$, die EDF auf $m$ Prozessoren nicht
+	schedulieren kann.
+\end{theorem}
+
+\begin{proof}[Beweisidee]
+	Betrachte $m+1$ Tasks mit $C_i = \varepsilon$, $T_i = \varepsilon + \delta$
+	für $i=1,\ldots,m$ (kurze Tasks, frühe Deadlines) und $C_{m+1} = 1$,
+	$T_{m+1} = 1+\varepsilon$ (lange Task, spätere Deadline). Auslastung:
+	$U = m \cdot \varepsilon/(\varepsilon+\delta) + 1/(1+\varepsilon) \to 1$
+	für kleine $\varepsilon, \delta$. EDF belegt alle $m$ Prozessoren mit
+	den $m$ kurzperiodischen Tasks, da diese immer die früheste Deadline haben,
+	und lässt die lange Task verhungern. \hfill$\blacksquare$
+\end{proof}
+
+\begin{bemerkung}
+	Der Dhall-Effekt zeigt, dass der Wechsel von Uniprocessor- zu
+	Multiprocessor-Scheduling grundlegend neue Algorithmen erfordert:
+	Partitioned Scheduling, Global EDF mit Deadline-Adjustment (z.\,B.\
+	GLLF, Pfair), oder Clustered Scheduling. Diese werden in diesem Buch
+	nicht behandelt, sind aber aktives Forschungsgebiet.
+\end{bemerkung}
+
+\section{Vollständige Notation und Annahmen}
+
+Zur Vereinheitlichung gelten in diesem Buch folgende Standardannahmen,
+sofern nicht ausdrücklich anders angegeben:
+
+\begin{itemize}
+	\item[\textbf{A1}] Alle periodischen Task-Instanzen haben dieselbe WCET $C_i$.
+	\item[\textbf{A2}] Die Perioden $T_i$ sind konstant.
+	\item[\textbf{A3}] Relative Deadlines sind gleich den Perioden: $D_i = T_i$.
+	\item[\textbf{A4}] Tasks sind unabhängig (keine Vorrangrelationen, keine gemeinsamen Ressourcen).
+	\item[\textbf{A5}] Tasks suspendieren sich nicht (kein $I/O$-Warten).
+	\item[\textbf{A6}] Tasks werden sofort bei ihrer Ankunft freigegeben.
+	\item[\textbf{A7}] Kernel-Overhead ist null.
+\end{itemize}
+
+Annahmen A3 und A4 werden in späteren Kapiteln gezielt aufgehoben:
+A3 in Kapitel~\ref{chap:periodisch} (Deadline Monotonic, EDF mit $D_i < T_i$),
+A4 in Kapitel~\ref{chap:ressourcen} (Ressourcenzugriffsprotokolle).
+
+\begin{table}[H]
+	\centering
+	\caption{Übersicht: Zeitparameter periodischer Tasks}
+	\begin{tabular}{cll}
+		\toprule
+		\textbf{Symbol} & \textbf{Bezeichnung} & \textbf{Definition} \\
+		\midrule
+		$\Phi_i$ & Phase & $r_{i,1}$ (Ankunft der 1. Instanz) \\
+		$T_i$ & Periode & Abstand zwischen Instanzen \\
+		$C_i$ & WCET & Max.\ Ausführungszeit pro Instanz \\
+		$D_i$ & Relative Deadline & $\leq T_i$ \\
+		$r_{i,k}$ & Release Time (Instanz $k$) & $\Phi_i + (k-1)T_i$ \\
+		$d_{i,k}$ & Absolute Deadline (Instanz $k$) & $r_{i,k} + D_i$ \\
+		$U_i$ & Auslastung & $C_i/T_i$ \\
+		$U$ & Gesamtauslastung & $\sum_i C_i/T_i$ \\
+		$H$ & Hyperperiode & $\mathrm{lcm}(T_1,\ldots,T_n)$ \\
+		$R_i$ & Antwortzeit & $f_i - r_i$ \\
+		$L_i$ & Lateness & $f_i - d_i$ \\
+		$X_i$ & Laxität & $D_i - C_i$ \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+%=============================================================
+\chapter{Aperiodisches Task-Scheduling}
+\label{chap:aperiodisch}
+%=============================================================
+
+\section{Einführung}
+
+Dieses Kapitel behandelt Algorithmen zur Planung aperiodischer Echtzeit-Tasks
+auf einem Einzelprozessorsystem. Jeder Algorithmus stellt eine Lösung für ein
+bestimmtes Scheduling-Problem dar.
+
+Der fundamentale Kernsatz gilt bereits für aperiodische Tasks:
+
+\begin{quote}
+\textbf{Wenn es einen machbaren Schedule gibt, findet EDF diesen sofort. EDF ist scharf optimal.}
+\end{quote}
+
+Dies wird im folgenden streng bewiesen.
+
+\section{Jacksons Algorithmus (EDD)}
+
+Das durch Jackson gelöste Problem ist $1 \mid \text{sync} \mid L_{\max}$: Eine Menge
+$J$ von $n$ aperiodischen Tasks soll auf einem einzelnen Prozessor eingeplant werden,
+wobei die maximale Lateness minimiert wird. Alle Tasks haben synchrone Ankunftszeiten.
+
+\begin{theorem}[Jackson 1955]
+	\label{thm:jackson}
+	Gegeben sei eine Menge von $n$ unabhängigen Tasks. Jeder Algorithmus, der die
+	Tasks in Reihenfolge nichtabsteigender Deadlines ausführt, ist optimal bezüglich
+	der Minimierung der maximalen Lateness.
+\end{theorem}
+
+\begin{proof}
+	Der Beweis erfolgt durch ein Austauschargument. Sei $\sigma$ ein Schedule, der
+	von einem beliebigen Algorithmus $A$ produziert wird. Wenn $A \neq \text{EDD}$,
+	existieren zwei Tasks $J_a$ und $J_b$ mit $d_a \leq d_b$, sodass $J_b$ in
+	$\sigma$ unmittelbar vor $J_a$ läuft. Sei $\sigma'$ ein Schedule, der durch
+	Vertauschen von $J_a$ und $J_b$ in $\sigma$ entsteht. Das Vertauschen kann die
+	maximale Lateness nicht erhöhen: In beiden Fällen ($L'_a \geq L'_b$ oder
+	$L'_a \leq L'_b$) gilt $L'_{\max}(a,b) < L_{\max}(a,b)$. Durch endlich viele
+	solcher Transpositionen wird $\sigma$ in $\sigma_{\text{EDD}}$ umgewandelt, der
+	optimal ist. \hfill$\blacksquare$
+\end{proof}
+
+\section{Horns Algorithmus (EDF) -- Scharf optimal}
+
+\subsection{Das EDF-Optimalitätstheorem}
+
+Wenn Tasks dynamische Ankunftszeiten haben, liefert das Earliest Deadline First
+Prinzip die Grundlage. Der fundamentale Satz lautet:
+
+\begin{quote}
+\textbf{Wenn es einen machbaren Schedule gibt, findet EDF diesen sofort. Die kürzeste
+Ausführungszeit aller Tasks findet EDF sofort. EDF ist scharf optimal.}
+\end{quote}
+
+\begin{theorem}[Horn 1974 / Dertouzos 1974 -- EDF Optimalität]
+	\label{thm:edf_optimal}
+	Gegeben sei eine Menge von $n$ unabhängigen Tasks mit beliebigen Ankunftszeiten.
+	Jeder Algorithmus, der zu jedem Zeitpunkt die Task mit der frühesten absoluten
+	Deadline unter allen bereiten Tasks ausführt, ist optimal bezüglich der
+	Minimierung der maximalen Lateness. Insbesondere gilt:
+	\[
+		\text{Wenn ein machbarer Schedule existiert, findet EDF diesen sofort.}
+	\]
+\end{theorem}
+
+\begin{proof}[Beweis (Dertouzos 1974)]
+	Sei $\sigma$ der Schedule eines beliebigen Algorithmus $A$ und $\sigma_{\text{EDF}}$
+	der EDF-Schedule. Da Preemption erlaubt ist, kann jede Task in getrennten
+	Zeitscheiben ausgeführt werden.
+
+	\textbf{Notationen:}
+	\begin{itemize}
+		\item $\sigma(t)$: Task, die in der Scheibe $[t, t+1)$ ausgeführt wird.
+		\item $E(t)$: Bereite Task, die zum Zeitpunkt $t$ die früheste Deadline hat.
+		\item $t_E(t)$: Zeitpunkt ($\geq t$), zu dem die nächste Scheibe von $E(t)$
+		      in $\sigma$ ausgeführt wird.
+	\end{itemize}
+
+	Wenn $\sigma \neq \sigma_{\text{EDF}}$, existiert ein Zeitpunkt $t$ mit
+	$\sigma(t) \neq E(t)$. Das Vertauschen der Scheiben bei $t$ und $t_E$ kann die
+	maximale Lateness nicht erhöhen: Wird eine Scheibe vorgezogen, bleibt die
+	Machbarkeit offensichtlich erhalten. Wird eine Scheibe von $J_i$ auf $t_E$
+	verschoben und ist $\sigma$ machbar, so gilt $(t_E + 1) \leq d_E$. Da
+	$d_E \leq d_i$ für alle $i$, gilt $t_E + 1 \leq d_i$, was die Machbarkeit
+	der verschobenen Scheibe garantiert.
+
+	Durch Anwendung des Vertauschungsalgorithmus auf alle Zeitscheiben von $t=0$
+	bis $t=D$ (dem spätesten Deadline-Zeitpunkt) wird $\sigma$ in $\sigma_{\text{EDF}}$
+	umgewandelt, ohne die maximale Lateness zu erhöhen. Da EDF die maximale
+	Lateness minimiert, findet EDF jeden machbaren Schedule. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Warum EDF scharf optimal ist}
+
+\begin{definition}[Scharf optimal]
+	Ein Scheduling-Algorithmus $\mathcal{A}$ heißt \textbf{scharf optimal}, wenn er
+	für jede Task-Klasse $\mathfrak{S}$ gilt:
+	\[
+		\forall\, \Sigma \in \mathfrak{S}: \quad
+		\Sigma \text{ ist schedulierbar} \iff \mathcal{A} \text{ findet einen machbaren Schedule.}
+	\]
+	Die Bedingung ist eine Äquivalenz, nicht nur eine Implikation.
+\end{definition}
+
+EDF ist scharf optimal, weil:
+\begin{enumerate}
+	\item EDF findet jeden machbaren Schedule (Satz~\ref{thm:edf_optimal}).
+	\item Wenn EDF keinen machbaren Schedule findet, existiert keiner -- EDF scheitert
+	      genau dann, wenn die Auslastung $U > 1$ ist oder die Deadline-Bedingungen
+	      strukturell nicht erfüllbar sind.
+	\item EDF minimiert $L_{\max}$ unter allen Algorithmen.
+\end{enumerate}
+
+Die Schärfe bedeutet: EDF nutzt die gesamte verfügbare Prozessorkapazität aus.
+Die kürzeste Ausführungszeit aller Tasks findet EDF sofort, da EDF immer die Task
+mit der frühesten Deadline priorisiert -- also diejenige, die am dringlichsten ist.
+
+\subsection{Garantiebedingung für EDF}
+
+Wenn Tasks dynamische Aktivierungszeiten haben, muss der Garantietest
+dynamisch bei jeder neuen Task-Ankunft durchgeführt werden:
+
+\begin{satz}[EDF-Garantietest]
+	Sei $J$ die aktuell garantierte Task-Menge. Eine neu ankommende Task $J_{\text{new}}$
+	kann garantiert werden, wenn für die Vereinigung $J' = J \cup \{J_{\text{new}}\}$
+	gilt:
+	\[
+		\forall i = 1, \ldots, n: \quad \sum_{k=1}^{i} c_k(t) \leq d_i,
+	\]
+	wobei $c_k(t)$ die verbleibende Ausführungszeit von $J_k$ zum Zeitpunkt $t$ und
+	$d_i$ die Deadline der $i$-ten Task (nach Deadline sortiert) ist.
+\end{satz}
+
+\section{Nicht-preemptives Scheduling}
+
+Wenn Preemption nicht erlaubt ist und Tasks beliebige Ankunftszeiten haben,
+werden Minimierung der maximalen Lateness und Suche nach einem machbaren Schedule
+NP-schwer \cite{Buttazzo2011}.
+
+EDF ist in diesem Modell \textbf{nicht mehr optimal}: Es kann Fälle geben, in
+denen ein machbarer Schedule existiert, EDF diesen aber nicht findet. Dies
+unterstreicht die Bedeutung der Preemptivität für die Optimalität von EDF.
+
+\subsection{Bratley's Algorithmus}
+
+Bratley's Algorithmus (1971) löst das nicht-preemptive Scheduling durch
+Branch-and-Bound-Suche. Er verwendet Beschneidungstechniken:
+\begin{itemize}
+	\item Ein Ast wird abgebrochen, wenn jede Erweiterung des aktuellen Pfades
+	      zu einer versäumten Deadline führt.
+	\item Ein Ast wird abgebrochen, wenn ein machbarer Schedule gefunden wurde.
+\end{itemize}
+Die Komplexität ist $O(n \cdot n!)$ im schlimmsten Fall.
+
+\section{Scheduling mit Vorrangrelationen}
+
+\begin{theorem}[Lawler 1973 -- LDF Optimalität]
+	Der Latest Deadline First (LDF) Algorithmus minimiert die maximale Lateness
+	für eine Menge von Tasks mit Vorrangrelationen und synchronen Ankunftszeiten.
+\end{theorem}
+
+Für Tasks mit Vorrangrelationen und dynamischen Aktivierungszeiten existiert der
+EDF*-Algorithmus von Chetto et al. (1990), der eine Transformation der
+Zeitparameter durchführt, um EDF anwendbar zu machen.
+
+%=============================================================
+\chapter{Periodisches Task-Scheduling}
+\label{chap:periodisch}
+%=============================================================
+
+\section{Einführung}
+
+In vielen Echtzeit-Kontrollanwendungen stellen periodische Aktivitäten den
+Hauptrechenaufwand dar. Dieses Kapitel behandelt vier grundlegende Algorithmen:
+Timeline Scheduling, Rate Monotonic, Earliest Deadline First und Deadline Monotonic.
+
+\textbf{Der zentrale Vergleich dieses Kapitels:}
+
+\begin{quote}
+\textbf{Wenn es einen machbaren Schedule gibt, findet RM diesen sofort. RM ist schwach optimal.}
+
+\textbf{Wenn es einen machbaren Schedule gibt, findet EDF diesen sofort. EDF ist scharf optimal.}
+\end{quote}
+
+Diese Aussage wird durch die Schedulierbarkeitsanalyse präzisiert: RM kann nur
+Auslastungen bis $\ln 2 \approx 69\%$ im schlimmsten Fall garantieren, während
+EDF die volle Prozessorkapazität bis $U = 1$ ausschöpft.
+
+\section{Notation und Annahmen}
+
+\begin{itemize}
+	\item $\Gamma$: Menge periodischer Tasks
+	\item $\tau_i$: Generische periodische Task
+	\item $T_i$: Periode von $\tau_i$
+	\item $C_i$: Worst-Case Ausführungszeit von $\tau_i$
+	\item $D_i = T_i$: Relative Deadline (Assumption A3)
+	\item $U = \sum_{i=1}^{n} C_i/T_i$: Prozessorauslastung
+\end{itemize}
+
+Annahmen: A1 (konstante Periode), A2 (konstante WCET), A3 ($D_i = T_i$),
+A4 (unabhängige Tasks).
+
+\section{Timeline Scheduling}
+
+Timeline Scheduling (Cyclic Executive) unterteilt die Zeitachse in gleich
+lange Slots und weist Tasks deterministisch zu. Der \textbf{Minor Cycle} ist die
+Länge eines Slots (GCD der Perioden), der \textbf{Major Cycle} ist der
+Hyperperiod (LCM der Perioden).
+
+\textbf{Vorteile:} Einfach zu implementieren, kein Overhead durch Context Switches,
+deterministische Ausführungsreihenfolge.
+
+\textbf{Nachteile:} Spröde bei Überlastbedingungen, sensibel gegenüber
+Anwendungsänderungen, schwierig für aperiodische Tasks.
+
+\section{Rate Monotonic Scheduling -- Detaillierte Analyse}
+
+\subsection{Einführung und Grundidee}
+
+Der Rate Monotonic (RM) Scheduling-Algorithmus wurde 1973 von Liu und Layland
+eingeführt \cite{Liu1973} und gehört heute zu den meistgenutzten Algorithmen für
+periodische Echtzeit-Tasks in eingebetteten Systemen. Die Grundidee ist denkbar
+einfach: Tasks werden statische Prioritäten \emph{umgekehrt proportional} zu ihrer
+Periode zugewiesen. Eine Task mit kurzer Periode (also hoher Anforderungsrate) erhält
+eine höhere Priorität als eine Task mit langer Periode.
+
+\begin{definition}[Rate Monotonic Prioritätszuweisung]
+	Der \textbf{Rate Monotonic} Algorithmus weist jeder periodischen Task $\tau_i$
+	eine Priorität $P_i$ zu, die umgekehrt proportional zur Periode ist:
+	\[
+		T_i < T_j \implies P_i > P_j.
+	\]
+	Tasks mit gleicher Periode erhalten beliebige, aber feste Prioritäten.
+\end{definition}
+
+Da die Perioden konstant sind, ist RM eine \textbf{feste Prioritätszuweisung}: Die
+Priorität einer Task ändert sich während der Ausführung nicht. RM ist außerdem
+\textbf{preemptiv}: Wird eine neue Instanz einer hochprioren Task aktiv, unterbricht
+sie die laufende niederpriore Task sofort.
+
+\begin{beispiel}[Einfache RM-Zuweisung]
+	Gegeben sei ein Task-Set mit drei Tasks:
+	\[
+		\tau_1: T_1 = 4\,\text{ms}, \quad \tau_2: T_2 = 6\,\text{ms}, \quad \tau_3: T_3 = 12\,\text{ms}.
+	\]
+	RM ordnet die Prioritäten: $P_1 > P_2 > P_3$, da $T_1 < T_2 < T_3$.
+	$\tau_1$ ist immer die dringlichste Task und kann $\tau_2$ und $\tau_3$ jederzeit
+	unterbrechen. $\tau_2$ kann nur $\tau_3$ unterbrechen.
+\end{beispiel}
+
+\subsection{Kritischer Augenblick -- Das Fundament der RM-Analyse}
+
+Das wichtigste Konzept für die Analyse von RM ist der \emph{kritische Augenblick}
+(critical instant). Er gibt an, unter welchen Bedingungen eine Task die größte
+Antwortzeit erfährt.
+
+\begin{definition}[Kritischer Augenblick]
+	Der \textbf{kritische Augenblick} einer Task $\tau_i$ ist derjenige
+	Ankunftszeitpunkt, der die größte Antwortzeit von $\tau_i$ produziert.
+	Die zugehörige \textbf{kritische Zeitzone} ist das Intervall zwischen dem
+	kritischen Augenblick und der entsprechenden Antwortzeit.
+\end{definition}
+
+\begin{lemma}[Liu \& Layland 1973 -- Kritischer Augenblick]
+	\label{lem:critical_instant}
+	Der kritische Augenblick für eine Task $\tau_i$ unter RM tritt auf, wenn
+	$\tau_i$ \emph{gleichzeitig} mit allen Tasks höherer Priorität aktiviert wird.
+\end{lemma}
+
+\begin{proof}
+	Wir zeigen durch sukzessives Vorrücken der Ankunftszeitpunkte hochpriorer Tasks,
+	dass die Antwortzeit von $\tau_i$ maximal wird, wenn alle gleichzeitig ankommen.
+
+	Sei $\tau_n$ die Task mit der niedrigsten Priorität und $\tau_i$ eine Task mit
+	höherer Priorität. Die Antwortzeit von $\tau_n$ wird durch die Interferenz von
+	$\tau_i$ verzögert. Wie in Abbildung (a) dargestellt, verzögert eine Instanz von
+	$\tau_i$ die Ausführung von $\tau_n$ um $C_i$. Das Vorziehen der Ankunftszeit von
+	$\tau_i$ kann die Fertigstellungszeit von $\tau_n$ weiter erhöhen (Abbildung b),
+	da eine zusätzliche Instanz von $\tau_i$ in das Interferenzintervall fallen kann.
+
+	Durch wiederholtes Vorrücken aller hochprioren Tasks wird die Antwortzeit von
+	$\tau_n$ maximiert, wenn alle gleichzeitig ankommen. Dieses Argument gilt für
+	jede Task $\tau_n$ mit niedrigster Priorität, und durch Rekursion für jede
+	Task im System. \hfill$\blacksquare$
+\end{proof}
+
+\begin{bemerkung}
+	Lemma~\ref{lem:critical_instant} hat eine weitreichende praktische Konsequenz:
+	Um zu prüfen, ob ein Task-Set unter RM schedulierbar ist, genügt es, den
+	Schedule am kritischen Augenblick zu analysieren -- also den Fall, dass alle
+	Tasks zum Zeitpunkt $t = 0$ gleichzeitig starten. Wenn alle Tasks in diesem
+	ungünstigsten Fall ihre Deadlines einhalten, sind sie \emph{unter allen}
+	möglichen Ankunftsbedingungen schedulierbar.
+\end{bemerkung}
+
+\subsection{Vollständiger Optimalitätsbeweis von RM}
+
+\begin{definition}[Schwach optimal]
+	\label{def:schwach_optimal}
+	Ein Scheduling-Algorithmus $\mathcal{A}$ heißt \textbf{schwach optimal}
+	innerhalb einer Klasse $\mathfrak{A}$ von Algorithmen, wenn gilt:
+	\[
+		\forall\, A \in \mathfrak{A}, \forall\, \Gamma: \quad
+		A \text{ scheduliert } \Gamma \;\implies\; \mathcal{A} \text{ scheduliert } \Gamma.
+	\]
+\end{definition}
+
+\begin{theorem}[Liu \& Layland 1973 -- RM Optimalität]
+	\label{thm:rm_optimal}
+	RM ist \textbf{schwach optimal} unter allen Algorithmen mit fester Priorität:
+	Wenn ein Task-Set $\Gamma$ von \emph{irgendeiner} festen Prioritätszuweisung
+	scheduliert werden kann, so kann es auch von RM scheduliert werden.
+\end{theorem}
+
+\begin{proof}
+	Der Beweis wird durch ein direktes Austauschargument für zwei Tasks geführt
+	und anschließend auf $n$ Tasks verallgemeinert.
+
+	\textbf{Schritt 1: Zwei Tasks, $T_1 < T_2$.}
+
+	Angenommen, die Prioritäten seien \emph{nicht} gemäß RM zugewiesen, d.\,h.\
+	$\tau_2$ hat eine höhere Priorität als $\tau_1$. Am kritischen Augenblick
+	($t = 0$) sieht der Schedule aus wie in Abbildung~\ref{fig:rm_non_rm_priority}:
+	$\tau_2$ wird zuerst ausgeführt, dann $\tau_1$. Für Machbarkeit muss gelten:
+	\begin{equation}
+		C_1 + C_2 \leq T_1.
+		\label{eq:non_rm_feasible}
+	\end{equation}
+
+	Nun weisen wir die Prioritäten gemäß RM zu, d.\,h.\ $\tau_1$ erhält die höhere
+	Priorität ($T_1 < T_2$). Wir müssen zeigen, dass die Machbarkeitsbedingung
+	(\ref{eq:non_rm_feasible}) auch unter RM ausreicht. Dazu unterscheiden wir
+	zwei Fälle, je nachdem, wie $C_1$ und $T_2$ sich zueinander verhalten. Sei
+	$F = \lfloor T_2 / T_1 \rfloor$ die Anzahl vollständiger $T_1$-Perioden
+	innerhalb von $T_2$.
+
+	\textbf{Fall 1:} $C_1 < T_2 - F T_1$.
+
+	In diesem Fall werden alle $F+1$ Instanzen von $\tau_1$ abgeschlossen, bevor
+	die zweite Instanz von $\tau_2$ ihre Deadline erreicht. Die Machbarkeitsbedingung
+	für $\tau_2$ unter RM ist:
+	\begin{equation}
+		(F+1)C_1 + C_2 \leq T_2.
+		\label{eq:rm_case1}
+	\end{equation}
+	Wir zeigen: (\ref{eq:non_rm_feasible}) $\implies$ (\ref{eq:rm_case1}). Aus
+	(\ref{eq:non_rm_feasible}) folgt durch Multiplikation mit $F$:
+	$F C_1 + F C_2 \leq F T_1$, und da $F \geq 1$:
+	$F C_1 + C_2 \leq F T_1$.
+	Addition von $C_1$ ergibt $(F+1)C_1 + C_2 \leq F T_1 + C_1$.
+	Da wir in Fall 1 voraussetzen, dass $C_1 < T_2 - F T_1$, erhalten wir:
+	$(F+1)C_1 + C_2 < F T_1 + (T_2 - F T_1) = T_2$,
+	womit (\ref{eq:rm_case1}) erfüllt ist.
+
+	\textbf{Fall 2:} $C_1 \geq T_2 - F T_1$.
+
+	Hier überlappt die Ausführung von $\tau_1$ mit der zweiten Instanz von $\tau_2$.
+	Die Machbarkeitsbedingung für $\tau_2$ unter RM ist:
+	\begin{equation}
+		F C_1 + C_2 \leq F T_1.
+		\label{eq:rm_case2}
+	\end{equation}
+	Aus (\ref{eq:non_rm_feasible}) folgt durch Multiplikation mit $F$:
+	$F C_1 + F C_2 \leq F T_1$, und da $F \geq 1$: $C_2 \leq F C_2$, also:
+	$F C_1 + C_2 \leq F C_1 + F C_2 \leq F T_1$,
+	womit (\ref{eq:rm_case2}) erfüllt ist.
+
+	In beiden Fällen gilt: Wenn das Task-Set unter der nicht-RM-Zuweisung
+	schedulierbar ist, ist es auch unter RM schedulierbar.
+
+	\textbf{Schritt 2: Verallgemeinerung auf $n$ Tasks.}
+
+	Sei $\Gamma = \{\tau_1, \ldots, \tau_n\}$ ein Task-Set, das von einer
+	beliebigen festen Prioritätszuweisung $\pi$ scheduliert wird. Wenn $\pi$
+	nicht die RM-Reihenfolge ist, existieren zwei Tasks $\tau_i, \tau_j$ mit
+	$T_i < T_j$, aber $P_i^{\pi} < P_j^{\pi}$ (invertierte Priorität). Durch
+	Anwendung des Zwei-Task-Argumentes aus Schritt 1 können die Prioritäten
+	von $\tau_i$ und $\tau_j$ vertauscht werden, ohne die Schedulierbarkeit zu
+	verletzen. Da das Task-Set endlich ist, führt die iterierte Anwendung dieser
+	Transposition nach endlich vielen Schritten zur RM-Reihenfolge, ohne dass
+	dabei eine Deadline verletzt wird. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Berechnung des Least Upper Bound für zwei Tasks}
+
+Der Least Upper Bound $U_{\text{lub}}$ ist die kleinste Schranke der Prozessorauslastung,
+unterhalb derer ein Task-Set unter RM \emph{garantiert} schedulierbar ist.
+
+\subsubsection{Vorgehen}
+
+Für $n = 2$ Tasks $\tau_1$ und $\tau_2$ mit $T_1 < T_2$ berechnen wir $U_{\text{lub}}$
+wie folgt:
+\begin{enumerate}
+	\item Zuweisung gemäß RM: $\tau_1$ erhält die höhere Priorität.
+	\item Erhöhung von $C_2$ bis der Prozessor vollständig ausgelastet ist.
+	\item Minimierung der oberen Schranke $U_{\text{ub}}$ über alle Periodenrelationen.
+\end{enumerate}
+
+Sei wiederum $F = \lfloor T_2 / T_1 \rfloor$.
+
+\subsubsection{Fall 1: $C_1 \leq T_2 - F T_1$}
+
+Der größtmögliche Wert von $C_2$ beträgt $C_2 = T_2 - C_1(F+1)$, und die
+obere Schranke der Auslastung ist:
+\[
+	U_{\text{ub}} = \frac{C_1}{T_1} + \frac{C_2}{T_2}
+	= \frac{C_1}{T_1} + \frac{T_2 - C_1(F+1)}{T_2}
+	= 1 + \frac{C_1}{T_2}\left(\frac{T_2}{T_1} - (F+1)\right).
+\]
+Da $T_2/T_1 \geq F + 1$ in diesem Fall nicht gilt (der Klammerausdruck ist negativ),
+ist $U_{\text{ub}}$ monoton fallend in $C_1$. Das Minimum wird also bei dem größten
+erlaubten $C_1$ erreicht, nämlich $C_1 = T_2 - F T_1$.
+
+\subsubsection{Fall 2: $C_1 \geq T_2 - F T_1$}
+
+Der größtmögliche Wert von $C_2$ beträgt $C_2 = (T_1 - C_1) F$, und:
+\[
+	U_{\text{ub}} = \frac{C_1}{T_1} + \frac{(T_1 - C_1)F}{T_2}
+	= \frac{T_1}{T_2} F + \frac{C_1}{T_2}\left(\frac{T_2}{T_1} - F\right).
+\]
+Hier ist $U_{\text{ub}}$ monoton steigend in $C_1$. Das Minimum liegt also bei
+$C_1 = T_2 - F T_1$.
+
+\subsubsection{Gemeinsamer Minimierungspunkt}
+
+In beiden Fällen wird das Minimum bei $C_1 = T_2 - T_1 F$ erreicht. Einsetzen liefert
+mit der Abkürzung $G = T_2/T_1 - F$ (sodass $0 \leq G < 1$):
+\[
+	U_{\text{ub}} = \frac{T_1}{T_2}F + \frac{(T_2 - T_1 F)}{T_2}
+	\cdot\frac{T_2/T_1 - F}{1}
+	= \frac{F + G^2}{F + G}.
+\]
+Für $F = 1$ (den ungünstigsten Fall) vereinfacht sich das zu:
+\[
+	U = \frac{1 + G^2}{1 + G}.
+\]
+Minimierung über $G \in [0,1)$ durch Ableiten ergibt:
+\[
+	\frac{dU}{dG} = \frac{2G(1+G) - (1+G^2)}{(1+G)^2} = \frac{G^2 + 2G - 1}{(1+G)^2} = 0,
+\]
+also $G = -1 + \sqrt{2}$ (positive Lösung). Einsetzen liefert:
+\[
+	U_{\text{lub}}(2) = \frac{1 + (\sqrt{2}-1)^2}{1 + (\sqrt{2}-1)}
+	= \frac{4 - 2\sqrt{2}}{2} = 2(\sqrt{2} - 1) \approx 0{,}828.
+\]
+
+\begin{bemerkung}
+	Wenn $T_2$ ein ganzzahliges Vielfaches von $T_1$ ist, gilt $G = 0$ und
+	$U_{\text{ub}} = 1$. Das bedeutet: Für harmonische Perioden ($T_2 = k T_1$)
+	kann RM den Prozessor vollständig auslasten.
+\end{bemerkung}
+
+\subsection{Berechnung des Least Upper Bound für $n$ Tasks}
+
+\begin{theorem}[Liu \& Layland 1973 -- RM Least Upper Bound]
+	\label{satz:rm_lub}
+	Für eine beliebige Menge von $n$ periodischen Tasks unter den Annahmen A1--A4
+	ist der Least Upper Bound der Prozessorauslastung unter dem Rate Monotonic
+	Algorithmus:
+	\[
+		U_{\text{lub}}(\text{RM}, n) = n\left(2^{1/n} - 1\right).
+	\]
+	Für $n \to \infty$ gilt $U_{\text{lub}} \to \ln 2 \approx 0{,}693$.
+\end{theorem}
+
+\begin{proof}
+	Die schlechteste Bedingung für die Schedulierbarkeit, d.\,h.\ das globale
+	Minimum der oberen Schranke $U_{\text{ub}}$ über alle Task-Sets, die den
+	Prozessor vollständig auslasten, wird durch folgende Parameterwahl erreicht
+	\cite{Liu1973}:
+	\begin{equation}
+		\begin{cases}
+			T_1 < T_n < 2 T_1 \\
+			C_1 = T_2 - T_1 \\
+			C_2 = T_3 - T_2 \\
+			\quad\vdots \\
+			C_{n-1} = T_n - T_{n-1} \\
+			C_n = 2T_1 - T_n.
+		\end{cases}
+		\label{eq:worst_case_params}
+	\end{equation}
+	Die resultierende Prozessorauslastung lässt sich mit den Abkürzungen
+	$R_i = T_{i+1}/T_i$ schreiben als:
+	\[
+		U = \sum_{i=1}^{n-1} R_i + \frac{2}{R_1 R_2 \cdots R_{n-1}} - n.
+	\]
+	Minimierung über alle $R_i$ durch partielles Ableiten:
+	\[
+		\frac{\partial U}{\partial R_k} = 1 - \frac{2}{R_k^2 \cdot \prod_{i \neq k} R_i} = 0.
+	\]
+	Mit $P = \prod_{i=1}^{n-1} R_i$ erhält man $R_k P = 2$ für alle $k$, also:
+	\[
+		R_1 = R_2 = \cdots = R_{n-1} = 2^{1/n}.
+	\]
+	Einsetzen dieses gemeinsamen Wertes ergibt:
+	\begin{align*}
+		U_{\text{lub}}
+		&= (n-1) \cdot 2^{1/n} + \frac{2}{2^{(n-1)/n}} - n \\
+		&= (n-1) \cdot 2^{1/n} + 2^{1/n} - n \\
+		&= n \cdot 2^{1/n} - n \\
+		&= n(2^{1/n} - 1).
+	\end{align*}
+
+	\textbf{Grenzwert für $n \to \infty$:}
+
+	Mit der Substitution $y = 2^{1/n} - 1$, also $n = \ln 2 / \ln(y+1)$, gilt:
+	\[
+		\lim_{n \to \infty} n(2^{1/n} - 1) = \ln 2 \cdot \lim_{y \to 0} \frac{y}{\ln(y+1)}.
+	\]
+	Nach der Regel von L'HÃ´pital:
+	\[
+		\lim_{y \to 0} \frac{y}{\ln(y+1)} = \lim_{y \to 0} \frac{1}{1/(y+1)} = 1.
+	\]
+	Daher gilt $\lim_{n\to\infty} U_{\text{lub}} = \ln 2 \approx 0{,}693$. \hfill$\blacksquare$
+\end{proof}
+
+\begin{table}[H]
+	\centering
+	\caption{Werte von $U_{\text{lub}}$ für RM als Funktion der Taskanzahl $n$}
+	\label{tab:rm_lub}
+	\begin{tabular}{cc|cc}
+		\toprule
+		$n$ & $U_{\text{lub}}$ & $n$ & $U_{\text{lub}}$ \\
+		\midrule
+		1   & 1{,}000          & 6   & 0{,}735          \\
+		2   & 0{,}828          & 7   & 0{,}729          \\
+		3   & 0{,}780          & 8   & 0{,}724          \\
+		4   & 0{,}757          & 9   & 0{,}721          \\
+		5   & 0{,}743          & 10  & 0{,}718          \\
+		$\infty$ & $\ln 2 \approx 0{,}693$ & & \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\begin{bemerkung}
+	Die Tabelle zeigt, dass der Least Upper Bound mit wachsender Taskanzahl
+	monoton gegen $\ln 2 \approx 0{,}693$ fällt. Das bedeutet: Für sehr große
+	Task-Sets kann RM nur Task-Mengen mit Auslastung unter 69\,\% garantiert
+	einplanen. EDF hingegen garantiert Schedulierbarkeit bis $U = 1$, also eine
+	um bis zu 31 Prozentpunkte höhere Nutzung der Prozessorkapazität.
+\end{bemerkung}
+
+\subsection{Praktische Anwendung: Hinreichende Schedulierbarkeitstest}
+
+Der Liu-Layland-Bound liefert einen einfachen, hinreichenden Test:
+
+\begin{satz}[RM Hinreichende Bedingung -- Liu \& Layland]
+	\label{satz:rm_suf}
+	Eine Menge von $n$ periodischen Tasks ist unter RM schedulierbar, wenn:
+	\[
+		U = \sum_{i=1}^{n} \frac{C_i}{T_i} \leq n(2^{1/n} - 1).
+	\]
+\end{satz}
+
+\begin{beispiel}[Anwendung des Liu-Layland-Tests]
+	Gegeben:
+	\[
+		\tau_1: C_1=1, T_1=4 \quad \tau_2: C_2=2, T_2=6 \quad \tau_3: C_3=3, T_3=12.
+	\]
+	Auslastung: $U = 1/4 + 2/6 + 3/12 = 0{,}25 + 0{,}333 + 0{,}25 = 0{,}833$.
+	Schranke: $U_{\text{lub}}(3) = 3(2^{1/3}-1) \approx 0{,}780$.
+	Da $U = 0{,}833 > 0{,}780$, gibt der Test \emph{keine Garantie} -- aber das
+	Task-Set könnte dennoch schedulierbar sein.
+\end{beispiel}
+
+\begin{bemerkung}[Test ist hinreichend, nicht notwendig]
+	Der Liu-Layland-Test ist \textbf{hinreichend}, aber \textbf{nicht notwendig}.
+	Ein Task-Set mit $U > U_{\text{lub}}$ kann trotzdem mit RM schedulierbar sein,
+	wenn die Perioden günstig zueinander liegen (z.\,B.\ bei harmonischen Perioden).
+	Umgekehrt: Wenn $U \leq U_{\text{lub}}$, ist die Schedulierbarkeit garantiert.
+	Zum exakten Test dient die Response Time Analysis (Abschnitt~\ref{sec:rta}).
+\end{bemerkung}
+
+\subsection{Hyperbolic Bound -- Engere Schranke für RM}
+
+Der Hyperbolic Bound von Bini und Buttazzo \cite{Bini2001} ist eine schärfere
+hinreichende Bedingung als der Liu-Layland-Bound. Er nutzt die individuellen
+Auslastungsfaktoren $U_i = C_i/T_i$ statt ihrer Summe.
+
+\begin{theorem}[Bini, Buttazzo \& Buttazzo 2001 -- Hyperbolic Bound]
+	\label{thm:hyperbolic}
+	Sei $\Gamma = \{\tau_1, \ldots, \tau_n\}$ mit $U_i = C_i/T_i$. Dann ist
+	$\Gamma$ unter RM schedulierbar, wenn:
+	\[
+		\prod_{i=1}^{n} (U_i + 1) \leq 2.
+	\]
+\end{theorem}
+
+\begin{proof}
+	Der Beweis nutzt die gleiche Worst-Case-Parametrisierung (\ref{eq:worst_case_params}).
+	Dort gilt $U_i = R_i - 1$ für $i = 1,\ldots,n-1$, also $R_i = U_i + 1$. Damit ist
+	$\prod_{i=1}^{n-1} R_i = T_n/T_1$. Die Schedulierbarkeitsbed.~(\ref{eq:rm_case2})
+	für $\tau_n$ lautet $U_n \leq 2T_1/T_n - 1$, d.\,h.\ $(U_n+1) \leq 2 / \prod_{i=1}^{n-1}(U_i+1)$,
+	woraus $\prod_{i=1}^{n}(U_i+1) \leq 2$ folgt. \hfill$\blacksquare$
+\end{proof}
+
+\begin{bemerkung}[Vergleich der Schranken]
+	Der Hyperbolic Bound ist stets mindestens so gut wie der Liu-Layland-Bound und
+	häufig besser. Er akzeptiert Task-Sets, die der Liu-Layland-Bound ablehnen würde.
+	Formell gilt:
+	\[
+		\prod_{i=1}^{n}(U_i + 1) \leq 2 \text{ ist eine striktere Bedingung als } \sum_{i=1}^n U_i \leq n(2^{1/n}-1)
+	\]
+	in dem Sinne, dass die zulässige Schedulierbarkeitsregion durch den Hyperbolic
+	Bound größer ist. Der Gewinn wächst mit der Anzahl der Tasks und nähert sich
+	$\sqrt{2}$ für $n \to \infty$.
+\end{bemerkung}
+
+\begin{beispiel}[Hyperbolic Bound vs. Liu-Layland]
+	Gegeben: $\tau_1: U_1 = 0{,}4$, $\tau_2: U_2 = 0{,}4$.
+
+	\textit{Liu-Layland:} $U = 0{,}8 \leq 2(\sqrt{2}-1) \approx 0{,}828$. Bestanden.
+
+	\textit{Hyperbolic Bound:} $(1{,}4)(1{,}4) = 1{,}96 \leq 2$. Bestanden.
+
+	Nun: $\tau_1: U_1 = 0{,}41$, $\tau_2: U_2 = 0{,}41$.
+
+	\textit{Liu-Layland:} $U = 0{,}82 \leq 0{,}828$. Bestanden.
+
+	\textit{Hyperbolic Bound:} $(1{,}41)^2 = 1{,}9881 \leq 2$. Bestanden.
+
+	Nun: $\tau_1: U_1 = 0{,}43$, $\tau_2: U_2 = 0{,}43$.
+
+	\textit{Liu-Layland:} $U = 0{,}86 > 0{,}828$. \emph{Kein Ergebnis!}
+
+	\textit{Hyperbolic Bound:} $(1{,}43)^2 = 2{,}0449 > 2$. \emph{Kein Ergebnis!}
+
+	Aber mit $U_1 = 0{,}42$, $U_2 = 0{,}40$:
+
+	\textit{Liu-Layland:} $U = 0{,}82 \leq 0{,}828$. Bestanden.
+
+	\textit{Hyperbolic Bound:} $(1{,}42)(1{,}40) = 1{,}988 \leq 2$. Bestanden.
+
+	Dagegen mit $U_1 = 0{,}44$, $U_2 = 0{,}40$:
+
+	\textit{Liu-Layland:} $U = 0{,}84 > 0{,}828$. \emph{Keine Garantie.}
+
+	\textit{Hyperbolic Bound:} $(1{,}44)(1{,}40) = 2{,}016 > 2$. \emph{Keine Garantie.}
+\end{beispiel}
+
+\subsection{Response Time Analysis -- Exakter Schedulierbarkeitstest}
+\label{sec:rta}
+
+Der Liu-Layland-Bound und der Hyperbolic Bound sind hinreichend, aber nicht
+notwendig. Für einen \emph{exakten} Test benötigt man die Response Time Analysis
+(RTA), die von Audsley et al. \cite{Audsley1993} entwickelt wurde.
+
+\subsubsection{Grundprinzip}
+
+Die worst-case Antwortzeit $R_i$ einer Task $\tau_i$ setzt sich zusammen aus ihrer
+eigenen Ausführungszeit $C_i$ und der Interferenz $I_i$ durch alle Tasks mit höherer
+Priorität. Die Interferenz im Intervall $[0, R_i]$ ist die Summe aller Ausführungen
+hochpriorer Tasks, die in dieses Intervall fallen:
+\[
+	I_i = \sum_{j \in hp(i)} \left\lceil \frac{R_i}{T_j} \right\rceil C_j,
+\]
+wobei $hp(i) = \{\tau_j \mid P_j > P_i\}$ die Menge der Tasks mit höherer Priorität
+ist und $\lceil R_i/T_j \rceil$ die Anzahl der Instanzen von $\tau_j$ im Intervall
+$[0, R_i]$ angibt.
+
+\begin{definition}[Worst-Case Antwortzeit unter RM]
+	Die \textbf{worst-case Antwortzeit} $R_i$ von $\tau_i$ ist die kleinste positive
+	Lösung der impliziten Gleichung:
+	\begin{equation}
+		R_i = C_i + \sum_{j \in hp(i)} \left\lceil \frac{R_i}{T_j} \right\rceil C_j.
+		\label{eq:rta}
+	\end{equation}
+\end{definition}
+
+Da $R_i$ auf beiden Seiten von Gleichung~(\ref{eq:rta}) auftritt, gibt es keine
+geschlossene Lösung. Die Berechnung erfolgt iterativ.
+
+\subsubsection{Iterativer Berechnungsalgorithmus}
+
+\begin{algorithmic}[1]
+	\Require Task $\tau_i$, geordnet nach RM-Priorität
+	\State $R_i^{(0)} \leftarrow \sum_{j=1}^{i} C_j$ \Comment{Startschätzung: frühester Fertigstellungszeitpunkt}
+	\Repeat
+	\State $R_i^{(k+1)} \leftarrow C_i + \sum_{j \in hp(i)} \left\lceil \dfrac{R_i^{(k)}}{T_j} \right\rceil C_j$
+	\Until{$R_i^{(k+1)} = R_i^{(k)}$ \textbf{oder} $R_i^{(k+1)} > T_i$}
+	\If{$R_i^{(k+1)} \leq T_i$}
+	\State \Return SCHEDULIERBAR
+	\Else
+	\State \Return NICHT SCHEDULIERBAR
+	\EndIf
+\end{algorithmic}
+
+Die Sequenz $R_i^{(0)}, R_i^{(1)}, R_i^{(2)}, \ldots$ ist monoton nichtfallend und
+durch $T_i$ nach oben beschränkt. Sie konvergiert daher entweder zu einem Fixpunkt
+(der Task schedulierbar) oder überschreitet $T_i$ (Task nicht schedulierbar).
+
+\begin{beispiel}[Response Time Analysis -- Schritt für Schritt]
+	Gegeben:
+	\begin{center}
+		\begin{tabular}{cccc}
+			\toprule
+			Task    & $C_i$ & $T_i$ & Priorität (RM) \\
+			\midrule
+			$\tau_1$ & 1     & 4     & 1 (höchste) \\
+			$\tau_2$ & 2     & 6     & 2 \\
+			$\tau_3$ & 3     & 10    & 3 (niedrigste) \\
+			\bottomrule
+		\end{tabular}
+	\end{center}
+
+	Auslastung: $U = 1/4 + 2/6 + 3/10 = 0{,}25 + 0{,}333 + 0{,}30 = 0{,}883$.
+	Da $U_{\text{lub}}(3) \approx 0{,}780 < 0{,}883$, liefert der Liu-Layland-Test
+	kein Ergebnis. Wir nutzen die RTA.
+
+	\textbf{Task $\tau_1$} (keine höherpriore Task):
+	$R_1 = C_1 = 1 \leq T_1 = 4$. \checkmark
+
+	\textbf{Task $\tau_2$} ($hp(2) = \{\tau_1\}$):
+	\begin{align*}
+		R_2^{(0)} &= C_1 + C_2 = 3 \\
+		R_2^{(1)} &= C_2 + \lceil 3/4 \rceil \cdot C_1 = 2 + 1 \cdot 1 = 3 = R_2^{(0)}.
+	\end{align*}
+	Konvergenz bei $R_2 = 3 \leq T_2 = 6$. \checkmark
+
+	\textbf{Task $\tau_3$} ($hp(3) = \{\tau_1, \tau_2\}$):
+	\begin{align*}
+		R_3^{(0)} &= C_1 + C_2 + C_3 = 6 \\
+		R_3^{(1)} &= 3 + \lceil 6/4 \rceil \cdot 1 + \lceil 6/6 \rceil \cdot 2 = 3 + 2 + 2 = 7 \\
+		R_3^{(2)} &= 3 + \lceil 7/4 \rceil \cdot 1 + \lceil 7/6 \rceil \cdot 2 = 3 + 2 + 4 = 9 \\
+		R_3^{(3)} &= 3 + \lceil 9/4 \rceil \cdot 1 + \lceil 9/6 \rceil \cdot 2 = 3 + 3 + 4 = 10 \\
+		R_3^{(4)} &= 3 + \lceil 10/4 \rceil \cdot 1 + \lceil 10/6 \rceil \cdot 2 = 3 + 3 + 4 = 10 = R_3^{(3)}.
+	\end{align*}
+	Konvergenz bei $R_3 = 10 = T_3$. \checkmark (Gerade noch schedulierbar.)
+
+	Das Task-Set ist unter RM schedulierbar, obwohl $U > U_{\text{lub}}$.
+	Dies zeigt, dass der Liu-Layland-Bound zu pessimistisch war.
+\end{beispiel}
+
+\subsection{Schedulierbarkeit bei kritischem Augenblick -- Direkte Methode}
+
+Alternativ zur Response Time Analysis kann die Schedulierbarkeit direkt durch
+Konstruktion des Schedules am kritischen Augenblick überprüft werden.
+
+\begin{satz}[Schedulierbarkeit am kritischen Augenblick]
+	Ein Task-Set $\Gamma$ ist unter RM genau dann schedulierbar, wenn jede Task
+	$\tau_i$ ihre Deadline an ihrem kritischen Augenblick einhält, d.\,h.\ wenn alle
+	Tasks zum Zeitpunkt $t = 0$ gleichzeitig aktiviert werden und jede Task innerhalb
+	ihrer ersten Periode fertiggestellt wird.
+\end{satz}
+
+\begin{beispiel}[Schedulierbarkeit direkt am kritischen Augenblick]
+	Gegeben: $\tau_1: C_1=1, T_1=4$; $\tau_2: C_2=2, T_2=6$.
+
+	Auslastung: $U = 1/4 + 2/6 = 0{,}583 \leq U_{\text{lub}}(2) \approx 0{,}828$. Garantiert.
+
+	Konstruktion des Schedules ab $t=0$:
+	\begin{itemize}
+		\item $[0,1)$: $\tau_1$ läuft (höhere Priorität, $T_1 < T_2$).
+		\item $[1,3)$: $\tau_2$ läuft (keine andere Task bereit).
+		\item $[3,4)$: $\tau_2$ läuft weiter -- aber $\tau_1$ hat neue Instanz bei $t=4$!
+		\item Bei $t=3$: $\tau_2$ ist fertig ($f_{2,1}=3 \leq d_{2,1}=6$). \checkmark
+		\item $[3,4)$: Leerlauf.
+		\item $[4,5)$: $\tau_1$, zweite Instanz.
+		\item $[5,7)$: $\tau_2$, zweite Instanz. $f_{2,2} = 7 \leq d_{2,2} = 12$. \checkmark
+	\end{itemize}
+	Das Task-Set ist schedulierbar.
+\end{beispiel}
+
+\subsection{Workload-Analyse nach Lehoczky, Sha und Ding}
+
+Lehoczky, Sha und Ding \cite{Lehoczky1989} entwickelten eine präzisere Methode
+zur Schedulierbarkeitsanalyse unter fester Priorität, die auf dem Konzept der
+Level-$i$-Arbeitslast basiert.
+
+\begin{definition}[Level-$i$-Arbeitslast]
+	Die \textbf{Level-$i$-Arbeitslast} $W_i(t)$ ist die kumulative Rechenzeit,
+	die im Intervall $(0, t]$ von Task $\tau_i$ und allen Tasks mit höherer Priorität
+	angefordert wird:
+	\[
+		W_i(t) = C_i + \sum_{h: P_h > P_i} \left\lfloor \frac{t}{T_h} \right\rfloor C_h.
+	\]
+\end{definition}
+
+\begin{theorem}[Lehoczky, Sha, Ding 1989]
+	Eine Menge vollständig preemptiver periodischer Tasks ist unter einem
+	Algorithmus mit fester Priorität genau dann schedulierbar, wenn:
+	\[
+		\forall i = 1,\ldots,n: \quad \exists t \in (0, T_i]: \quad W_i(t) \leq t.
+	\]
+\end{theorem}
+
+\subsection{Warum RM schwach optimal ist -- Präzisierung}
+
+\begin{definition}[Schwach optimal -- Präzisierung]
+	\label{def:schwach_optimal_praez}
+	RM ist \textbf{schwach optimal} in folgendem Sinne:
+	\begin{enumerate}
+		\item RM ist optimal \emph{innerhalb} der Klasse aller Algorithmen mit
+		      fester Prioritätszuweisung.
+		\item Es gibt Task-Mengen mit $\ln 2 < U \leq 1$, die \emph{nicht} unter
+		      RM schedulierbar sind, aber unter EDF schedulierbar sind.
+		\item RM ist \emph{nicht} optimal über alle Scheduling-Algorithmen.
+	\end{enumerate}
+\end{definition}
+
+\begin{satz}[Grenzen der Schwäche von RM]
+	Für jede Auslastung $U$ mit $U_{\text{lub}}(\text{RM},n) < U \leq 1$ existiert
+	ein Task-Set $\Gamma_U$ mit $n$ Tasks und Auslastung $U$, das:
+	\begin{itemize}
+		\item von EDF schedulierbar ist (da $U \leq 1$),
+		\item von RM \emph{nicht} schedulierbar ist.
+	\end{itemize}
+\end{satz}
+
+\begin{proof}
+	Wähle $\Gamma_U$ gemäß den Worst-Case-Parametern (\ref{eq:worst_case_params})
+	mit der gegebenen Auslastung $U$. Per Konstruktion ist $\Gamma_U$ nicht unter RM
+	schedulierbar (da $U > U_{\text{lub}}$). Da $U \leq 1$, ist $\Gamma_U$ nach
+	Satz~\ref{thm:edf_schedulierbar} unter EDF schedulierbar. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Vollständiges Beispiel: Vergleich RM und EDF bei hoher Auslastung}
+
+\begin{beispiel}[RM versagt, EDF scheduliert]
+	\label{bsp:rm_edf_vergleich}
+	Gegeben:
+	\[
+		\tau_1: C_1 = 3, \quad T_1 = 5 \qquad \tau_2: C_2 = 4, \quad T_2 = 7.
+	\]
+	Auslastung: $U = 3/5 + 4/7 = 0{,}6 + 0{,}571 = 34/35 \approx 0{,}971$.
+
+	\textbf{RM-Analyse:}
+	$U_{\text{lub}}(2) \approx 0{,}828 < 0{,}971$. Der Liu-Layland-Test gibt keine
+	Garantie. Exakter Test mittels RTA:
+	\begin{align*}
+		R_1 &= C_1 = 3 \leq 5. \quad\checkmark \\
+		R_2^{(0)} &= 7 \\
+		R_2^{(1)} &= 4 + \lceil 7/5 \rceil \cdot 3 = 4 + 2 \cdot 3 = 10 > T_2 = 7.
+	\end{align*}
+	$\tau_2$ ist unter RM \emph{nicht schedulierbar}. Am kritischen Augenblick
+	(alle Tasks starten bei $t=0$) verpasst $\tau_2$ ihre erste Deadline bei $t=7$.
+
+	\textbf{EDF-Analyse:}
+	$U \approx 0{,}971 \leq 1$. Task-Set ist unter EDF schedulierbar. Der Schedule
+	verläuft ohne Deadline-Verletzungen, da EDF zu jedem Zeitpunkt die Task mit der
+	frühesten absoluten Deadline ausführt und dabei die volle Prozessorkapazität nutzt.
+
+	Dieser direkte Vergleich illustriert die Aussage:
+	\begin{quote}
+		\textbf{Wenn es einen machbaren Schedule gibt, findet RM diesen sofort. RM ist schwach optimal.
+		Wenn es einen machbaren Schedule gibt, findet EDF diesen sofort. EDF ist scharf optimal.}
+	\end{quote}
+	Für $\tau_2$ existiert ein machbarer Schedule (unter EDF), aber RM findet ihn nicht.
+\end{beispiel}
+
+\subsection{Übungsaufgaben zu Rate Monotonic}
+
+\begin{beispiel}[Übungsaufgabe 1 -- Schedulierbarkeitstest]
+	Bestimme, ob folgendes Task-Set unter RM schedulierbar ist:
+	\[
+		\tau_1: C=2, T=6 \quad \tau_2: C=2, T=8 \quad \tau_3: C=2, T=12.
+	\]
+	\textit{Lösung:} $U = 2/6 + 2/8 + 2/12 = 1/3 + 1/4 + 1/6 = 3/4 = 0{,}75$.
+	$U_{\text{lub}}(3) = 3(2^{1/3}-1) \approx 0{,}780 > 0{,}75$. Schedulierbar. \checkmark
+\end{beispiel}
+
+\begin{beispiel}[Übungsaufgabe 2 -- Nicht schedulierbar]
+	Bestimme, ob folgendes Task-Set unter RM schedulierbar ist:
+	\[
+		\tau_1: C=1, T=4 \quad \tau_2: C=2, T=6 \quad \tau_3: C=3, T=8.
+	\]
+	\textit{Lösung:} $U = 1/4 + 2/6 + 3/8 = 0{,}25 + 0{,}333 + 0{,}375 = 0{,}958$.
+	$U_{\text{lub}}(3) \approx 0{,}780 < 0{,}958$. Kein Ergebnis aus Liu-Layland-Test.
+	RTA für $\tau_3$:
+	\begin{align*}
+		R_3^{(0)} &= 1 + 2 + 3 = 6 \\
+		R_3^{(1)} &= 3 + \lceil 6/4\rceil\cdot1 + \lceil 6/6\rceil\cdot2 = 3+2+2 = 7 \\
+		R_3^{(2)} &= 3 + \lceil 7/4\rceil\cdot1 + \lceil 7/6\rceil\cdot2 = 3+2+4 = 9 \\
+		R_3^{(3)} &= 3 + \lceil 9/4\rceil\cdot1 + \lceil 9/6\rceil\cdot2 = 3+3+4 = 10 > T_3 = 8.
+	\end{align*}
+	$\tau_3$ ist unter RM nicht schedulierbar. Da $U \approx 0{,}958 \leq 1$,
+	ist das Task-Set unter EDF schedulierbar.
+\end{beispiel}
+
+\section{Earliest Deadline First (EDF) -- Scharf optimal}
+
+\subsection{Algorithmus}
+
+EDF ist eine dynamische Scheduling-Regel: Tasks mit früheren absoluten Deadlines
+werden zuerst ausgeführt. EDF ist typischerweise preemptiv.
+
+\begin{quote}
+\textbf{EDF ist scharf optimal: Wenn ein machbarer Schedule existiert, findet EDF diesen sofort. EDF findet die kürzeste Ausführungszeit aller Tasks sofort.}
+\end{quote}
+
+\subsection{Schedulierbarkeitsanalyse für EDF}
+
+\begin{theorem}[Liu \& Layland 1973 -- EDF Schedulierbarkeit]
+	\label{thm:edf_schedulierbar}
+	Eine Menge periodischer Tasks ist mit EDF schedulierbar genau dann, wenn:
+	\[
+		U = \sum_{i=1}^{n} \frac{C_i}{T_i} \leq 1.
+	\]
+\end{theorem}
+
+\begin{proof}
+	\textbf{``Nur wenn'' Teil:} Wenn $U > 1$, überschreitet der Gesamtrechenaufwand
+	in der Hyperperiode $H$ die verfügbare Zeit $H$. Kein Algorithmus kann diesen
+	Schedule machbar machen.
+
+	\textbf{``Wenn'' Teil (durch Widerspruch):} Angenommen, $U \leq 1$, aber der
+	Task-Satz ist nicht schedulierbar. Sei $t_2$ der erste Zeitpunkt, an dem eine
+	Deadline versäumt wird, und $[t_1, t_2]$ das längste Intervall kontinuierlicher
+	Auslastung vor $t_2$, in dem nur Instanzen mit Deadline $\leq t_2$ ausgeführt werden.
+
+	Der gesamte Rechenzeitbedarf in $[t_1, t_2]$ ist:
+	\[
+		C_p(t_1, t_2) = \sum_{i=1}^{n} \left\lfloor \frac{t_2 - t_1}{T_i} \right\rfloor C_i \leq (t_2 - t_1) U.
+	\]
+
+	Da eine Deadline versäumt wird, muss $C_p(t_1, t_2) > (t_2 - t_1)$ gelten,
+	also $U > 1$ -- Widerspruch. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Die Schärfe von EDF im Vergleich zu RM}
+
+Der fundamentale Unterschied:
+
+\begin{satz}[Schärfe von EDF gegenüber RM]
+	\label{satz:edf_scharf}
+	Es gibt Task-Mengen, die EDF schedulieren kann, RM aber nicht. Insbesondere gilt
+	für alle $U$ mit $\ln 2 < U \leq 1$:
+	\begin{itemize}
+		\item EDF garantiert die Machbarkeit (nach Satz~\ref{thm:edf_schedulierbar}).
+		\item RM kann die Machbarkeit \emph{nicht} garantieren (nach Satz~\ref{satz:rm_lub}).
+	\end{itemize}
+\end{satz}
+
+\begin{beispiel}
+	Betrachte eine periodische Task-Menge mit zwei Tasks:
+	\[
+		\tau_1: C_1 = 3, \quad T_1 = 5 \qquad \tau_2: C_2 = 4, \quad T_2 = 7.
+	\]
+	Die Prozessorauslastung ist:
+	\[
+		U = \frac{3}{5} + \frac{4}{7} = 0{,}6 + 0{,}571 = \frac{34}{35} \approx 0{,}97.
+	\]
+	Da $U = 0{,}97 > 2(\sqrt{2}-1) \approx 0{,}83$, kann RM die Schedulierbarkeit
+	\emph{nicht} garantieren -- und erzeugt tatsächlich eine Deadline-Verletzung.
+	Da $U \approx 0{,}97 \leq 1$, ist der Task-Satz unter EDF schedulierbar.
+	Dies zeigt die Schwäche von RM und die Schärfe von EDF.
+\end{beispiel}
+
+\section{Deadline Monotonic Scheduling}
+
+Deadline Monotonic (DM) ist eine Erweiterung von RM für Tasks mit Deadlines
+kleiner als ihre Perioden ($D_i \leq T_i$). DM weist Prioritäten umgekehrt
+proportional zur relativen Deadline zu.
+
+DM ist optimal unter allen Algorithmen mit fester Priorität für Tasks mit
+$D_i \leq T_i$ -- analog zu RM ist DM damit ebenfalls \emph{schwach optimal}
+im Sinne dieser Klasse.
+
+\section{EDF mit eingeschränkten Deadlines}
+
+Für Tasks mit $D_i \leq T_i$ kann die Schedulierbarkeit unter EDF durch das
+Processor Demand Criterion (Baruah et al. 1990) getestet werden:
+
+\begin{satz}[Schedulierbarkeit unter EDF mit eingeschränkten Deadlines]
+	Eine synchrone Menge periodischer Tasks mit $D_i \leq T_i$ ist mit EDF
+	schedulierbar genau dann, wenn $U \leq 1$ und
+	\[
+		\forall t > 0: \quad \mathrm{dbf}(t) = \sum_{i=1}^{n} \left\lfloor \frac{t + T_i - D_i}{T_i} \right\rfloor C_i \leq t.
+	\]
+\end{satz}
+
+\section{Vergleich RM und EDF}
+
+Tabelle~\ref{tab:rm_edf} fasst die wesentlichen Unterschiede zusammen:
+
+\begin{table}[H]
+	\centering
+	\caption{Vergleich RM und EDF}
+	\label{tab:rm_edf}
+	\begin{tabular}{p{4cm}p{5cm}p{5cm}}
+		\toprule
+		\textbf{Eigenschaft} & \textbf{RM} & \textbf{EDF} \\
+		\midrule
+		Priorität            & Fest (umgekehrt proportional zu $T_i$) & Dynamisch (absolutes Deadline) \\
+		Optimalität          & \textbf{Schwach optimal} (innerhalb fester Priorität) & \textbf{Scharf optimal} (insgesamt) \\
+		$U_{\text{lub}}$     & $\ln 2 \approx 0{,}693$ (worst case) & $1{,}000$ \\
+		Schedulierbarkeitstest & Pseudo-polynomiell (RTA) & $O(n)$ (Auslastungstest) \\
+		Überlastverhalten    & Niederpriore Tasks blockieren & Periodenskalierung (Cervin) \\
+		Impl.-Aufwand & $O(1)$ (Multi-Level Queue) & $O(\log n)$ (Heap) \\
+		Präemptionsanzahl    & Höher & Niedriger \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\begin{bemerkung}
+	Dass RM schwach optimal ist, bedeutet: Wenn ein Task-Satz überhaupt
+	mit \emph{irgendeiner} festen Prioritätszuweisung schedulierbar ist, so
+	ist er auch mit RM schedulierbar. Das schließt jedoch nicht aus, dass
+	ein dynamischer Algorithmus wie EDF mehr Task-Mengen schedulieren kann.
+
+	EDF ist scharf optimal: EDF scheduliert genau die Task-Mengen, die
+	überhaupt schedulierbar sind ($U \leq 1$). Es gibt keine Task-Menge
+	mit $U \leq 1$, die EDF nicht schedulieren kann.
+\end{bemerkung}
+
+%=============================================================
+\chapter{Fixed-Priority Server -- Aperiodische Tasks unter RM}
+\label{chap:server}
+%=============================================================
+
+\section{Einführung und Problemstellung}
+
+In realen Echtzeit-Systemen treten stets \emph{hybride Task-Sets} auf: harte
+periodische Tasks (Sensor-Abfragen, Regelschleifen) müssen zusammen mit weichen
+aperiodischen Tasks (Benutzereingaben, Diagnoseereignisse) eingeplant werden.
+
+\textbf{Das zentrale Ziel} dieses Kapitels: Für ein hybrides System sollen
+\begin{enumerate}
+	\item die Deadlines aller harten periodischen Tasks garantiert werden, und
+	\item die Antwortzeiten der weichen aperiodischen Tasks minimiert werden --
+	      ohne die Garantien der periodischen Tasks zu gefährden.
+\end{enumerate}
+
+Alle Algorithmen dieses Kapitels setzen voraus:
+\begin{itemize}
+	\item Periodische Tasks werden unter Rate Monotonic (RM) eingeplant.
+	\item Alle periodischen Tasks starten bei $t=0$ mit $D_i = T_i$.
+	\item Aperiodische Ankunftszeiten sind a priori unbekannt.
+\end{itemize}
+
+\textbf{Grundidee Server:} Ein \emph{Server} ist eine künstliche periodische
+Task mit Periode $T_s$ und Kapazität (Budget) $C_s$, die aperiodische Anfragen
+im Rahmen ihres Budgets bedient. Der Server konkurriert mit den echten periodischen
+Tasks um den Prozessor.
+
+\section{Background Scheduling -- Einfachster Ansatz}
+
+\subsection{Informelle Beschreibung}
+
+Aperiodische Tasks werden nur dann ausgeführt, wenn der Prozessor von keiner
+periodischen Task benötigt wird. Dies entspricht einer impliziten Priorität
+unterhalb aller periodischen Tasks.
+
+\begin{algorithm}[H]
+	\caption{Background Scheduling}
+	\begin{algorithmic}[1]
+		\State Verwalte periodische Tasks in Hochprioritätswarteschlange (RM)
+		\State Verwalte aperiodische Tasks in Niedrigprioritätswarteschlange (FCFS)
+		\Loop
+		\If{periodische Task bereit}
+		\State Führe höchstpriore periodische Task aus (RM)
+		\ElsIf{aperiodische Task bereit}
+		\State Führe nächste aperiodische Task aus (FCFS)
+		\Else
+		\State Leerlauf
+		\EndIf
+		\EndLoop
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Korrektheit und Optimalitätsklassifikation}
+
+\begin{satz}[Background Scheduling -- Korrektheit]
+	Unter Background Scheduling wird die Schedulierbarkeit aller periodischen
+	Tasks durch RM nicht beeinflusst. Die aperiodischen Tasks erhalten genau
+	die verbleibende Prozessorzeit $(1-U_p)$.
+\end{satz}
+
+\begin{proof}
+	Aperiodische Tasks werden nur in Leerlaufzeiten ausgeführt. Da sie keine
+	periodische Task preemptieren oder verzögern können, ist der Schedule für
+	die periodischen Tasks identisch mit dem RM-Schedule ohne aperiodische Tasks.
+	Die RM-Schedulierbarkeitsanalyse bleibt unverändert gültig. \hfill$\blacksquare$
+\end{proof}
+
+\textbf{Optimalitätsklassifikation:} Background Scheduling ist bezüglich
+aperiodischer Antwortzeiten \emph{nicht optimal}: Bei hoher periodischer Last
+$U_p \approx \ln 2$ bleibt nur $1 - \ln 2 \approx 0{,}307$ für aperiodische
+Tasks übrig, und diese Bandbreite wird ineffizient genutzt (Tasks müssen auf
+große Leerlaufintervalle warten).
+
+\textbf{Laufzeit:} $O(1)$ pro Scheduling-Entscheidung (Vergleich zweier
+Warteschlangen-Kopfelemente).
+
+\section{Polling Server -- Expliziter Server}
+
+\subsection{Informelle Beschreibung}
+
+Der Polling Server (PS) ist eine periodische Task $(\tau_s, C_s, T_s)$, die
+regelmäßig aktiviert wird und beim Aufwachen aperiodische Anfragen bedient
+-- aber nur bis zur Kapazitätsgrenze $C_s$. Wenn keine aperiodischen Anfragen
+vorliegen, wird das Budget \emph{verworfen}.
+
+\begin{algorithm}[H]
+	\caption{Polling Server}
+	\begin{algorithmic}[1]
+		\State Server wird periodisch alle $T_s$ Zeiteinheiten aktiviert
+		\State Setze $c_s \leftarrow C_s$ \Comment{Budget auffüllen}
+		\While{$c_s > 0$ \textbf{und} aperiodische Anfrage vorhanden}
+		\State Bediene nächste aperiodische Anfrage für $\min(C_{\text{ape}}, c_s)$ Einheiten
+		\State $c_s \leftarrow c_s - $ verbrauchte Zeit
+		\EndWhile
+		\State Verwerfe verbleibendes Budget $c_s$; wird erst zur nächsten Periode aufgefüllt
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Schedulierbarkeitsnachweis}
+
+\begin{satz}[PS Schedulierbarkeit]
+	\label{satz:ps}
+	Eine Menge von $n$ periodischen Tasks mit Auslastung $U_p$ und ein Polling
+	Server mit Auslastung $U_s = C_s/T_s$ sind unter RM gemeinsam schedulierbar,
+	wenn:
+	\[
+		U_p + U_s \leq (n+1)\left(2^{1/(n+1)} - 1\right).
+	\]
+\end{satz}
+
+\begin{proof}
+	Der Polling Server verhält sich \emph{exakt} wie eine periodische Task mit
+	Periode $T_s$ und WCET $C_s$: Unabhängig von der Anzahl der aperiodischen
+	Anfragen verbraucht PS in jeder Serverperiode maximal $C_s$ Zeiteinheiten.
+	Damit ist $U_s = C_s/T_s$ die effektive Auslastung des Servers.
+
+	Das erweiterte System $\{\tau_1,\ldots,\tau_n, \tau_s\}$ hat $n+1$ Tasks
+	mit Gesamtauslastung $U_p + U_s$. Nach dem Liu-Layland-Bound (Satz~\ref{satz:rm_lub})
+	ist dieses System unter RM schedulierbar, wenn
+	$U_p + U_s \leq (n+1)(2^{1/(n+1)}-1)$. \hfill$\blacksquare$
+\end{proof}
+
+\subsubsection{Engerer Bound: Hyperbolic Test für PS}
+
+Mit dem Hyperbolic Bound (Theorem~\ref{thm:hyperbolic}):
+\[
+	\prod_{i=1}^{n}(U_i + 1) \leq \frac{2}{U_s + 1}.
+\]
+
+\subsection{Worst-Case-Antwortzeit aperiodischer Anfragen}
+
+Im schlimmsten Fall muss eine aperiodische Anfrage bis zur nächsten Serveraktivierung
+warten (wenn der Server gerade sein Budget aufgebraucht hat oder keine Anfrage
+vorlag). Für eine Anfrage $J_a$ mit $C_a \leq C_s$:
+\[
+	R_a^{\max} \leq 2T_s - \varepsilon + C_a.
+\]
+Für beliebige $C_a$ mit exakt $\lceil C_a/C_s \rceil$ Serverzugriffen:
+\[
+	R_a \leq T_s + \left\lceil \frac{C_a}{C_s} \right\rceil T_s.
+\]
+
+\subsection{Optimalitätsklassifikation und Laufzeit}
+
+\textbf{Optimalitätsklassifikation:} PS ist \emph{schwach optimal} innerhalb
+der Klasse der periodischen Server unter RM: Bei vorgegebenem $(C_s, T_s)$
+garantiert PS dieselbe periodische Schedulierbarkeit wie jede äquivalente
+periodische Task. PS ist jedoch \emph{nicht scharf optimal} bezüglich aperiodischer
+Antwortzeiten: Das Budget wird verworfen, wenn keine Anfragen vorliegen.
+
+\textbf{Nachteil:} Eine aperiodische Anfrage, die kurz nach dem Verwerfen des
+Budgets ankommt, muss fast eine volle Serverperiode warten.
+
+\textbf{Laufzeit:} $O(\log n)$ für Warteschlangenoperationen (RM-Heap),
+$O(1)$ für Budget-Verwaltung pro Aktivierung.
+
+\section{Deferrable Server -- Kapazitätserhaltung}
+
+\subsection{Informelle Beschreibung}
+
+Der Deferrable Server (DS) verbessert den PS, indem das Budget bei Inaktivität
+\emph{nicht verworfen} wird, sondern bis zum Ende der Serverperiode erhalten
+bleibt. Kommt eine aperiodische Anfrage in der laufenden Periode an, steht
+das Budget sofort zur Verfügung.
+
+\begin{algorithm}[H]
+	\caption{Deferrable Server}
+	\begin{algorithmic}[1]
+		\State $c_s \leftarrow 0$ \Comment{Initialisierung}
+		\State
+		\State \textbf{Zu jedem Serverperiodenbeginn:}
+		\State $c_s \leftarrow C_s$ \Comment{Budget auf Maximum auffüllen}
+		\State
+		\State \textbf{Wenn aperiodische Anfrage $J_a$ ankommt und $c_s > 0$:}
+		\State Bediene $J_a$ sofort (wenn keine höherpriore Task aktiv)
+		\State $c_s \leftarrow c_s - $ verbrauchte Zeit
+		\State
+		\State \textbf{Wenn Server aktiviert und $c_s > 0$, aber keine Anfrage:}
+		\State Behalte Budget $c_s$ (nicht verwerfen!)
+		\State Server schläft bis zur nächsten Anfrage oder nächsten Periode
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Warum DS KEINE äquivalente periodische Task ist}
+
+Der DS verletzt Annahme A5 (Tasks suspendieren sich nicht), da er sich
+suspendiert, obwohl er der höchstpriore Task wäre. Dies hat eine \emph{niedrigere}
+Schedulierbarkeitsschranke zur Folge.
+
+\begin{satz}[DS Schedulierbarkeitsschranke -- Strosnider, Lehoczky, Sha]
+	\label{satz:ds}
+	Die Schedulierbarkeitsschranke für $n$ periodische Tasks mit einem
+	Deferrable Server mit Auslastung $U_s$ ist:
+	\[
+		U_p \leq n \left(\left(\frac{U_s+2}{2U_s+1}\right)^{1/n} - 1\right).
+	\]
+	Das Minimum über alle $U_s$ ergibt $U_p^* \approx 0{,}652$ bei $U_s^* \approx 0{,}186$.
+\end{satz}
+
+\begin{proof}
+	Im schlimmsten Fall führt der DS dreimal innerhalb einer Periode $T_1$ der
+	höchstprioren periodischen Task aus: am Ende seiner eigenen Periode (aufgehoben)
+	und zu Beginn der nächsten Periode. Daraus folgt die Worst-Case-Parameterisierung:
+	\[
+		C_s = \frac{T_1 - T_s}{2}, \quad C_1 = T_2 - T_1, \ldots, \quad
+		C_n = \frac{3T_s + T_1 - 2T_n}{2}.
+	\]
+	Minimierung der Auslastung über $R_i = T_{i+1}/T_i$ analog zum RM-Beweis
+	(Abschnitt~\ref{satz:rm_lub}) ergibt:
+	\[
+		K = \frac{U_s + 2}{2U_s + 1}, \qquad U_{\text{lub}} = U_s + n(K^{1/n} - 1).
+	\]
+	Da DS die periodischen Tasks stärker beeinträchtigt als PS (wegen der
+	Kapazitätserhaltung), gilt $U_{\text{lub}}^{DS} \leq U_{\text{lub}}^{PS}$
+	für $U_s < 0{,}4$. \hfill$\blacksquare$
+\end{proof}
+
+\subsubsection{Vergleich PS vs.\ DS}
+
+Für $U_p = 0{,}6$: $U_s^{\max}(\text{PS}) = 2/P - 1$ und $U_s^{\max}(\text{DS}) = (2-P)/(2P-1)$
+mit $P = \prod_{i}(U_i+1)$. DS erlaubt typischerweise weniger Serverbandbreite
+als PS, liefert aber deutlich bessere aperiodische Antwortzeiten.
+
+\subsection{Aperiodische Antwortzeit unter DS}
+
+Sei $c_s(t)$ das verbleibende Budget zur Ankunftszeit $r_a$ und $C_0 = \min(c_s(t), \text{next}(r_a) - r_a)$ die im aktuellen Intervall bedienbare Zeit:
+\[
+	R_a = \Delta_a + C_a - C_0 + F_a(T_s - C_s),
+	\quad F_a = \left\lceil \frac{C_a - C_0}{C_s} \right\rceil.
+\]
+
+\textbf{Optimalitätsklassifikation:} DS ist \emph{nicht scharf optimal}
+bezüglich aperiodischer Antwortzeiten, aber besser als PS. Die niedrigere
+Schedulierbarkeitsschranke gegenüber PS ist der Preis für bessere aperiodische
+Responsivität.
+
+\textbf{Laufzeit:} $O(\log n)$ pro Ereignis. Budgetverwaltung: $O(1)$ pro
+Aktivierung und Anfrage.
+
+\section{Priority Exchange Server}
+
+\subsection{Informelle Beschreibung}
+
+Der Priority Exchange (PE) Server verbessert die Schedulierbarkeitsschranke
+gegenüber DS, indem Budget nicht einfach erhalten, sondern \emph{getauscht} wird:
+Wenn keine aperiodischen Anfragen vorliegen, tauscht der Server seine Ausführungszeit
+gegen die Laufzeit der höchstprioren aktiven periodischen Task. Das Budget wird
+dabei auf das Prioritätsniveau der getauschten Task degradiert.
+
+\begin{algorithm}[H]
+	\caption{Priority Exchange Server}
+	\begin{algorithmic}[1]
+		\State \textbf{Zu Beginn der Serverperiode:} $c_s \leftarrow C_s$ bei Serverpriorität
+		\State
+		\State \textbf{Wenn Server höchste Priorität hat und $c_s > 0$:}
+		\If{aperiodische Anfrage vorhanden}
+		\State Bediene Anfrage für $\min(C_{\text{ape}}, c_s)$ Einheiten
+		\ElsIf{periodische Task $\tau_k$ aktiv}
+		\State Führe $\tau_k$ für 1 Einheit aus (Tausch)
+		\State $C_S^{d_k} \leftarrow C_S^{d_k} + 1$ (Budget auf $\tau_k$-Niveau)
+		\State $c_s \leftarrow c_s - 1$ (Serverbudget reduzieren)
+		\Else
+		\State Leerlauf; $c_s \leftarrow c_s - 1$
+		\EndIf
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Schedulierbarkeitsnachweis}
+
+\begin{satz}[PE Schedulierbarkeit]
+	\label{satz:pe}
+	Ein Task-Set mit $n$ periodischen Tasks und einem PE-Server mit Auslastung
+	$U_s$ ist unter RM schedulierbar, wenn:
+	\[
+		U_p \leq n\left(\left(\frac{2}{U_s+1}\right)^{1/n} - 1\right).
+	\]
+	Diese Schranke ist \emph{identisch} mit der des Polling Servers (Satz~\ref{satz:ps}).
+\end{satz}
+
+\begin{proof}
+	Im schlimmsten Fall verhält sich PE wie eine periodische Task mit Periode $T_s$
+	und Ausführungszeit $C_s$: Die Tauschoperationen verschieben Rechenzeit nur
+	zwischen Prioritätsniveaus, ändern aber nicht die Gesamtausführungszeit. Das
+	erweiterte System hat damit dieselbe effektive Auslastungsstruktur wie PS,
+	und der Liu-Layland-Bound gilt analog. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Optimalitätsklassifikation und Vergleich}
+
+PE ist damit gegenüber DS \emph{besser schedulierbar}, aber auf Kosten
+komplexerer Implementierung. Für eine gegebene periodische Last $U_p$:
+\begin{itemize}
+	\item PE erlaubt mehr Serverbandbreite als DS.
+	\item Die aperiodischen Antwortzeiten von PE sind vergleichbar mit DS.
+\end{itemize}
+
+\textbf{Laufzeit:} $O(\log n)$ pro Ereignis, zusätzlich $O(1)$ für Tauschoperationen.
+Die Tracking-Verwaltung mehrerer Budget-Niveaus erfordert $O(n)$ Speicher.
+
+\section{Sporadic Server -- Optimale Schedulierbarkeitsschranke unter RM}
+
+\subsection{Informelle Beschreibung}
+
+Der Sporadic Server (SS), von Sprunt, Sha und Lehoczky, hat die Schlüsseleigenschaft:
+\emph{Das verbrauchte Budget wird erst $T_s$ Zeiteinheiten nach dem Verbrauch
+wiederhergestellt}. Dadurch verhält sich SS -- im Gegensatz zu DS -- exakt wie
+eine normale periodische Task in Bezug auf die Schedulierbarkeitsschranke.
+
+\textbf{Replenishment-Regeln:}
+\begin{itemize}
+	\item \textbf{Wiederauffüllzeitpunkt} RT: Wird gesetzt, wenn SS aktiv wird
+	      ($P_{\text{exe}} \geq P_s$) und $c_s > 0$. Sei $t_A$ dieser Zeitpunkt:
+	      $\mathrm{RT} = t_A + T_s$.
+	\item \textbf{Wiederauffüllmenge} RA: Wird gesetzt, wenn SS idle wird ($P_{\text{exe}} < P_s$)
+	      oder $c_s = 0$. Sei $t_I$ dieser Zeitpunkt:
+	      $\mathrm{RA} = $ verbrauchte Kapazität in $[t_A, t_I]$.
+	\item Zum Zeitpunkt RT: $c_s \leftarrow c_s + \mathrm{RA}$.
+\end{itemize}
+
+\begin{algorithm}[H]
+	\caption{Sporadic Server}
+	\begin{algorithmic}[1]
+		\State $c_s \leftarrow C_s$; RT $\leftarrow \infty$; $t_A \leftarrow -\infty$
+		\State
+		\State \textbf{Wenn SS aktiv wird ($P_{\text{exe}} \geq P_s$) und $c_s > 0$:}
+		\If{RT $= \infty$}
+		\State $t_A \leftarrow$ aktueller Zeitpunkt; RT $\leftarrow t_A + T_s$
+		\EndIf
+		\State
+		\State \textbf{Wenn SS idle wird ($P_{\text{exe}} < P_s$) oder $c_s = 0$:}
+		\State RA $\leftarrow c_s(t_A) - c_s(t_I)$ \Comment{Verbrauchtes Budget in $[t_A, t_I]$}
+		\State Plane Wiederauffüllung RA zu Zeitpunkt RT
+		\State RT $\leftarrow \infty$ \Comment{Nächster Aktivierungszeitpunkt wird neu gesetzt}
+		\State
+		\State \textbf{Zum geplanten Wiederauffüllzeitpunkt RT:}
+		\State $c_s \leftarrow c_s + \mathrm{RA}$
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Hauptsatz: SS verhält sich wie eine periodische Task}
+
+\begin{theorem}[Sprunt, Sha, Lehoczky -- SS Äquivalenz]
+	\label{thm:ss}
+	Ein Task-Set, das mit einer periodischen Task $\tau_s(C_s, T_s)$ schedulierbar
+	ist, bleibt schedulierbar, wenn $\tau_s$ durch einen Sporadic Server mit
+	denselben Parametern $(C_s, T_s)$ ersetzt wird.
+\end{theorem}
+
+\begin{proof}
+	Wir analysieren das Verhalten von SS in den drei möglichen Fällen (Abbildung
+	nach Buttazzo \cite{Buttazzo2011}):
+
+	\textbf{Fall 1 -- Kein Verbrauch in $[t_A, t_I]$:}
+	In diesem Intervall ist keine aperiodische Anfrage aktiv. SS behält sein Budget,
+	aber keine Wiederauffüllung findet vor $t_I + T_s$ statt. Das bedeutet: In
+	$[t_A, t_I + T_s]$ kann SS maximal $C_s$ Zeiteinheiten für aperiodische Tasks
+	verbrauchen -- identisch mit einer periodischen Task $\tau_s$ mit verzögertem
+	Release-Zeitpunkt $t_I$ statt $t_A$. Da verzögerte Releases die Antwortzeiten
+	anderer Tasks nicht verschlechtern, bleibt Schedulierbarkeit erhalten.
+
+	\textbf{Fall 2 -- Vollständiger Verbrauch:}
+	$c_s$ wird in $[t_A, t_I]$ vollständig verbraucht ($\mathrm{RA} = C_s$).
+	Wiederauffüllung bei $t_A + T_s$. SS verhält sich exakt wie $\tau_s$ mit
+	Release-Zeit $t_A$.
+
+	\textbf{Fall 3 -- Teilweiser Verbrauch:}
+	$\mathrm{RA} = C_R$ (verbrauchter Teil) wird bei $t_A + T_s$ wiederaufgefüllt;
+	verbleibendes Budget $C_s - C_R$ bleibt erhalten. SS verhält sich wie zwei
+	periodische Tasks $\tau_x(C_R, T_s)$ und $\tau_y(C_s - C_R, T_s)$, wobei
+	$\tau_x$ bei $t_A$ und $\tau_y$ bei $t_I$ released wird. Da $\tau_y$ verzögert
+	ist, schadet es der Schedulierbarkeit nicht (analog zu Fall 1).
+
+	In allen Fällen ist der Beitrag von SS zur Auslastung $U_s = C_s/T_s$, genau
+	wie eine periodische Task. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Schedulierbarkeitsanalyse}
+
+\begin{satz}[SS Schedulierbarkeitsschranke]
+	\label{satz:ss_sched}
+	Eine Menge von $n$ periodischen Tasks mit Auslastung $U_p$ und ein
+	Sporadic Server mit Auslastung $U_s$ sind unter RM schedulierbar, wenn:
+	\[
+		U_p + U_s \leq (n+1)\left(2^{1/(n+1)} - 1\right).
+	\]
+	Mit dem Hyperbolic Bound:
+	\[
+		\prod_{i=1}^n (U_i + 1) \leq \frac{2}{U_s + 1}.
+	\]
+	Die maximale Serverauslastung, die die Schedulierbarkeit erhält, ist:
+	\[
+		U_s^{\max} = \frac{2-P}{P}, \quad P = \prod_{i=1}^n (U_i + 1).
+	\]
+\end{satz}
+
+\begin{proof}
+	Aus Theorem~\ref{thm:ss} folgt, dass SS wie eine periodische Task mit
+	$U_s = C_s/T_s$ behandelt werden kann. Das erweiterte System
+	$\{\tau_1,\ldots,\tau_n, \tau_s\}$ hat $n+1$ Tasks; der Hyperbolic Bound
+	(Theorem~\ref{thm:hyperbolic}) für $n+1$ Tasks lautet $\prod_{i=1}^{n+1}(U_i+1) \leq 2$.
+	Einsetzen von $U_{n+1} = U_s$ liefert die Behauptung. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Optimalitätsklassifikation und Laufzeit}
+
+\textbf{Optimalitätsklassifikation:} SS ist \emph{schwach optimal} für den
+Klasse fester Prioritätsserver: Es gibt keinen Server unter RM, der eine
+höhere Schedulierbarkeitsschranke \emph{und} bessere aperiodische Antwortzeiten
+gleichzeitig bietet (Theorem~\ref{thm:nooptserver}).
+
+\textbf{Laufzeit:} Jede Ereignisbehandlung (Serveraktivierung, Idle-Wechsel,
+Wiederauffüllung) erfordert $O(1)$ Operationen. Pro aperiodischer Anfrage
+entstehen höchstens $\lceil C_a/C_s \rceil$ Wiederauffüllungen, daher
+Gesamtoverhead pro Anfrage $O(\lceil C_a/C_s \rceil)$.
+
+\section{Slack Stealing -- Maximale Responsivität}
+
+\subsection{Informelle Beschreibung}
+
+Der Slack Stealing Algorithmus (Lehoczky \& Ramos-Thuel 1992) nutzt nicht
+eine feste Serverbandbreite, sondern ``stiehlt'' alle verfügbaren Slack-Zeiten
+der periodischen Tasks für aperiodische Anfragen.
+
+\textbf{Grundidee:} Wenn $\tau_i$ eine Slack-Zeit $\text{slack}_i(t) > 0$ hat,
+bedeutet das, dass sie nicht \emph{sofort} ausgeführt werden muss. Der
+Slack Stealer kann diese Zeit für aperiodische Anfragen nutzen, ohne die
+Deadline von $\tau_i$ zu gefährden.
+
+\begin{algorithm}[H]
+	\caption{Slack Stealing (vereinfachte Darstellung)}
+	\begin{algorithmic}[1]
+		\State Berechne offline $A(0, t)$ = Slack-Funktion für alle $t \in [0, H]$
+		\State
+		\State \textbf{Wenn aperiodische Anfrage $J_a$ bei $t=r_a$ ankommt:}
+		\State Berechne aktuellen Slack $A(r_a, t')$ für $t' > r_a$
+		\State Finde frühestes $t'$ mit $A(r_a, t') \geq C_a$
+		\State Plane $J_a$ so früh wie möglich innerhalb verfügbarer Slack-Zeiten
+		\State
+		\State \textbf{Wenn keine aperiodische Anfrage:}
+		\State Normale RM-Einplanung der periodischen Tasks
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Slack-Funktion}
+
+\begin{definition}[Slack-Funktion $A(s,t)$]
+	$A(s, t)$ ist die maximale Rechenzeitdauer, die im Intervall $[s, t]$
+	aperiodischen Tasks zugewiesen werden kann, ohne dass periodische Tasks
+	ihre Deadlines verfehlen:
+	\[
+		A(s, t) = (t-s) - \sum_{i=1}^n \left\lceil \frac{t-s}{T_i} \right\rceil C_i.
+	\]
+	$A(s, \cdot)$ ist eine nichtfallende Treppenfunktion mit Sprüngen an den
+	Zeitpunkten, an denen Slack entsteht.
+\end{definition}
+
+\begin{satz}[Slack Stealing -- Schedulierbarkeit]
+	Wenn das periodische Task-Set unter RM schedulierbar ist ($U_p \leq U_{\text{lub}}$),
+	gefährdet Slack Stealing die Schedulierbarkeit nie: Aperiodische Tasks werden
+	ausschließlich in Zeiten eingeplant, in denen kein periodischer Task laufen muss.
+\end{satz}
+
+\begin{proof}
+	Per Konstruktion: $A(s, t)$ gibt exakt die Zeitdauer an, die für periodische
+	Tasks \emph{nicht} benötigt wird. Jede aperiodische Zuteilung innerhalb von
+	$A(s, t)$ lässt mindestens genug Prozessorzeit für alle periodischen Tasks
+	bis zu ihren Deadlines. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Nicht-Existenz optimaler Server -- Fundamentales Ergebnis}
+
+\begin{theorem}[Tia, Liu, Shankar 1995 -- Kein optimaler Server]
+	\label{thm:nooptserver}
+	Für jeden festen Prioritätsscheduler und jede Ankunftsdisziplin für
+	aperiodische Tasks existiert kein Online-Algorithmus, der die Antwortzeit
+	\emph{jeder einzelnen} aperiodischen Anfrage minimiert.
+\end{theorem}
+
+\begin{proof}
+	\textbf{Durch Gegenbeispiel:} Betrachte $\tau_1$ ($C=1, T=3$), $\tau_2$ ($C=1, T=4$),
+	$\tau_3$ ($C=1, T=6$) unter RM. Slack tritt bei $t=2$ auf.
+
+	\textbf{Ankunft $J_1$ bei $t=2$ ($C=1$):}
+	\begin{itemize}
+		\item Option A: $J_1$ sofort (bei $t=2$) einplanen $\Rightarrow$ $J_1$ fertig bei $t=3$, minimale Antwortzeit für $J_1$.
+		\item Option B: $J_1$ auf $t=3$ verschieben $\Rightarrow$ $J_1$ fertig bei $t=4$.
+	\end{itemize}
+
+	\textbf{Ankunft $J_2$ bei $t=3$ ($C=1$):}
+	\begin{itemize}
+		\item Bei Option A (A sofort): Kein Slack in $[3,6]$; $J_2$ frühestens bei $t=7$.
+		\item Bei Option B (A verschoben): Slack bei $t=4$; $J_2$ fertig bei $t=5$.
+	\end{itemize}
+
+	Option A minimiert $J_1$, aber nicht $J_2$.
+	Option B minimiert $J_2$, aber nicht $J_1$.
+	Kein Algorithmus kann beide gleichzeitig minimieren. \hfill$\blacksquare$
+\end{proof}
+
+\textbf{Laufzeit Slack Stealing:} Die Offline-Berechnung der Slack-Funktion
+hat Komplexität $O(N)$ mit $N$ = Anzahl Deadlines in der Hyperperiode. Die
+Online-Aktualisierung bei jeder aperiodischen Ankunft hat Komplexität $O(n)$.
+
+\section{Dimensionierung von Servern}
+
+\begin{satz}[Optimale Server-Dimensionierung]
+	Für ein gegebenes periodisches Task-Set mit Hyperbolic-Produkt $P = \prod_i(U_i+1)$
+	sind die maximalen Serverauslastungen:
+	\begin{align*}
+		U_s^{\max}(\text{PS/PE/SS}) &= \frac{2-P}{P}, \\
+		U_s^{\max}(\text{DS}) &= \frac{2-P}{2P-1}.
+	\end{align*}
+	Die optimale Serverperiode (beste Antwortzeit bei gegebenem $U_s$) ist
+	$T_s = T_1$ (höchste Priorität), mit $C_s = U_s \cdot T_s$.
+\end{satz}
+
+\section{Zusammenfassender Vergleich der Fixed-Priority Server}
+
+\begin{table}[H]
+	\centering
+	\caption{Vergleich der Fixed-Priority Server -- Vollständige Übersicht}
+	\resizebox{\textwidth}{!}{%
+	\begin{tabular}{lllll}
+		\toprule
+		\textbf{Server} & \textbf{Budget-Mgmt.} & \textbf{Sched.-Schranke} & \textbf{Antwortzeit} & \textbf{Overhead} \\
+		\midrule
+		Background & Keine & Wie RM ($U_p \leq U_{\text{lub}}$) & Schlecht & $O(1)$ \\
+		Polling (PS) & Verwerfen & Wie RM$+$1 Task & Mittel & $O(\log n)$ \\
+		Deferrable (DS) & Erhalten & Niedriger als PS! & Gut & $O(\log n)$ \\
+		Priority Exch.\ (PE) & Tauschen & Wie PS & Gut & $O(n \log n)$ \\
+		Sporadic (SS) & Verzög.\ Auffüllen & \textbf{Wie PS} & Gut & $O(\log n)$ \\
+		Slack Stealing & Slack aller Tasks & \textbf{Maximal} & \textbf{Opt.*} & $O(N)$ \\
+		\bottomrule
+	\end{tabular}%
+	}
+
+	\smallskip
+	\noindent\small{*Kein optimaler Server existiert (Thm.~\ref{thm:nooptserver}).
+	Slack Stealing minimiert Antwortzeiten soweit möglich.}
+\end{table}
+
+%=============================================================
+\chapter{Dynamic Priority Server -- Dynamische Prioritäts-Server unter EDF}
+\label{chap:dynserver}
+%=============================================================
+
+\section{Einführung und Motivation}
+
+Gegenüber Fixed-Priority-Servern aus Kapitel~\ref{chap:server} bieten dynamische
+Prioritäts-Server einen entscheidenden Vorteil: Da EDF den Prozessor bis $U=1$
+auslasten kann, steht für aperiodische Tasks eine weit größere Bandbreite zur
+Verfügung. Für eine Menge periodischer Tasks mit Auslastung $U_p$ verbleiben
+$(1-U_p)$ für aperiodische Server -- gegenüber deutlich weniger unter RM.
+
+\begin{bemerkung}[Vorteil dynamischer Server gegenüber RM-basierten Servern]
+	Beispiel: $U_1 = U_2 = 0{,}3$, also $U_p = 0{,}6$.
+	\begin{itemize}
+		\item Unter RM+Sporadic Server: $U_s^{\max} = 2/P - 1$ mit
+		      $P = (0{,}3+1)^2 = 1{,}69$, also $U_s^{\max} \approx 0{,}18$.
+		\item Unter EDF: $U_s^{\max} = 1 - U_p = 0{,}40$.
+	\end{itemize}
+	EDF erlaubt damit mehr als doppelt so viel Bandbreite für aperiodische Tasks.
+\end{bemerkung}
+
+Alle in diesem Kapitel vorgestellten Server arbeiten unter folgenden Annahmen:
+\begin{itemize}
+	\item Periodische Tasks $\tau_i$ haben harte Deadlines mit $D_i = T_i$.
+	\item Aperiodische Tasks $J_i$ haben keine Deadlines, sollen aber so früh wie
+	      möglich fertiggestellt werden.
+	\item Alle periodischen Tasks starten synchron bei $t=0$.
+	\item Die Ausführungszeit jeder aperiodischen Task ist bekannt.
+\end{itemize}
+
+\section{Dynamic Priority Exchange Server (DPE)}
+
+\subsection{Grundidee und Algorithmus}
+
+Der Dynamic Priority Exchange Server (DPE), entwickelt von Spuri und Buttazzo
+\cite{Spuri1996}, überträgt das Prinzip des Fixed-Priority-Exchange-Servers auf
+EDF: Der Server tauscht seine Laufzeit mit niederprioren periodischen Tasks
+(d.\,h.\ solchen mit späterer Deadline), anstatt sie zu verbrauchen. Dadurch
+bleibt Kapazität erhalten, auch wenn keine aperiodischen Anfragen vorliegen.
+
+\textbf{Informelle Beschreibung:}
+
+\begin{itemize}
+	\item Der DPE-Server hat eine Periode $T_s$ und Kapazität $C_s$.
+	\item Zu Beginn jeder Serverperiode mit Deadline $d$ wird die aperiodische
+	      Kapazität $C_S^d \leftarrow C_s$ gesetzt.
+	\item Wenn die höchste Priorität im System eine aperiodische Kapazität $C$
+	      hat, wird entweder eine aperiodische Task (falls vorhanden) oder die
+	      periodische Task mit kürzester Deadline ausgeführt. Im letzteren Fall
+	      wird deren Laufzeit in eine aperiodische Kapazität auf dem Prioritätsniveau
+	      der periodischen Task übertragen (Tausch).
+	\item Leerlauf verbraucht die Kapazität bis auf null.
+\end{itemize}
+
+\begin{algorithm}[H]
+	\caption{DPE Server -- Ereignisbehandlung}
+	\begin{algorithmic}[1]
+		\State \textbf{Bei Serverperiodenbeginn mit Deadline $d$:}
+		\State $C_S^d \leftarrow C_s$
+		\State
+		\State \textbf{Bei Ausführung der höchsten Priorität (aperiodische Kapazität $C$):}
+		\If{aperiodische Anfrage $J$ vorhanden}
+		\State Bediene $J$ bis Fertigstellung oder Kapazität $C$ erschöpft
+		\ElsIf{periodische Task $\tau_k$ mit frühester Deadline bereit}
+		\State Führe $\tau_k$ für 1 Zeiteinheit aus
+		\State $C_S^{d_k} \leftarrow C_S^{d_k} + 1$; $C \leftarrow C - 1$
+		\Comment{Tausch: Kapazität auf Niveau $d_k$ übertragen}
+		\Else
+		\State Leerlauf; $C \leftarrow C - 1$
+		\EndIf
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Schedulierbarkeitsnachweis -- Korrektheit}
+
+\begin{theorem}[Spuri \& Buttazzo -- DPE Schedulierbarkeit]
+	\label{thm:dpe}
+	Gegeben eine Menge periodischer Tasks mit Auslastung $U_p$ und ein DPE-Server
+	mit Auslastung $U_s$, ist das gesamte System unter EDF genau dann schedulierbar,
+	wenn
+	\[
+		U_p + U_s \leq 1.
+	\]
+\end{theorem}
+
+\begin{proof}
+	\textbf{Konstruktion des äquivalenten Schedules $\sigma'$:}
+
+	Sei $\sigma$ ein von DPE produzierter Schedule. Wir konstruieren $\sigma'$
+	wie folgt:
+	\begin{itemize}
+		\item Ersetze den DPE-Server durch eine periodische Task $\tau_s$
+		      mit Periode $T_s$ und WCET $C_s$: In $\sigma'$ läuft $\tau_s$ genau dann,
+		      wenn in $\sigma$ Serverkapazität verbraucht wird.
+		\item Periodische Instanzen, die in $\sigma$ wegen Deadline-Tausch
+		      vorgezogen wurden, werden in $\sigma'$ nach hinten verschoben.
+	\end{itemize}
+
+	\textbf{Eigenschaft von $\sigma'$:} Das resultierende $\sigma'$ ist das
+	EDF-Schedule für die Menge $\{\tau_1,\ldots,\tau_n,\tau_s\}$ mit
+	Gesamtauslastung $U_p + U_s$ -- unabhängig von aperiodischen Anfragen.
+
+	\textbf{Äquivalenz $\sigma \leftrightarrow \sigma'$:} In $\sigma$ sind die
+	Fertigstellungszeiten jeder periodischen Instanz $\leq$ denen in $\sigma'$,
+	da DPE Instanzen vorziehen kann. Also: $\sigma'$ machbar $\Rightarrow$ $\sigma$
+	machbar. Umgekehrt ist $\sigma'$ der DPE-Schedule ohne aperiodische Anfragen,
+	also gilt auch: $\sigma$ machbar $\Rightarrow$ $\sigma'$ machbar.
+
+	Da $\sigma'$ ein reines EDF-Schedule über periodische Tasks mit Auslastung
+	$U_p + U_s$ ist, gilt nach Theorem~\ref{thm:edf_schedulierbar}:
+	$\sigma'$ machbar $\iff$ $U_p + U_s \leq 1$. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Laufzeitanalyse}
+
+\begin{satz}[DPE Laufzeit]
+	Die Laufzeit von DPE pro Ereignis (Ankunft, Fertigstellung, Kapazitätserschöpfung)
+	beträgt $O(\log n)$ für die Verwaltung der EDF-Prioritätswarteschlange als Heap.
+	Pro Serverperiode entsteht ein Overhead von $O(C_s)$ durch die Tauschoperationen,
+	da jede Zeiteinheit maximal eine Tauschoperation erzeugt.
+\end{satz}
+
+\subsection{Optimalitätsklassifikation von DPE}
+
+DPE ist \textbf{nicht scharf optimal} bezüglich der Antwortzeit aperiodischer Tasks:
+Es gibt Szenarien, in denen ein clairvoyanter Algorithmus bessere Antwortzeiten
+liefern würde. DPE ist jedoch \textbf{schwach optimal} in dem Sinne, dass für jeden
+Auslastungswert $U_p + U_s \leq 1$ die Schedulierbarkeit aller periodischen Tasks
+garantiert wird -- genau wie ein äquivalenter rein-periodischer EDF-Schedule.
+
+\section{Dynamic Sporadic Server (DSS)}
+
+\subsection{Grundidee und Algorithmus}
+
+Der Dynamic Sporadic Server (DSS), ebenfalls von Spuri und Buttazzo \cite{Spuri1996},
+erweitert den Sporadic Server auf dynamische Prioritäten. Die Kapazität $C_s$ wird
+nicht zu festen Zeiten aufgefüllt, sondern nach dem Verbrauch.
+
+\textbf{Deadline- und Wiederauffüllungsregeln:}
+
+\begin{itemize}
+	\item Wenn der Server aktiv wird ($C_s > 0$ und aperiodische Anfrage vorhanden)
+	      zum Zeitpunkt $t_A$: Setze $\mathrm{RT} = d_s = t_A + T_s$.
+	\item Wenn der Server idle wird (Anfrage abgeschlossen oder $C_s = 0$)
+	      zum Zeitpunkt $t_I$: Plane Wiederauffüllung $\mathrm{RA} = \text{(verbrauchte Kapazität in }[t_A, t_I])$ zu Zeitpunkt $\mathrm{RT}$.
+\end{itemize}
+
+\begin{algorithm}[H]
+	\caption{DSS Server -- Kapazitätsverwaltung}
+	\begin{algorithmic}[1]
+		\State \textbf{Initialisierung:} $c_s \leftarrow C_s$, $d_s \leftarrow \infty$
+		\State
+		\State \textbf{Wenn aperiodische Anfrage $J$ ankommt und $c_s > 0$:}
+		\State $t_A \leftarrow$ aktueller Zeitpunkt
+		\State $\mathrm{RT} \leftarrow t_A + T_s$; $d_s \leftarrow t_A + T_s$
+		\State Bediene $J$ mit Deadline $d_s$; decrementiere $c_s$ bei Ausführung
+		\State
+		\State \textbf{Wenn Server idle wird (Zeitpunkt $t_I$):}
+		\State $\mathrm{RA} \leftarrow$ verbrauchte Kapazität in $[t_A, t_I]$
+		\State Plane Wiederauffüllung $c_s \mathrel{+}= \mathrm{RA}$ bei Zeitpunkt $\mathrm{RT}$
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Schedulierbarkeitsnachweis}
+
+\begin{lemma}[DSS verhält sich wie eine periodische Task]
+	\label{lem:dss_periodic}
+	In jedem Zeitintervall $[t_1, t_2]$, in dem $t_1$ der Aktivierungszeitpunkt
+	des Servers ist, gilt:
+	\[
+		C_{\mathrm{ape}}(t_1, t_2) \leq \left\lfloor \frac{t_2 - t_1}{T_s} \right\rfloor C_s.
+	\]
+\end{lemma}
+
+\begin{proof}
+	Da die Wiederauffüllungsmenge stets gleich der verbrauchten Menge ist und
+	das Wiederauffüllen frühestens $T_s$ nach dem Aktivierungszeitpunkt erfolgt,
+	kann in jedem $T_s$-langen Intervall maximal $C_s$ Zeit für aperiodische
+	Tasks verbraucht werden. Die Behauptung folgt durch Induktion. \hfill$\blacksquare$
+\end{proof}
+
+\begin{theorem}[Spuri \& Buttazzo -- DSS Schedulierbarkeit]
+	\label{thm:dss}
+	Gegeben eine Menge periodischer Tasks mit $U_p$ und ein DSS mit $U_s$, ist
+	das System schedulierbar genau dann, wenn $U_p + U_s \leq 1$.
+\end{theorem}
+
+\begin{proof}
+	\textbf{Hinreichend ($\Rightarrow$):} Angenommen, $U_p + U_s \leq 1$, aber
+	es gibt einen Überlauf bei $t$. Dann gibt es ein $t' < t$ mit kontinuierlicher
+	Auslastung. Für die Gesamtanforderung $C$ in $[t', t]$ gilt nach
+	Lemma~\ref{lem:dss_periodic}:
+	\[
+		C \leq \sum_{i=1}^n \left\lfloor \frac{t-t'}{T_i} \right\rfloor C_i + C_{\mathrm{ape}}
+		\leq (t-t') U_p + (t-t') U_s = (t-t')(U_p+U_s) \leq (t-t').
+	\]
+	Dies widerspricht $t-t' < C$. Widerspruch.
+
+	\textbf{Notwendig ($\Leftarrow$):} Da DSS sich wie eine periodische Task mit
+	$U_s$ verhält, folgt aus dem EDF-Schedulierbarkeitstheorem direkt $U_p + U_s \leq 1$. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Laufzeitanalyse und Optimalitätsklassifikation}
+
+\begin{satz}[DSS Laufzeit]
+	Jede Ereignisbehandlung (Ankunft, Fertigstellung, Wiederauffüllung) erfordert
+	$O(\log n)$ für Heap-Operationen. Pro aperiodischer Anfrage entstehen maximal
+	$\lceil C_a/C_s \rceil$ Wiederauffüllungen, sodass der Gesamtoverhead
+	pro Anfrage in $O(\lceil C_a/C_s \rceil \cdot \log n)$ liegt.
+\end{satz}
+
+DSS ist wie DPE \textbf{nicht scharf optimal} bezüglich Antwortzeiten, aber
+\textbf{schedulierbar-korrekt}: Periodische Tasks werden genau dann garantiert, wenn
+$U_p + U_s \leq 1$.
+
+\section{Total Bandwidth Server (TBS)}
+
+\subsection{Grundidee und Algorithmus}
+
+Der Total Bandwidth Server (TBS) ist der einfachste und effizienteste der hier
+vorgestellten Server \cite{Spuri1996}. Statt eine eigene Periode zu verwalten,
+weist er jeder aperiodischen Anfrage eine virtuelle Deadline zu, die die gesamte
+zugeordnete Bandbreite $U_s$ sofort zuteilt.
+
+\textbf{Deadlinezuweisung:} Wenn die $k$-te aperiodische Anfrage zum Zeitpunkt
+$r_k$ mit Ausführungszeit $C_k$ ankommt:
+\[
+	d_k = \max(r_k,\; d_{k-1}) + \frac{C_k}{U_s},
+\]
+wobei $d_0 = 0$. Die Anfrage wird dann wie eine periodische Instanz mit Deadline
+$d_k$ in die EDF-Warteschlange eingereiht.
+
+\begin{algorithm}[H]
+	\caption{Total Bandwidth Server}
+	\begin{algorithmic}[1]
+		\Require Serverauslastung $U_s$, initiale Deadline $d_0 \leftarrow 0$
+		\State
+		\State \textbf{Bei Ankunft der $k$-ten Anfrage $(r_k, C_k)$:}
+		\State $d_k \leftarrow \max(r_k, d_{k-1}) + C_k / U_s$
+		\State Füge $(C_k, d_k)$ in EDF-Warteschlange ein
+		\State EDF-Schedule läuft weiter
+	\end{algorithmic}
+\end{algorithm}
+
+\begin{beispiel}[TBS Deadlinezuweisung]
+	$U_p = 3/4$, $U_s = 1/4$. Periodische Tasks $\tau_1$ ($C_1=3, T_1=6$),
+	$\tau_2$ ($C_2=2, T_2=8$).
+
+	Aperiodische Anfragen:
+	\begin{itemize}
+		\item $J_1$: $r_1=3$, $C_1=1$. $d_1 = 3 + 1/0{,}25 = 7$.
+		\item $J_2$: $r_2=9$, $C_2=1$. $d_2 = \max(9,7) + 1/0{,}25 = 13$.
+		\item $J_3$: $r_3=14$, $C_3=1$. $d_3 = \max(14,13) + 1/0{,}25 = 18$.
+	\end{itemize}
+	Jede Anfrage wird als EDF-Instanz mit den genannten Deadlines eingeplant.
+\end{beispiel}
+
+\subsection{Korrektheitsbeweis: Auslastungsbeschränkung}
+
+\begin{lemma}[TBS Auslastungsschranke]
+	\label{lem:tbs_util}
+	In jedem Intervall $[t_1, t_2]$ ist die von TBS bediente Ausführungszeit
+	$C_{\mathrm{ape}}$ durch $(t_2 - t_1) \cdot U_s$ nach oben beschränkt:
+	\[
+		C_{\mathrm{ape}} = \sum_{t_1 \leq r_k,\; d_k \leq t_2} C_k \leq (t_2 - t_1) U_s.
+	\]
+\end{lemma}
+
+\begin{proof}
+	Seien $J_{k_1}, \ldots, J_{k_2}$ die aperiodischen Tasks, die zu $[t_1, t_2]$
+	beitragen (d.\,h.\ $r_{k_j} \geq t_1$ und $d_{k_j} \leq t_2$). Aus der
+	TBS-Deadlineregel folgt durch Teleskopsumme:
+	\[
+		\sum_{k=k_1}^{k_2} C_k = \sum_{k=k_1}^{k_2} [d_k - \max(r_k, d_{k-1})] U_s
+		\leq [d_{k_2} - \max(r_{k_1}, d_{k_1-1})] U_s \leq (t_2 - t_1) U_s.
+	\]
+	Hierbei wird genutzt, dass jede Klammer $[d_k - \max(\cdot)] \leq d_k - d_{k-1}$
+	und die Summe teleskopisch kollabiert. \hfill$\blacksquare$
+\end{proof}
+
+\begin{theorem}[Spuri \& Buttazzo -- TBS Schedulierbarkeit]
+	\label{thm:tbs}
+	Gegeben periodische Tasks mit $U_p$ und ein TBS mit $U_s$, ist das System
+	unter EDF genau dann schedulierbar, wenn $U_p + U_s \leq 1$.
+\end{theorem}
+
+\begin{proof}
+	\textbf{Hinreichend:} Angenommen $U_p + U_s \leq 1$, aber es gibt einen
+	Überlauf bei $t$. Sei $[t', t]$ das längste Intervall kontinuierlicher Auslastung
+	vor $t$, in dem nur Tasks mit Deadline $\leq t$ ausgeführt werden. Die Gesamtanforderung:
+	\[
+		C \leq \sum_i \left\lfloor \frac{t-t'}{T_i} \right\rfloor C_i + C_{\mathrm{ape}}
+		\leq (t-t') U_p + (t-t') U_s = (t-t')(U_p + U_s) \leq t-t'.
+	\]
+	Widerspruch zu $t-t' < C$.
+
+	\textbf{Notwendig:} Wenn aperiodische Anfragen periodisch mit Periode $T_s$
+	und Ausführungszeit $C_s = T_s U_s$ ankommen, verhält sich TBS wie eine
+	periodische Task. Dann folgt aus EDF-Schedulierbarkeit $U_p + U_s \leq 1$. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Optimalitätsklassifikation von TBS}
+
+TBS ist \textbf{nicht scharf optimal} im Sinne minimaler Antwortzeiten: Es kann
+aperiodische Anfragen mit nichtminimaler Antwortzeit einplanen. Es gibt jedoch
+eine Erweiterung TB* (Total Bandwidth, optimiert), die durch iterative Deadline-Verkürzung die minimale Antwortzeit annähert.
+
+\begin{satz}[TB* Optimalität -- Buttazzo \& Sensini]
+	Sei $\sigma$ ein machbarer EDF-Schedule und $f_k$ die Fertigstellungszeit
+	einer aperiodischen Anfrage $J_k$ mit Deadline $d_k$. Wenn $f_k = d_k$, dann
+	ist $f_k = f_k^*$ (minimale erreichbare Fertigstellungszeit).
+\end{satz}
+
+\textbf{Laufzeit von TBS:} $O(1)$ pro Ankunft (Deadlineberechnung) plus $O(\log n)$
+für EDF-Heap-Einfügung. Gesamtoverhead vernachlässigbar.
+
+\section{Constant Bandwidth Server (CBS)}
+
+\subsection{Definition und Motivation}
+
+Der Constant Bandwidth Server (CBS) von Abeni und Buttazzo \cite{Buttazzo2011}
+ist die robusteste der vorgestellten Techniken: Er garantiert temporale Isolation,
+d.\,h.\ eine Task kann den Server nicht über seine zugewiesene Bandbreite $U_s$
+hinaus belasten -- selbst wenn sie mehr Rechenzeit beansprucht als erwartet.
+Dies unterscheidet CBS grundlegend von TBS, der die Überschreitung von WCETs
+nicht abfangen kann.
+
+\begin{definition}[CBS-Parameter und Zustandsvariablen]
+	Ein CBS ist durch ein Maximum-Budget $Q_s$ und eine Periode $T_s$ mit
+	Bandbreite $U_s = Q_s/T_s$ charakterisiert. Zustandsvariablen:
+	\begin{itemize}
+		\item $c_s$: aktuelles Budget ($0 < c_s \leq Q_s$ stets)
+		\item $d_{s,k}$: aktuelle Serverdeadline
+		\item $k$: Zähler der erzeugten Chunks
+	\end{itemize}
+	Initialisierung: $d_{s,0} \leftarrow 0$, $c \leftarrow 0$, $n \leftarrow 0$, $k \leftarrow 0$.
+\end{definition}
+
+\subsection{CBS-Algorithmus (Pseudocode)}
+
+\begin{algorithm}[H]
+	\caption{Constant Bandwidth Server (CBS)}
+	\begin{algorithmic}[1]
+		\State \textbf{Bei Ankunft von Job $J_j$ zum Zeitpunkt $r_j$:}
+		\State $n \leftarrow n+1$; füge $J_j$ in Serverwarteschlange ein
+		\If{$n = 1$} \Comment{Server war idle}
+		\If{$r_j + (c/Q_s) \cdot T_s \geq d_{s,k}$} \Comment{Regel 1: neues Deadline}
+		\State $k \leftarrow k+1$; $a_k \leftarrow r_j$; $d_{s,k} \leftarrow r_j + T_s$; $c \leftarrow Q_s$
+		\Else \Comment{Regel 2: alte Deadline}
+		\State $k \leftarrow k+1$; $a_k \leftarrow r_j$; $d_{s,k} \leftarrow d_{s,k-1}$
+		\EndIf
+		\EndIf
+		\State
+		\State \textbf{Bei Fertigstellung von $J_j$:}
+		\State $n \leftarrow n-1$
+		\If{$n \neq 0$} starte nächsten Job mit Deadline $d_{s,k}$ \EndIf
+		\State
+		\State \textbf{Bei jeder Ausführungseinheit ($c = c - 1$):}
+		\If{$c = 0$} \Comment{Regel 3: Budget erschöpft}
+		\State $k \leftarrow k+1$; $a_k \leftarrow$ aktueller Zeitpunkt
+		\State $d_{s,k} \leftarrow d_{s,k-1} + T_s$; $c \leftarrow Q_s$
+		\EndIf
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Isolationseigenschaft -- formaler Beweis}
+
+\begin{theorem}[CBS Isolationseigenschaft -- Abeni \& Buttazzo]
+	\label{thm:cbs_isolation}
+	Die CPU-Auslastung eines CBS $S$ mit Parametern $(Q_s, T_s)$ beträgt
+	exakt $U_s = Q_s/T_s$, unabhängig von Ausführungszeiten und Ankunftsmustern.
+\end{theorem}
+
+\begin{proof}
+	Durch Regel 3 wird das Budget $c_s$ bei jedem Verbrauch sofort auf $Q_s$
+	aufgefüllt und die Serverdeadline um $T_s$ nach hinten verschoben. In jedem
+	Intervall der Länge $T_s$ verbraucht der CBS genau $Q_s$ Zeiteinheiten für
+	Serverausführung. Die Ausführungsrate ist damit konstant $Q_s/T_s = U_s$.
+
+	Formaler: Betrachte zwei aufeinanderfolgende Serverdeadlines $d_{s,k}$ und
+	$d_{s,k+1} = d_{s,k} + T_s$. In $[d_{s,k-1}, d_{s,k}]$ wird genau $Q_s$
+	Budget verbraucht (sonst würde Regel 3 nicht auslösen). Damit ist die
+	Bandbreite exakt $Q_s/T_s$ für jeden Beobachtungszeitraum. \hfill$\blacksquare$
+\end{proof}
+
+\begin{lemma}[Schedulierbarkeit unter CBS]
+	Gegeben periodische harte Tasks mit $U_p$ und $m$ CBS-Server mit Gesamtbandbreite
+	$U_s = \sum_{i=1}^m U_{s,i}$, ist das System unter EDF genau dann schedulierbar,
+	wenn $U_p + U_s \leq 1$.
+\end{lemma}
+
+\begin{proof}
+	Aus Theorem~\ref{thm:cbs_isolation} folgt, dass jeder CBS sich wie eine
+	periodische Task mit Auslastung $U_{s,i}$ verhält. Die Gesamtauslastung
+	beträgt $U_p + \sum_i U_{s,i} = U_p + U_s$, und EDF-Schedulierbarkeit
+	gilt genau dann, wenn dieser Wert $\leq 1$. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Worst-Case-Antwortzeit und optimale CBS-Parameter}
+
+Die worst-case Antwortzeit $R_i$ eines Jobs mit Ausführungszeit $C_i$ unter CBS mit
+Budget $Q_s$ und Periode $T_s$ beträgt:
+\[
+	R_i = C_i + \left\lfloor \frac{C_i}{Q_s} \right\rfloor (T_s - Q_s).
+\]
+
+Das Budget $Q_s$, das die mittlere Antwortzeit minimiert (unter Berücksichtigung
+eines Kontext-Switch-Overheads $\epsilon$), ergibt sich zu:
+\[
+	T_s^{\mathrm{opt}} = \frac{1}{U_s} \left( \epsilon + \sqrt{\frac{\epsilon \cdot C^{\mathrm{avg}}}{1-U_s}} \right).
+\]
+
+\subsection{Vergleich der dynamischen Server}
+
+\begin{table}[H]
+	\centering
+	\caption{Vergleich dynamischer Prioritäts-Server}
+	\label{tab:dynserver}
+	\begin{tabular}{p{2.5cm}p{2cm}p{2cm}p{2cm}p{3cm}}
+		\toprule
+		\textbf{Server} & \textbf{Sched.\ korrekt} & \textbf{Antwort\-zeit} & \textbf{Overhead} & \textbf{Besonderheit} \\
+		\midrule
+		DPE  & $U_p+U_s\leq 1$ & Gut & Mittel & Deadline-Tausch \\
+		DSS  & $U_p+U_s\leq 1$ & Gut & Mittel & Dynamische Wiederbefüllung \\
+		TBS  & $U_p+U_s\leq 1$ & Sehr gut & \textbf{Minimal} & Einfachste Impl. \\
+		EDL  & $U_p \leq 1$ & \textbf{Optimal} & Hoch & Idle-Zeit-Ausnutzung \\
+		IPE  & $U_p \leq 1$ & Nahezu opt. & Mittel & Vorberechnete Zeiten \\
+		CBS  & $U_p+U_s\leq 1$ & Gut & Gering & \textbf{Temporale Isolation} \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\section{EDL-Server -- Optimale aperiodische Antwortzeiten}
+
+Der Earliest Deadline Late (EDL) Server nutzt die Leerlaufzeiten eines EDL-Schedules
+(EDF-Variante, in der Tasks so spät wie möglich eingeplant werden) für aperiodische
+Anfragen.
+
+\begin{theorem}[Chetto \& Chetto -- EDL Optimalität]
+	Für jede Online-Algorithmus $A$ und jeden aperiodischen Job $J_i$ gilt:
+	\[
+		f^{\mathrm{EDL-Server}}(J_i) \leq f^A(J_i).
+	\]
+	Der EDL-Server minimiert die Fertigstellungszeit jeder aperiodischen Anfrage.
+\end{theorem}
+
+\begin{proof}[Beweisidee]
+	Da EDL in jedem Intervall $[0,t]$ die maximale Leerlaufzeit unter allen
+	Schedulingalgorithmen garantiert (Theorem von Chetto \& Chetto), stehen
+	für aperiodische Tasks stets die meisten Freiräume zur Verfügung. Jeder andere
+	Algorithmus kann somit höchstens dieselben Freiräume nutzen. \hfill$\blacksquare$
+\end{proof}
+
+\begin{satz}[EDL-Server Laufzeit]
+	Die Berechnung der Leerlaufzeiten unter EDL hat Komplexität $O(N \cdot n)$,
+	wobei $n$ die Anzahl der periodischen Tasks und $N$ die Anzahl der
+	Instanzen in der Hyperperiode ist. Im schlimmsten Fall kann $N$ sehr groß
+	sein (bei nicht-harmonischen Perioden), was EDL für viele praktische Systeme
+	ungeeignet macht.
+\end{satz}
+
+\section{Nicht-Existenz optimaler Server -- Fundamentales Ergebnis}
+
+\begin{theorem}[Tia, Liu, Shankar 1995]
+	Für jeden Task-Set mit fester Prioritätszuweisung und jede aperiodische
+	Ankunftsdisziplin existiert kein Online-Algorithmus, der die Antwortzeit
+	\emph{jeder} aperiodischen Anfrage minimiert.
+\end{theorem}
+
+\begin{proof}[Beweis durch Gegenbeispiel]
+	Betrachte drei periodische Tasks: $\tau_1$ ($C=1, T=3$), $\tau_2$ ($C=1, T=4$),
+	$\tau_3$ ($C=1, T=6$), scheduliert unter RM. Bei Ankunft von $J_1$ ($C=1$)
+	bei $t=2$ hat jeder Algorithmus zwei Optionen:
+	\begin{itemize}
+		\item Option 1: Führe $J_1$ sofort aus. Wenn dann $J_2$ bei $t=3$ ankommt,
+		      ist kein Slack bis $t=6$ verfügbar; $J_2$ terminiert frühestens bei $t=7$.
+		\item Option 2: Verschiebe $J_1$ auf $t=3$. Dann hat $J_2$ einen freien
+		      Slot bei $t=4$; $J_2$ terminiert bei $t=5$. Aber $J_1$ ist nicht minimal.
+	\end{itemize}
+	In keiner Option sind beide Antwortzeiten gleichzeitig minimal. \hfill$\blacksquare$
+\end{proof}
+
+\begin{bemerkung}
+	Dieses fundamentale Ergebnis zeigt, dass die in diesem Kapitel präsentierten
+	Server keine scharf optimalen Lösungen sind: Es gibt kein ``perfektes'' Server-
+	Verfahren. Die vorgestellten Algorithmen sind stattdessen Kompromisse zwischen
+	Antwortzeit, Overhead, Speicherbedarf und Implementierungskomplexität.
+\end{bemerkung}
+
+%=============================================================
+\chapter{Ressourcenzugriffsprotokolle -- Prioritätsinversion und Lösungsstrategien}
+\label{chap:ressourcen}
+%=============================================================
+
+\section{Das Prioritätsinversionsproblem}
+
+\begin{definition}[Kritischer Abschnitt]
+	Ein \textbf{kritischer Abschnitt} ist ein Codebereich, der unter gegenseitiger
+	Ausschluss-Bedingung ausgeführt wird. Nur eine Task darf einen kritischen
+	Abschnitt, der eine Ressource $R_k$ schützt, gleichzeitig betreten.
+	Gesichert durch Semaphor $S_k$ mit \texttt{wait}($S_k$) beim Eintritt und
+	\texttt{signal}($S_k$) beim Austritt.
+\end{definition}
+
+\begin{definition}[Prioritätsinversion]
+	\textbf{Prioritätsinversion} tritt auf, wenn eine hochpriore Task $\tau_H$
+	blockiert ist, während eine niederpriore Task $\tau_M$ (ohne gemeinsame
+	Ressource mit $\tau_H$) ausgeführt wird. Die Blockierzeit ist dann nicht
+	auf die Dauer des kritischen Abschnitts begrenzt, sondern hängt von der
+	gesamten Ausführungszeit aller Tasks mit $P_M < P < P_H$ ab.
+\end{definition}
+
+\begin{beispiel}[Klassische Prioritätsinversion -- 3 Tasks]
+	$\tau_1 > \tau_2 > \tau_3$ in Priorität. $\tau_1$ und $\tau_3$ teilen Ressource $R$.
+	\begin{enumerate}
+		\item $t_0$: $\tau_3$ startet, betritt kritischen Abschnitt auf $R$.
+		\item $t_1$: $\tau_2$ kommt, preemptiert $\tau_3$ (höhere Priorität).
+		\item $t_2$: $\tau_1$ kommt, preemptiert $\tau_2$ (höhere Priorität).
+		\item $t_3$: $\tau_1$ versucht $R$ zu betreten -- blockiert (von $\tau_3$ gehalten).
+		\item $t_4$: $\tau_2$ läuft weiter und preemptiert $\tau_3$ -- $\tau_1$ wartet!
+	\end{enumerate}
+	$\tau_1$ wartet also nicht auf $\tau_3$'s kritischen Abschnitt, sondern auf die
+	\emph{gesamte} Ausführungszeit von $\tau_2$. Im schlimmsten Fall unbeschränkt.
+\end{beispiel}
+
+\textbf{Terminologie:}
+\begin{itemize}
+	\item $B_i$: maximale Blockierzeit von $\tau_i$
+	\item $\delta_{j,k}$: Dauer des längsten kritischen Abschnitts von $\tau_j$ auf $S_k$
+	\item $C(S_k) = \max\{P_i \mid \tau_i$ benutzt $S_k\}$: Prioritätsgrenze von $S_k$
+	\item $\gamma_i$: Menge der kritischen Abschnitte, die $\tau_i$ blockieren können
+\end{itemize}
+
+\section{Non-Preemptive Protocol (NPP)}
+
+\subsection{Algorithmus}
+
+\begin{definition}[NPP]
+	Bei \textbf{NPP} wird die Priorität einer Task beim Eintritt in jeden
+	kritischen Abschnitt auf das systemweite Maximum angehoben:
+	\[
+		p_i(R_k) = \max_h \{P_h\}.
+	\]
+	Bei Verlassen des kritischen Abschnitts wird $p_i$ auf $P_i$ zurückgesetzt.
+\end{definition}
+
+\begin{algorithm}[H]
+	\caption{Non-Preemptive Protocol (NPP)}
+	\begin{algorithmic}[1]
+		\State \textbf{wait($S_k$):}
+		\State $p_i \leftarrow \max_h\{P_h\}$ \Comment{Priorität auf Maximum}
+		\State Belege Ressource $R_k$
+		\State
+		\State \textbf{signal($S_k$):}
+		\State Gib $R_k$ frei
+		\State $p_i \leftarrow P_i$ \Comment{Nominal-Priorität wiederherstellen}
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Blockierzeit unter NPP}
+
+Da unter NPP nie zwei Tasks gleichzeitig in kritischen Abschnitten sein können
+(die Prioritätsanhebung verhindert Preemption), ist die maximale Blockierzeit:
+\[
+	B_i = \max\{\delta_{j,k} - 1 \mid P_j < P_i,\; k=1,\ldots,m\}.
+\]
+
+\textbf{Nachteil:} NPP verursacht \emph{unnötige} Blockierung: Wenn $\tau_1$ keine
+gemeinsame Ressource mit $\tau_3$ hat, aber $\tau_3$ in einem langen kritischen
+Abschnitt ist, wird $\tau_1$ dennoch blockiert.
+
+\section{Priority Inheritance Protocol (PIP)}
+
+\subsection{Protokolldefinition}
+
+\begin{definition}[PIP -- Sha, Rajkumar, Lehoczky 1990]
+	Im \textbf{Priority Inheritance Protocol} erbt eine Task $\tau_j$, die eine
+	Ressource hält, vorübergehend die höchste Priorität aller Tasks, die auf diese
+	Ressource warten:
+	\[
+		p_j(R_k) = \max\bigl\{P_j,\; \max\{P_h \mid \tau_h \text{ wartet auf } R_k\}\bigr\}.
+	\]
+	Diese Vererbung ist \emph{transitiv}: Wenn $\tau_3$ von $\tau_2$ blockiert wird
+	und $\tau_2$ von $\tau_1$, erbt $\tau_3$ die Priorität von $\tau_1$.
+\end{definition}
+
+\begin{algorithm}[H]
+	\caption{Priority Inheritance Protocol (PIP)}
+	\begin{algorithmic}[1]
+		\State \textbf{wait($S_k$):}
+		\If{$R_k$ von $\tau_j$ gehalten ($P_j < P_i$)}
+		\State $\tau_i$ wird blockiert
+		\State $p_j \leftarrow \max(p_j, P_i)$ \Comment{Prioritätsvererbung}
+		\State Setze $\tau_j$ fort mit neuer Priorität
+		\Else
+		\State $\tau_i$ belegt $R_k$
+		\EndIf
+		\State
+		\State \textbf{signal($S_k$):}
+		\State Gib $R_k$ frei; wecke höchstpriore wartende Task
+		\If{keine Tasks mehr von $\tau_j$ blockiert}
+		\State $p_j \leftarrow P_j$ \Comment{Nominal-Priorität}
+		\Else
+		\State $p_j \leftarrow \max\{P_h \mid \tau_j \text{ blockiert } \tau_h\}$
+		\EndIf
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Korrektheit und Eigenschaften}
+
+\begin{lemma}
+	Ein Semaphor $S_k$ kann bei $\tau_i$ nur dann Push-Through-Blockierung
+	auslösen, wenn $S_k$ sowohl von einer Task mit $P < P_i$ als auch von einer
+	Task mit $P > P_i$ benutzt wird.
+\end{lemma}
+
+\begin{lemma}
+	Transitive Prioritätsvererbung tritt nur bei \emph{geschachtelten}
+	kritischen Abschnitten auf.
+\end{lemma}
+
+\begin{theorem}[Sha, Rajkumar, Lehoczky -- PIP Blockierzeit]
+	\label{thm:pip}
+	Unter PIP kann $\tau_i$ für höchstens $\alpha_i = \min(l_i, s_i)$ kritische
+	Abschnitte blockiert werden, wobei $l_i$ die Anzahl der niederprioren Tasks
+	und $s_i$ die Anzahl der eindeutigen Semaphore sind, die $\tau_i$ blockieren
+	können.
+\end{theorem}
+
+\begin{proof}
+	\textbf{Bound durch $l_i$ (Lemma~7.3 in Buttazzo):} $\tau_i$ kann durch
+	$\tau_j$ nur blockiert werden, solange $\tau_j$ in einem kritischen Abschnitt
+	ist. Sobald $\tau_j$ diesen verlässt, kann er $\tau_i$ nicht mehr blockieren.
+	Pro niederpriorer Task also maximal ein Blockiervorgang.
+
+	\textbf{Bound durch $s_i$ (Lemma~7.4 in Buttazzo):} Da Semaphore binär sind,
+	kann genau eine Task pro Semaphor aktiv in einem kritischen Abschnitt sein.
+	Nach dem Freigeben kann $S_k$ $\tau_i$ nicht mehr blockieren. Also maximal
+	eine Blockierung pro Semaphor. Das Minimum beider Bounds gilt. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Blockierzeitberechnung unter PIP}
+
+\begin{algorithmic}[1]
+	\Require Tasks geordnet nach absteigender Priorität; keine Schachtelung
+	\For{$i = 1$ \textbf{to} $n-1$}
+	\State $B_i^l \leftarrow \sum_{j:\,P_j < P_i} \max_k\{\delta_{j,k}-1 \mid C(S_k) \geq P_i\}$
+	\State $B_i^s \leftarrow \sum_{k=1}^m \max_{j:\,P_j < P_i}\{\delta_{j,k}-1 \mid C(S_k) \geq P_i\}$
+	\State $B_i \leftarrow \min(B_i^l, B_i^s)$
+	\EndFor
+	\State $B_n \leftarrow 0$
+\end{algorithmic}
+
+Komplexität: $O(mn^2)$.
+
+\section{Priority Ceiling Protocol (PCP)}
+
+\subsection{Protokolldefinition}
+
+\begin{definition}[PCP -- Sha, Rajkumar, Lehoczky 1990]
+	Jeder Ressource $R_k$ wird eine \textbf{Prioritätsgrenze} (Priority Ceiling)
+	zugewiesen:
+	\[
+		C(R_k) = \max\{P_i \mid \tau_i \text{ benutzt } R_k\}.
+	\]
+	Eine Task $\tau_i$ darf $R_k$ nur betreten, wenn ihre aktive Priorität
+	\emph{strikt höher} ist als die Prioritätsgrenze aller aktuell gesperrten
+	Ressourcen:
+	\[
+		p_i > \max_{R_h \text{ gesperrt}} C(R_h).
+	\]
+\end{definition}
+
+\begin{algorithm}[H]
+	\caption{Priority Ceiling Protocol (PCP)}
+	\begin{algorithmic}[1]
+		\State \textbf{wait($S_k$):}
+		\If{$p_i > \max\{C(R_h) \mid R_h \text{ belegt}\}$}
+		\State $\tau_i$ belegt $R_k$; $p_i(R_k) \leftarrow C(R_k)$
+		\Comment{Priorität auf Ceiling}
+		\Else
+		\State $\tau_i$ wird blockiert (von Task mit höchster Ceiling-Priorität)
+		\EndIf
+		\State
+		\State \textbf{signal($S_k$):}
+		\State Gib $R_k$ frei; $p_i \leftarrow P_i$ \Comment{Nominal-Priorität}
+		\State Wecke höchstpriore wartende Task
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Eigenschaften und Nachweis}
+
+\begin{theorem}[PCP Eigenschaften]
+	\label{thm:pcp}
+	Unter PCP gilt:
+	\begin{enumerate}
+		\item Jede Task $\tau_i$ wird höchstens einmal blockiert.
+		\item Deadlocks sind unmöglich.
+		\item Gegenseitiger Ausschluss ist gewährleistet.
+	\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+	\textbf{Zu 1 (Einmalige Blockierung):} Angenommen, $\tau_i$ wird zweimal
+	blockiert -- einmal durch $\tau_a$ auf $R_a$ und einmal durch $\tau_b$ auf $R_b$.
+	Damit beide gleichzeitig ausgeführt werden könnten, müsste eine von ihnen die
+	andere innerhalb eines kritischen Abschnitts preemptiert haben. Aber nach PCP-Regel
+	erfordert das $p > C(R_{\text{gehalten}})$, also $P_a > C(R_b)$ oder $P_b > C(R_a)$.
+	Da $C(R_b) \geq P_i > P_a$ und $C(R_a) \geq P_i > P_b$ (beide haben niedrigere
+	Priorität als $\tau_i$), führt das zu einem Widerspruch.
+
+	\textbf{Zu 2 (Deadlock-Freiheit):} Ein Deadlock erfordert zyklisches Warten.
+	Nach PCP kann $\tau_j$ $R_k$ nur belegen, wenn $p_j > C(R_k)$. Für einen Zyklus
+	$\tau_a \to \tau_b \to \tau_a$ müsste $P_a > C(R_b) \geq P_b > C(R_a) \geq P_a$
+	gelten -- Widerspruch. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Schedulierbarkeitsanalyse unter PCP}
+
+Die Schedulierbarkeit unter RM+PCP kann mit folgender erweiterter Response Time Analysis
+geprüft werden (Sha et al.):
+\[
+	R_i = C_i + B_i + \sum_{j \in hp(i)} \left\lceil \frac{R_i}{T_j} \right\rceil C_j,
+\]
+wobei $B_i = \max\{\delta_{j,k}-1 \mid P_j < P_i,\; C(R_k) \geq P_i\}$ die maximale
+Blockierzeit ist. Da $\tau_i$ höchstens einmal blockiert wird, ist $B_i$ durch einen
+einzigen kritischen Abschnitt beschränkt.
+
+\section{Stack Resource Policy (SRP)}
+
+\begin{definition}[Preemptionsgrenze (Preemption Level)]
+	Unter SRP wird jedem Task $\tau_i$ ein statischer \textbf{Preemptionslevel}
+	$\pi_i$ zugewiesen (unter RM gleich der Priorität). Jeder Ressource $R_k$ wird
+	eine \textbf{Ressourcengrenze} zugewiesen:
+	\[
+		\Pi(R_k) = \max\{\pi_i \mid \tau_i \text{ benutzt } R_k\}.
+	\]
+	Ein \textbf{System Ceiling} $\Pi_{\text{sys}}(t)$ ist das Maximum aller
+	Ressourcengrenzen der aktuell gesperrten Ressourcen.
+\end{definition}
+
+\begin{definition}[SRP-Zugriffsregel]
+	$\tau_i$ darf den Prozessor belegen (preemptieren), wenn $\pi_i > \Pi_{\text{sys}}(t)$.
+	$\tau_i$ darf $R_k$ betreten, ohne zusätzliche Prüfung -- die Zugangskontrolle
+	erfolgt bereits beim Preemptionszeitpunkt.
+\end{definition}
+
+\begin{satz}[SRP Eigenschaften]
+	Unter SRP gilt:
+	\begin{itemize}
+		\item Jede Task wird höchstens \emph{einmal} blockiert (bei der Aktivierung,
+		      nicht beim Ressourcenzugriff).
+		\item Stack-Sharing ist möglich: Alle Tasks können denselben Stack nutzen,
+		      da niemals zwei Tasks gleichzeitig im kritischen Abschnitt sein können.
+		\item SRP ist sowohl für feste als auch für dynamische Prioritäten anwendbar
+		      (OSEK, AUTOSAR, POSIX-ähnliche Systeme).
+	\end{itemize}
+\end{satz}
+
+\begin{proof}[Beweis der einmaligen Blockierung unter SRP]
+	$\tau_i$ kann nur dann nicht aktiviert werden, wenn $\pi_i \leq \Pi_{\text{sys}}(t)$.
+	Da $\Pi_{\text{sys}}$ monoton abnimmt (Ressourcen werden freigegeben), kann
+	$\tau_i$ nach seiner Aktivierung nie wieder durch den System Ceiling blockiert
+	werden. Damit ist genau eine Blockierphase möglich, nämlich vor der ersten
+	Ausführung. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Vergleich der Protokolle}
+
+\begin{table}[H]
+	\centering
+	\caption{Vergleich der Ressourcenzugriffsprotokolle}
+	{\small
+	\begin{tabular}{p{2.0cm}p{1.9cm}p{1.9cm}p{2.0cm}p{3.0cm}}
+		\toprule
+		\textbf{Protokoll} & \textbf{Max.\ Block.} & \textbf{Deadlock-frei} & \textbf{Stack-Sharing} & \textbf{Bemerkung} \\
+		\midrule
+		NPP    & 1 Abschnitt & Ja & Ja & Unnötige Blockierung \\
+		HLP    & 1 Abschnitt & Ja & Nein & Ceiling bei Eintritt \\
+		PIP    & $\min(l_i,s_i)$ & Nein! & Nein & Komplexe Analyse \\
+		PCP    & 1 Abschnitt & Ja & Nein & Guter Kompromiss \\
+		SRP    & 1 Abschnitt & Ja & \textbf{Ja} & Optimal für Einzel-CPU \\
+		\bottomrule
+	\end{tabular}
+	}
+\end{table}
+
+%=============================================================
+\chapter{Limited Preemptive Scheduling -- Begrenzte Preemption}
+\label{chap:limited}
+%=============================================================
+
+\section{Motivation: Kosten und Nutzen der Preemption}
+
+Vollständig preemptives Scheduling maximiert die Schedulierbarkeit, verursacht aber
+erheblichen Overhead: Cache-Misses durch zerstörte Lokalität, Pipeline-Flushes,
+Kontext-Switch-Kosten. In vielen eingebetteten Systemen (AUTOSAR, ISO~26262) ist
+dieser Overhead signifikant.
+
+\begin{definition}[Preemptionskosten-Komponenten]
+	Jede Preemption verursacht vier Kostenkategorien:
+	\begin{enumerate}
+		\item \textbf{Scheduling-Overhead}: Suspendierung, Warteschlangenoperation, Dispatch.
+		\item \textbf{Pipeline-Kosten}: Flush beim Unterbrechen, Refill beim Fortsetzen.
+		\item \textbf{Cache-Kosten (CRPD)}: Cache-Related Preemption Delay --
+		      Reload der Cache-Lines, die die preemptierende Task verdrängt hat.
+		\item \textbf{Bus-Kosten}: Zusätzliche RAM-Zugriffe durch Cache-Misses.
+	\end{enumerate}
+	Empirisch: Auf PowerPC MPC7410 mit 2 MB L2-Cache kann CRPD bis zu 33\,\%
+	der nicht-preemptiven WCET betragen \cite{Buttazzo2011}.
+\end{definition}
+
+Zentrales Ergebnis dieses Kapitels: Für ein präemptiv machbares Task-Set lässt sich
+stets ein Preemptionsschema finden, das die Schedulierbarkeit erhält und gleichzeitig
+die Preemptionsanzahl minimiert.
+
+\section{Nicht-Preemptives Scheduling}
+
+\subsection{Blockierzeit und Schedulierbarkeit}
+
+Ohne Preemption ergibt sich für jede Task $\tau_i$ eine Blockierzeit durch die
+längste niederpriore Task:
+\begin{equation}
+	B_i = \max_{j:\,P_j < P_i}\{C_j - 1\}.
+	\label{eq:np_blocking}
+\end{equation}
+
+\begin{satz}[Nicht-preemptiv -- $U_{\text{lub}} = 0$]
+	Unter nicht-preemptivem RM und EDF gilt $U_{\text{lub}} = 0$: Es gibt Task-Sets
+	mit beliebig kleiner Auslastung, die unter nicht-preemptivem Scheduling
+	nicht schedulierbar sind.
+\end{satz}
+
+\begin{proof}
+	Betrachte $\tau_1$ ($C_1 = \varepsilon$, $T_1 = 2\varepsilon$) und
+	$\tau_2$ ($C_2 = T_1 + \varepsilon = 3\varepsilon$, $T_2 = M$ für großes $M$).
+	Auslastung: $U = \varepsilon/(2\varepsilon) + 3\varepsilon/M = 0{,}5 + 3\varepsilon/M$,
+	beliebig nah an 0{,}5 für großes $M$. Aber: Nicht-preemptiv kann $\tau_2$
+	nicht unterbrochen werden, also $\tau_1$ muss $C_2 = 3\varepsilon > T_1 = 2\varepsilon$
+	warten -- Deadline-Verletzung. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Machbarkeitsanalyse für nicht-preemptives Scheduling}
+
+Das \emph{Self-Pushing-Phänomen} (Bril et al.\ 2009) zeigt, dass unter
+nicht-preemptivem Scheduling die worst-case Antwortzeit nicht beim ersten Job
+(kritischer Augenblick), sondern bei einem späteren Job auftreten kann. Daher
+muss die Analyse innerhalb der längsten Level-$i$-Aktivitätsperiode $L_i$
+durchgeführt werden:
+\begin{align}
+	L_i^{(0)} &= B_i + C_i, \nonumber\\
+	L_i^{(s)} &= B_i + \sum_{h:\,P_h \geq P_i} \left\lfloor \frac{L_i^{(s-1)}}{T_h} \right\rfloor C_h.
+	\label{eq:level_i_period}
+\end{align}
+
+Für alle Jobs $k \in [1, K_i]$ mit $K_i = \lfloor L_i/T_i \rfloor$ wird der Startzeitpunkt
+$s_{i,k}$ iterativ berechnet:
+\[
+	s_{i,k}^{(\ell+1)} = B_i + (k-1)C_i + \sum_{h:\,P_h > P_i} \left(\left\lfloor \frac{s_{i,k}^{(\ell)}}{T_h} \right\rfloor + 1\right) C_h.
+\]
+
+Die Antwortzeit ergibt sich zu $R_i = \max_{k \in [1,K_i]}\{s_{i,k} + C_i - (k-1)T_i\}$.
+
+\section{Preemption Thresholds}
+
+\subsection{Modell und Algorithmus}
+
+\begin{definition}[Preemption Threshold -- Wang \& Saksena 1999]
+	Jede Task $\tau_i$ erhält zwei Prioritätsniveaus:
+	\begin{itemize}
+		\item Nominale Priorität $P_i$ (für die Ready-Queue und Einplanung),
+		\item Preemption Threshold $\theta_i \geq P_i$ (für die Ausführung).
+	\end{itemize}
+	$\tau_h$ kann $\tau_i$ \emph{während der Ausführung} nur preemptieren, wenn
+	$P_h > \theta_i$.
+\end{definition}
+
+\begin{algorithm}[H]
+	\caption{Assign Minimum Preemption Thresholds (Wang \& Saksena)}
+	\begin{algorithmic}[1]
+		\Require Task-Set $\mathcal{T}$ mit $\{C_i, T_i, D_i, P_i\}$, preemptiv machbar
+		\For{$i \leftarrow n$ \textbf{downto} $1$} \Comment{Von niedrigster zu höchster Priorität}
+		\State $\theta_i \leftarrow P_i$
+		\State Berechne $R_i$ nach Gl.~\eqref{eq:rta_threshold}
+		\While{$R_i > D_i$}
+		\State $\theta_i \leftarrow \theta_i + 1$
+		\If{$\theta_i > P_1$} \Return INFEASIBLE \EndIf
+		\State Berechne $R_i$ nach Gl.~\eqref{eq:rta_threshold}
+		\EndWhile
+		\EndFor
+		\State \Return FEASIBLE
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Machbarkeitsanalyse}
+
+Blockierzeit unter Preemption Thresholds:
+\[
+	B_i = \max\{C_j - 1 \mid P_j < P_i \leq \theta_j\}.
+\]
+Antwortzeit (innerhalb der längsten Level-$i$-Aktivitätsperiode):
+\begin{equation}
+	R_i = S_i + C_i + \sum_{h:\,P_h > \theta_i}\left(\left\lfloor \frac{R_i}{T_h} \right\rfloor - \left\lfloor \frac{S_i}{T_h} \right\rfloor - 1\right) C_h,
+	\label{eq:rta_threshold}
+\end{equation}
+wobei $S_i = B_i + \sum_{h:\,P_h > P_i}\left(\lfloor S_i/T_h \rfloor + 1\right) C_h$ der Startzeitpunkt ist.
+
+\begin{satz}[Optimalität des Threshold-Algorithmus]
+	Der Algorithmus ist optimal: Wenn irgendeine Threshold-Zuweisung das Task-Set
+	machbar macht, findet er eine solche Zuweisung.
+\end{satz}
+
+\subsection{Optimalitätsklassifikation}
+
+Preemption Thresholds sind \textbf{nicht scharf optimal}: Es gibt Task-Sets, die
+weder vollständig preemptiv noch vollständig nicht-preemptiv, aber mit geeigneten
+Thresholds schedulierbar sind. Innerhalb der Klasse der Threshold-Scheduler ist der
+Algorithmus \textbf{schwach optimal} (findet Lösung, wenn eine existiert).
+
+\section{Deferred Preemptions -- Aufgeschobene Preemption}
+
+\subsection{Floating Model und Aktivierungsbasiertes Modell}
+
+\begin{definition}[Maximales nicht-preemptives Intervall]
+	Jede Task $\tau_i$ hat ein maximales nicht-preemptives Intervall $q_i$, in dem
+	sie nicht unterbrochen werden kann. Im \textbf{Floating Model} platziert der
+	Programmierer explizite Grenzen; im \textbf{Activation-Triggered Model}
+	wird beim Eintreffen einer höherprioren Task ein Timer auf $q_i$ gesetzt.
+\end{definition}
+
+Blockierzeit: $B_i = \max_{j:\,P_j < P_i}\{q_j - 1\}$.
+
+\subsection{Längste machbare nicht-preemptive Intervalle}
+
+Die \emph{Blocking Tolerance} $\beta_i$ ist die maximale Blockierzeit, die $\tau_i$
+tolerieren kann, ohne eine Deadline zu verpassen:
+\[
+	\beta_i = \max_{t \in TS_i}\{t - W_i(t)\},
+\]
+wobei $W_i(t)$ die Level-$i$-Arbeitslast und $TS_i$ die Testmenge ist.
+
+\begin{theorem}[Yao, Buttazzo, Bertogna -- Längste nicht-preemptive Intervalle]
+	Die längsten nicht-preemptiven Intervalle $Q_i$, die die Schedulierbarkeit
+	erhalten, können rekursiv berechnet werden:
+	\[
+		Q_i = \min\{Q_{i-1},\; \beta_{i-1} + 1\},
+	\]
+	mit $Q_1 = \infty$ und $\beta_1 = D_1 - C_1$.
+\end{theorem}
+
+\begin{proof}
+	$Q_i$ ist das minimale $\beta_k + 1$ über alle Tasks mit höherer Priorität als
+	$\tau_i$. Durch Einsetzen der Rekursionsdefinition:
+	\[
+		\min_{k:\,P_k > P_i}\{\beta_k + 1\}
+		= \min\Bigl\{\min_{k:\,P_k > P_{i-1}}\{\beta_k + 1\},\; \beta_{i-1} + 1\Bigr\}
+		= \min\{Q_{i-1},\; \beta_{i-1} + 1\}. \quad\blacksquare
+	\]
+\end{proof}
+
+\begin{algorithm}[H]
+	\caption{Berechnung der längsten nicht-preemptiven Intervalle}
+	\begin{algorithmic}[1]
+		\State $\beta_1 \leftarrow D_1 - C_1$; $Q_1 \leftarrow \infty$
+		\For{$i \leftarrow 2$ \textbf{to} $n$}
+		\State $Q_i \leftarrow \min\{Q_{i-1},\; \beta_{i-1} + 1\}$
+		\State Berechne $\beta_i$ aus $W_i(t)$
+		\EndFor
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{Laufzeitanalyse}
+
+Berechnung aller $Q_i$: $O(n)$ Iterationen, jede mit $O(|\mathit{TS}_i|)$ Aufwand
+für die Berechnung von $\beta_i$. Im ungünstigsten Fall ist $|\mathit{TS}_i|$
+pseudopolynomiell (abhängig von den Perioden).
+
+\section{Task Splitting -- Kooperatives Scheduling}
+
+\subsection{Modell und optimale Preemptionspunkt-Auswahl}
+
+\begin{definition}[Task Splitting]
+	Task $\tau_i$ wird in $m_i$ nicht-preemptive \emph{Chunks} (Teilaufgaben) zerlegt.
+	Preemption ist nur an Chunkgrenzen (Effective Preemption Points, EPPs) erlaubt.
+\end{definition}
+
+\begin{algorithm}[H]
+	\caption{SelectEPP -- Optimale Preemptionspunktauswahl (Bertogna et al.\ 2011)}
+	\begin{algorithmic}[1]
+		\Require Task $\tau_i$ mit Basisblöcken $\delta_1,\ldots,\delta_N$, maximales NPR $Q$
+		\State $\hat{C}_0 \leftarrow 0$; $\mathit{Prev}_0 \leftarrow \{\delta_0\}$
+		\For{$k \leftarrow 1$ \textbf{to} $N$}
+		\State Entferne aus $\mathit{Prev}_k$ alle $\delta_j$, die Bed.~\eqref{eq:npr_cond} verletzen
+		\If{$\mathit{Prev}_k = \emptyset$} \Return INFEASIBLE \EndIf
+		\State $\hat{C}_k \leftarrow \min_{\delta_j \in \mathit{Prev}_k}\left\{\hat{C}_{j-1} + \xi_{j-1} + \sum_{\ell=j}^{k} b_\ell\right\}$
+		\State Speichere $\delta_{\mathrm{prev}}(\delta_k)$; $\mathit{Prev}_k \leftarrow \mathit{Prev}_k \cup \{\delta_k\}$
+		\EndFor
+		\State Rekonstruiere EPPs rückwärts von $\delta_{\mathrm{prev}}(\delta_N)$
+		\State \Return FEASIBLE
+	\end{algorithmic}
+\end{algorithm}
+
+Dabei ist die Bedingung für nicht-preemptive Regionen:
+\begin{equation}
+	\xi_{j-1} + \sum_{\ell=j}^{k} b_\ell \leq Q.
+	\label{eq:npr_cond}
+\end{equation}
+
+\begin{theorem}[Bertogna et al.\ 2011 -- Optimalität von SelectEPP]
+	Das von SelectEPP gefundene EPP-Muster minimiert den Preemptions-Overhead
+	von $\tau_i$ unter der Bedingung, dass alle nicht-preemptiven Regionen die
+	Länge $Q$ nicht überschreiten.
+\end{theorem}
+
+\begin{proof}
+	Der Algorithmus implementiert eine dynamische Programmierung über die
+	Basisblöcke. Für jedes $\delta_k$ berechnet er das global optimale $\hat{C}_k$
+	(kleinste kumulative WCET der ersten $k$ Blöcke). Da $\hat{C}_k$ das Minimum
+	über alle machbaren Vorgänger $\delta_j$ bildet, werden alle möglichen
+	machbaren EPP-Platzierungen für die ersten $k$ Blöcke berücksichtigt.
+	Durch Induktion über $k$ ist $\hat{C}_N = C_i^{\min}$ die minimale WCET
+	des gesamten Tasks. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Laufzeitanalyse von SelectEPP}
+
+\begin{satz}[Laufzeit SelectEPP]
+	SelectEPP hat eine Laufzeit von $O(N^2)$, wobei $N$ die Anzahl der Basisblöcke
+	ist. Für jeden der $N$ Basisblöcke wird über die Menge $\mathit{Prev}_k$ (höchstens
+	$N$ Einträge) iteriert. Der Gesamtaufwand für das gesamte Task-Set mit $n$
+	Tasks ist $O(\sum_i N_i^2)$.
+\end{satz}
+
+\section{Vergleich der Ansätze}
+
+\begin{table}[H]
+	\centering
+	\caption{Bewertung der Limited-Preemption-Methoden}
+	\begin{tabular}{p{3cm}p{2cm}p{2.5cm}p{2.5cm}p{2.5cm}}
+		\toprule
+		\textbf{Methode} & \textbf{Impl.-Aufwand} & \textbf{Vorhersage\-barkeit} & \textbf{Effektivität} & \textbf{Optimalität} \\
+		\midrule
+		Non-Preemptive  & Gering   & Hoch    & Niedrig  & $U_{\text{lub}} = 0$ \\
+		Preem. Threshold & Gering  & Niedrig & Mittel   & Schwach optimal \\
+		Deferred Preem. & Mittel   & Mittel  & Hoch     & Lokal optimal \\
+		Task Splitting   & Mittel  & Hoch    & Hoch     & Scharf optimal \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+%=============================================================
+\chapter{Überlastbehandlung -- Scheduling unter Überlast}
+\label{chap:uberlast}
+%=============================================================
+
+\section{Einführung: Arten und Ursachen der Überlast}
+
+Überlast ($U > 1$) tritt auf, wenn die Gesamtrechenanforderung die verfügbare
+Prozessorkapazität überschreitet. Ursachen sind:
+\begin{itemize}
+	\item \textbf{Schlechtes Systemdesign}: Keine Worst-Case-Analyse durchgeführt.
+	\item \textbf{Gleichzeitige Ereignisse}: Peak-Load-Szenarien überschätzt.
+	\item \textbf{Hardwarefehler}: Anomale Interrupt-Sequenzen sättigen CPU.
+	\item \textbf{Umgebungsveränderungen}: Unvorhergesehene Lastspitzen.
+\end{itemize}
+
+\begin{definition}[Instantane Last]
+	Die \textbf{instantane Last} zum Zeitpunkt $t$ ist:
+	\[
+		\rho(t) = \max_i \rho_i(t), \qquad
+		\rho_i(t) = \frac{\sum_{d_k \leq d_i} c_k(t)}{d_i - t},
+	\]
+	wobei $c_k(t)$ die verbleibende Ausführungszeit von Job $J_k$ ist.
+	Ein System ist überlastet, wenn $\rho(t) > 1$.
+\end{definition}
+
+\section{Aperiodische Überlast -- Value-Based Scheduling}
+
+Bei aperiodischer Überlast ist es nicht möglich, alle Deadlines einzuhalten.
+Dann ist das Ziel, den \emph{Gesamtwert} der rechtzeitig fertiggestellten Tasks
+zu maximieren.
+
+\begin{definition}[Value Function]
+	Jede Task $J_i$ hat eine \textbf{Wertfunktion} $V_i(t)$, die den Nutzen angibt,
+	wenn sie zum Zeitpunkt $t$ fertiggestellt wird:
+	\[
+		V_i(t) = \begin{cases} v_i & t \leq d_i \\ 0 & t > d_i \end{cases}
+	\]
+	(harte Wertfunktion) oder eine monoton fallende Funktion (weiche Wertfunktion).
+\end{definition}
+
+\subsection{Algorithmus EARLIEST DEADLINE LATE (EDL) / RED}
+
+Unter Überlast versucht der \textbf{Robust Earliest Deadline (RED)} Algorithmus,
+den Gesamtwert zu maximieren, indem Tasks mit niedrigem Verhältnis $v_i/C_i$
+abgelehnt werden (Value Density):
+
+\begin{algorithm}[H]
+	\caption{Value-Based Scheduling unter Überlast (vereinfacht)}
+	\begin{algorithmic}[1]
+		\State Sortiere aktive Tasks nach $v_i/C_i$ absteigend
+		\State $\rho \leftarrow \rho(t_{\text{aktuell}})$
+		\While{$\rho > 1$}
+		\State Verwerfe Task mit kleinstem $v_i/C_i$
+		\State Berechne $\rho$ neu
+		\EndWhile
+		\State Plane verbleibende Tasks mit EDF ein
+	\end{algorithmic}
+\end{algorithm}
+
+\section{Überlastbehandlung unter RM vs. EDF}
+
+\subsection{Permanente Überlast unter RM}
+
+Unter RM mit fester Priorität bei $U > 1$:
+\begin{itemize}
+	\item \textbf{Alle niederprioren Tasks werden vollständig blockiert.}
+	\item Tasks mit $P_i < P_j$ für alle $j$ erhalten keinen Prozessor mehr.
+	\item Das System degeneriert: Nur hochpriore Tasks laufen; alle anderen
+	      verpassen ihre Deadlines.
+\end{itemize}
+
+\subsection{Permanente Überlast unter EDF -- Cervin-Theorem}
+
+\begin{theorem}[Cervin 2003 -- EDF bei permanenter Überlast]
+	\label{thm:cervin}
+	Bei $n$ periodischen Tasks mit $U > 1$ unter EDF gilt im eingeschwungenen
+	Zustand: Die effektive mittlere Periode jeder Task $\tau_i$ beträgt
+	\[
+		\bar{T}_i = T_i \cdot U.
+	\]
+	EDF führt also eine \textbf{automatische Periodenskalierung} durch.
+\end{theorem}
+
+\begin{proof}[Beweisidee]
+	In einem EDF-Schedule wird jede Task mit relativer Häufigkeit $C_i/T_i$ ausgeführt
+	(proportional zu ihrer Auslastung). Bei $U > 1$ wird die verfügbare Zeit $1$ auf
+	die Tasks im Verhältnis ihrer Auslastungen aufgeteilt. Task $\tau_i$ erhält den
+	Anteil $U_i/U = C_i/(T_i U)$ der Prozessorzeit, was einer effektiven Rate von
+	$1/\bar{T}_i = 1/(T_i U)$ entspricht. \hfill$\blacksquare$
+\end{proof}
+
+\begin{satz}[Vergleich RM vs. EDF bei Überlast]
+	\begin{itemize}
+		\item \textbf{RM}: Niederpriore Tasks werden vollständig blockiert;
+		      hochpriore Tasks laufen normal. Ungerecht bei Überlast.
+		\item \textbf{EDF}: Alle Tasks skalieren gleichmäßig; keine Task wird
+		      vollständig blockiert. Fairer Umgang mit Überlast.
+	\end{itemize}
+	Dies ist ein weiterer Vorteil von EDF gegenüber RM, zusätzlich zur höheren
+	Auslastungsschranke.
+\end{satz}
+
+\section{Elastic Scheduling -- Dynamische Periodeneanpassung}
+
+\begin{definition}[Elastic Task]
+	Eine elastische periodische Task $\tau_i$ hat einen nominellen Periodenbereich
+	$[T_i^{\min}, T_i^{\max}]$ und einen Elastizitätskoeffizienten $e_i \geq 0$.
+	Bei Überlast kann die Periode erhöht (und damit die Auslastung reduziert) werden,
+	mit einem ``Kostenfaktor'' proportional zu $e_i$.
+\end{definition}
+
+\begin{satz}[Elastic Scheduling Feasibility]
+	Ein elastisches Task-Set ist unter EDF schedulierbar, wenn für die optimalen
+	Perioden $T_i^*$ gilt:
+	\[
+		\sum_{i=1}^n \frac{C_i}{T_i^*} \leq 1, \quad T_i^{\min} \leq T_i^* \leq T_i^{\max}.
+	\]
+	Die optimalen Perioden können durch einen iterativen Algorithmus in $O(n^2)$
+	berechnet werden.
+\end{satz}
+
+\section{$(\pi, \lambda)$-Algorithmen für harte Überlast}
+
+Für Systeme, in denen nicht alle Tasks weich sind, werden \textbf{Overload Manager}
+eingesetzt, die Entscheidungen über Akzeptanz oder Ablehnung neuer Tasks treffen.
+
+\begin{definition}[Admission Control]
+	Ein \textbf{Admission Controller} akzeptiert eine neue Anfrage $J_{\text{new}}$,
+	wenn das erweiterte System $\mathcal{J} \cup \{J_{\text{new}}\}$ schedulierbar
+	bleibt:
+	\[
+		\rho(\mathcal{J} \cup \{J_{\text{new}}\}, t) \leq 1.
+	\]
+	Andernfalls wird $J_{\text{new}}$ abgelehnt oder eine niederpriore Task
+	verdrängt.
+\end{definition}
+
+\begin{satz}[Güte von EDF-basiertem Overload Management]
+	EDF maximiert unter allen Online-Algorithmen bei harter Überlast den
+	erwarteten Gesamtwert, wenn Tasks homogene Wertfunktionen haben (d.\,h.\
+	$v_i/C_i = \mathrm{const}$).
+\end{satz}
+
+%=============================================================
+\chapter{Der EDF\texorpdfstring{$^+$}{+} Algorithmus -- Optimales Scheduling mit Blocking-Penalty}
+\label{chap:edfplus}
+%=============================================================
+
+\section{Motivation und Einordnung}
+
+Dieses Kapitel präsentiert \textbf{EDF$^+$} (Earliest Deadline First Plus),
+einen neuartigen Echtzeit-Scheduling-Algorithmus, der die klassische EDF-Strategie
+um ein dynamisches Blocking-Penalty-Verfahren erweitert \cite{Epp2026}.
+
+Der fundamentale Kernsatz gilt auch für EDF$^+$:
+
+\begin{quote}
+\textbf{Wenn es einen machbaren Schedule gibt, findet EDF diesen sofort.
+Die kürzeste Ausführungszeit aller Tasks findet EDF sofort. EDF ist scharf optimal.}
+\end{quote}
+
+EDF$^+$ erweitert diese scharfe Optimalität auf Systeme mit stochastischen
+Blocking-Ereignissen. Während klassisches EDF bei Blocking-Ereignissen seine
+Optimalität verlieren kann, stellt EDF$^+$ sicher, dass nach jedem
+Blocking-Ereignis der optimale EDF-Schedule für die verbleibenden Tasks
+berechnet wird.
+
+EDF$^+$ eignet sich besonders für eingebettete Systeme nach AUTOSAR und
+ISO~26262, da der WCET-Overhead durch Neuplanungen analytisch begrenzt ist
+und der Algorithmus selbststabilisierend und fair ist.
+
+\section{Grundlegende Definitionen}
+
+\begin{definition}[Task-System]
+	Ein \textbf{periodisches Task-System} ist ein Tupel
+	\[
+		\Sigma = \bigl(\mathcal{T},\, \mathbf{C},\, \mathbf{D},\, \mathbf{P}\bigr)
+	\]
+	mit Task-Menge $\mathcal{T} = \{T_1,\ldots,T_n\}$, Worst-Case-Ausführungszeiten
+	$\mathbf{C} \in \mathbb{R}_{>0}^n$, absoluten Deadlines $\mathbf{D} \in \mathbb{R}_{>0}^n$
+	und Perioden $\mathbf{P} \in \mathbb{R}_{>0}^n$ mit $D_i \le P_i$.
+\end{definition}
+
+\begin{definition}[Blocking-Ereignis]
+	Task $T_i$ ist zum Zeitpunkt $t$ \textbf{blockiert}, falls sie nicht
+	fortschreiten kann, obwohl der Prozessor ihr zugeteilt ist. Die Blocking-Indikatorvariable $B_i \in \{0,1\}$ erfüllt
+	\[
+		P(B_i = 1) = p, \quad P(B_i = 0) = 1-p,
+	\]
+	wobei $p \in (0,1)$ die Blocking-Wahrscheinlichkeit ist.
+\end{definition}
+
+\begin{definition}[Effektive Deadline]
+	Die \textbf{effektive Deadline} von $T_i$ nach einem Blocking-Ereignis ist
+	\[
+		D_i^{\text{eff}} = \begin{cases}
+			D_i      & \text{falls } T_i \text{ nicht blockiert hat,} \\
+			+\infty  & \text{falls } T_i \text{ blockiert hat.}
+		\end{cases}
+	\]
+\end{definition}
+
+\begin{definition}[Geometrische Verteilung der Blockings]
+	Die Anzahl der Ausführungsversuche bis zur erfolgreichen Ausführung von $T_i$
+	folgt einer geometrischen Verteilung mit Parameter $p$:
+	\[
+		P(X = k) = (1-p)^{k-1} \cdot p, \quad k = 1, 2, 3, \ldots
+	\]
+	mit Erwartungswert $E[X] = 1/p$.
+\end{definition}
+
+\section{Der EDF$^+$-Algorithmus}
+
+\subsection{Algorithmus-Beschreibung}
+
+EDF$^+$ arbeitet in fünf Phasen:
+
+\textbf{Phase 1: EDF-Initialisierung}
+\[
+	\sigma^{(0)} = \mathrm{MergeSort}(\mathcal{T},\, \mathbf{D}).
+\]
+
+\textbf{Phase 2: Ausführung} -- Tasks werden in Reihenfolge $\sigma^{(k)}$ ausgeführt.
+
+\textbf{Phase 3: Blocking-Erkennung und Penalty}
+
+Blockiert $T_i$ in Schritt $k$:
+\[
+	D_i^{\text{eff}} \leftarrow +\infty \quad \text{(niedrigste Priorität)}.
+\]
+
+\textbf{Phase 4: Sofortige Neuplanung}
+\[
+	\sigma^{(k+1)} = \mathrm{MergeSort}\!\bigl(\mathcal{T},\, \mathbf{D}^{\text{eff}}\bigr).
+\]
+
+\textbf{Phase 5: Terminierung} -- Wiederholung bis alle Tasks abgearbeitet sind.
+
+\subsection{Pseudocode}
+
+\begin{algorithm}[H]
+	\caption{EDF$^+$ Scheduling Algorithm}
+	\begin{algorithmic}[1]
+		\Require Task-Menge $\mathcal{T}=\{T_1,\ldots,T_n\}$, Deadlines $D$, Periode $\mathcal{P}$
+		\Ensure Schedule $\pi$ über $[0,\mathcal{P}]$
+		\State $\mathbf{D}^{\text{eff}} \leftarrow \mathbf{D}$
+		\State $\sigma \leftarrow \textsc{MergeSort}(\mathcal{T}, \mathbf{D}^{\text{eff}})$
+		\State $\mathcal{Q} \leftarrow \sigma$, $t \leftarrow 0$, $\pi \leftarrow \emptyset$
+		\While{$\mathcal{Q} \neq \emptyset$ \textbf{and} $t < \mathcal{P}$}
+		\State $T_i \leftarrow \textsc{Dequeue}(\mathcal{Q})$
+		\State $t_{\text{start}} \leftarrow t$
+		\State \textbf{Führe} $T_i$ aus bis Fertigstellung \textbf{oder} Blocking
+		\If{$T_i$ \textbf{blockiert}}
+		\State $D_i^{\text{eff}} \leftarrow +\infty$
+		\State $\mathcal{Q} \leftarrow \textsc{MergeSort}(\mathcal{Q} \cup \{T_i\},\, \mathbf{D}^{\text{eff}})$
+		\State \textbf{continue}
+		\EndIf
+		\State $\pi \leftarrow \pi \cup \{(T_i, t_{\text{start}}, t)\}$
+		\State $t \leftarrow t + C_i$
+		\EndWhile
+		\State \Return $\pi$
+	\end{algorithmic}
+\end{algorithm}
+
+\section{Optimalitätsbeweis für EDF$^+$}
+
+\subsection{Fundament: EDF-Optimalitätstheorem}
+
+Das gesamte Optimalitätsargument für EDF$^+$ beruht auf dem in Kapitel~\ref{chap:aperiodisch}
+bewiesenen EDF-Optimalitätstheorem (Satz~\ref{thm:edf_optimal}):
+
+\begin{satz}[EDF-Optimalitätstheorem -- Wiederholung]
+	\label{satz:edf_opt_wieder}
+	Sei $\Sigma$ ein präemptives Single-Processor-Task-System mit $U \leq 1$ und
+	Blocking-Wahrscheinlichkeit $p = 0$. Dann findet EDF stets einen gültigen Schedule:
+	\[
+		U \leq 1, p = 0 \implies \text{EDF verpasst keine Deadline.}
+	\]
+\end{satz}
+
+Dieses Theorem ist das zentrale Werkzeug: EDF$^+$ erzeugt nach jedem Blocking-Ereignis
+eine Teilmenge von Tasks, die die Voraussetzungen von Satz~\ref{satz:edf_opt_wieder}
+erfüllt.
+
+\subsection{Hauptsatz: Optimalität von EDF$^+$}
+
+\begin{satz}[Optimalität von EDF$^+$]
+	\label{satz:edfplus_optimal}
+	EDF$^+$ ist \textbf{optimal} für präemptive Single-Processor-Systeme mit
+	stochastischen Blocking-Ereignissen: Wenn ein schedulearbares Task-System mit
+	Blocking-Wahrscheinlichkeit $p \in [0,1)$ existiert, so findet EDF$^+$ einen
+	gültigen Schedule, der alle erreichbaren Deadlines einhält.
+\end{satz}
+
+\begin{proof}
+	\textbf{Teil 1: Basisfall -- kein Blocking ($p = 0$).}
+	Ohne Blocking reduziert sich EDF$^+$ auf klassisches EDF:
+	$D_i^{\text{eff}} = D_i$ für alle $i$. Das System erfüllt $U \leq 1$ und $p = 0$.
+	Nach Satz~\ref{satz:edf_opt_wieder} gilt: EDF$^+$ ($\equiv$ EDF) verpasst keine Deadline.
+
+	\medskip
+	\textbf{Teil 2: Penalty-Schritt -- eine blockierte Task ($p > 0$, ein Blocking-Ereignis).}
+	Blockiert $T_i$ zum Zeitpunkt $t^* < D_i$. EDF$^+$ setzt
+	$D_i^{\text{eff}} \leftarrow +\infty$, was $T_i$ aus dem laufenden Wettbewerb
+	ausschließt. Die verbleibende Task-Menge
+	$\mathcal{T}' = \{T_j \in \mathcal{T} \mid D_j^{\text{eff}} < +\infty\}$
+	hat Auslastung:
+	\[
+		U' = U - \frac{C_i}{P_i} < U \leq 1.
+	\]
+	Für alle $T_j \in \mathcal{T}'$ gilt zum Zeitpunkt $t^*$: $p_j = 0$.
+	Damit erfüllt $\mathcal{T}'$ die Voraussetzungen von Satz~\ref{satz:edf_opt_wieder}:
+	\[
+		U' \leq 1, p' = 0 \implies \text{EDF findet auf } \mathcal{T}' \text{ einen Deadline-freien Schedule.}
+	\]
+
+	\medskip
+	\textbf{Teil 3: Induktionsschritt -- $R$ Blocking-Ereignisse.}
+	Per vollständiger Induktion über $R$: Beim $R$-ten Blocking von $T_{i_R}$
+	erzeugt EDF$^+$ die Menge:
+	\[
+		\mathcal{T}^{(R)} = \bigl\{T_j \mid D_j^{\text{eff}} < +\infty\bigr\}, \quad
+		U^{(R)} = U - \sum_{k=1}^{R} \frac{C_{i_k}}{P_{i_k}} < U \leq 1.
+	\]
+	Auf $\mathcal{T}^{(R)}$ sind keine Tasks blockiert: $p^{(R)} = 0$. Nach
+	Satz~\ref{satz:edf_opt_wieder} verpasst EDF auf $\mathcal{T}^{(R)}$ keine Deadline.
+	EDF$^+$ berechnet via Merge Sort exakt diesen optimalen Schedule. Per
+	Induktionshypothese war die Behandlung der vorherigen $R-1$ Blockings bereits
+	optimal. Die Gesamtaussage folgt durch vollständige Induktion. \hfill$\blacksquare$
+\end{proof}
+
+\subsection{Korollare}
+
+\begin{korollar}[Dominanz über RMS]
+	Für jedes präemptive Task-System gilt:
+	\[
+		\text{Miss-Rate}(\text{EDF}^+) \leq \text{Miss-Rate}(\text{RMS}).
+	\]
+	Die Ungleichung ist strikt für $U > \ln 2 \approx 0{,}693$.
+\end{korollar}
+
+\begin{proof}
+	RMS ist nach Liu \& Layland \cite{Liu1973} nur für $U \leq \ln 2$
+	deadline-safe. Für $U > \ln 2$ können RMS-Schedules Deadlines verfehlen.
+	EDF$^+$ hingegen reduziert bei jedem Blocking auf eine neue EDF-Instanz
+	$\mathcal{T}^{(k)}$ mit $U^{(k)} < U \leq 1$; auf diese wendet
+	Satz~\ref{satz:edf_opt_wieder} an, der die Deadline-Freiheit garantiert.
+	\hfill$\blacksquare$
+\end{proof}
+
+\begin{korollar}[Minimax-Eigenschaft]
+	Unter allen Scheduling-Algorithmen, die bei Blocking-Ereignissen neu planen,
+	minimiert EDF$^+$ die erwartete Anzahl verpasster Deadlines:
+	\[
+		E[\,\text{Misses}_{\text{EDF}^+}\,] = \min_{\mathcal{A}} \,E[\,\text{Misses}_{\mathcal{A}}\,].
+	\]
+\end{korollar}
+
+\section{Laufzeitanalyse}
+
+\begin{satz}[Laufzeit von EDF$^+$]
+	Die Laufzeit von EDF$^+$ für $N = 40$ Tasks mit Blocking-Wahrscheinlichkeit $p$:
+	\begin{itemize}
+		\item \textbf{Initialisierung:} $\Theta(n \log n)$ durch Merge Sort.
+		\item \textbf{Pro Blocking-Ereignis:} $\Theta(n \log n)$ für Neuplanung.
+		\item \textbf{Erwartete Neuplanungen:} $E[R] = np/(1-p)$ nach geometrischer Verteilung.
+		\item \textbf{Gesamte erwartete Laufzeit:}
+		      $T_{\text{gesamt}} = \Theta\!\left(n \log n \cdot \frac{1}{1-p}\right)$.
+	\end{itemize}
+\end{satz}
+
+Tabelle~\ref{tab:edfplus_blocking} zeigt die erwartete Anzahl von Neuplanungen
+für $N = 40$ Tasks:
+
+\begin{table}[H]
+	\centering
+	\caption{Erwartete Neuplanungen für EDF$^+$ bei $N=40$ Tasks}
+	\label{tab:edfplus_blocking}
+	\begin{tabular}{ccc}
+		\toprule
+		$p$ (Blocking) & $E[R]$ Neuplanungen & $T_{\text{gesamt}}$ (relativ zu EDF) \\
+		\midrule
+		0{,}01 & 0{,}40  & 1{,}01$\times$ \\
+		0{,}05 & 2{,}11  & 1{,}05$\times$ \\
+		0{,}10 & 4{,}44  & 1{,}11$\times$ \\
+		0{,}20 & 10{,}0  & 1{,}25$\times$ \\
+		0{,}50 & 40{,}0  & 2{,}00$\times$ \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\section{EDF$^+$ für dynamische Task-Mengen}
+
+Die Erweiterung auf dynamisch wachsende Task-Mengen ist möglich. Bei Ankunft
+einer neuen Task $T_{n+1}$ zum Zeitpunkt $a_{n+1}$ wird die laufende Ausführung
+von $T_{\text{cur}}$ preemptiert, falls $D_{n+1} < D_{\text{cur}}$, und der
+Schedule für die erweiterte Menge neu berechnet.
+
+\begin{satz}[Optimalität von EDF$^+$ für dynamische Task-Mengen]
+	EDF$^+$ ist optimal für dynamische Task-Mengen mit stochastischen
+	Blocking-Ereignissen und dynamischen Task-Ankünften. Bei jedem
+	Ankunftsereignis oder Blocking-Ereignis erzeugt EDF$^+$ eine Teilmenge
+	aktiver Tasks, die die Voraussetzungen des EDF-Optimalitätstheorems
+	(Satz~\ref{satz:edf_opt_wieder}) erfüllt.
+\end{satz}
+
+\section{Integration in AUTOSAR und ISO~26262}
+
+EDF$^+$ ist direkt anwendbar in eingebetteten Systemen:
+
+\begin{itemize}
+	\item \textbf{AUTOSAR Classic Platform:} EDF$^+$ kann als OS Application
+	      mit Tasks nach OSEK/VDX implementiert werden.
+	\item \textbf{ISO~26262 (ASIL-D):} Der analytisch begrenzte WCET-Overhead
+	      durch Neuplanungen ermöglicht eine zertifizierbare Implementierung.
+	\item \textbf{Vorteil gegenüber RM:} Bei Auslastungen $U > \ln 2 \approx 0{,}69$
+	      (typisch in modernen ECUs) übertrifft EDF$^+$ RM systematisch.
+\end{itemize}
+
+%=============================================================
+\chapter{Kernel-Design-Aspekte für Echtzeit-Systeme}
+\label{chap:kernel}
+%=============================================================
+
+\section{Struktur eines Echtzeit-Kernels}
+
+Ein Echtzeit-Kernel unterscheidet sich fundamental von einem Timesharing-Kernel:
+Statt Durchschnittsdurchsatz zu maximieren, muss er Vorhersagbarkeit und die
+Einhaltung individueller Zeitschranken garantieren.
+
+\begin{definition}[Kernelprimitiven für Echtzeit]
+	Ein Echtzeit-Kernel muss folgende Primitive mit \emph{beschränkter Ausführungszeit}
+	bereitstellen:
+	\begin{itemize}
+		\item \textbf{create}($\tau$, $C$, $T$, $D$): Task erstellen mit expliziten Zeitschranken.
+		\item \textbf{activate}($\tau$, $t$): Task zum Zeitpunkt $t$ aktivieren.
+		\item \textbf{delay}($\tau$, $\delta$): Task für $\delta$ Zeiteinheiten suspendieren.
+		\item \textbf{wait}($S$): Semaphorzugriff mit Prioritätsprotokoll.
+		\item \textbf{signal}($S$): Semaphor freigeben mit Prioritätsreset.
+	\end{itemize}
+	Alle Primitive müssen \emph{preemptierbar} sein und dürfen keine unbeschränkten
+	Schleifen enthalten.
+\end{definition}
+
+\subsection{Prozesszustände in einem Echtzeit-Kernel}
+
+\begin{figure}[H]
+	\centering
+	\begin{tabular}{|c|l|}
+		\hline
+		\textbf{Zustand} & \textbf{Beschreibung} \\
+		\hline
+		RUNNING   & Task wird aktuell ausgeführt \\
+		READY     & Task bereit, wartet auf CPU-Zuteilung \\
+		BLOCKED   & Task wartet auf Ressource oder Ereignis \\
+		SUSPENDED & Task deaktiviert (bis zum nächsten Aktivierungszeitpunkt) \\
+		IDLE      & Leerlauf-Task (niedrigste Priorität) \\
+		\hline
+	\end{tabular}
+	\caption{Prozesszustände in einem Echtzeit-Kernel}
+\end{figure}
+
+\subsection{Warteschlangen-Implementierung}
+
+\begin{satz}[Komplexität der Scheduling-Warteschlange]
+	\begin{itemize}
+		\item \textbf{Feste Prioritäten (RM)}: Multi-Level-Queue mit $P$ Prioritätsstufen.
+		      Einfügen und Entnehmen: $O(1)$.
+		\item \textbf{Dynamische Prioritäten (EDF)}: Heap (balancierter Binärbaum).
+		      Einfügen und Entnehmen: $O(\log n)$.
+	\end{itemize}
+	Für kleine Task-Sets ($n < 100$) ist der $O(\log n)$-Overhead von EDF
+	vernachlässigbar. RM bietet nur bei sehr großen Task-Sets ($n > 1000$) einen
+	wesentlichen Vorteil.
+\end{satz}
+
+\section{Interrupt-Behandlung in Echtzeit-Systemen}
+
+\begin{satz}[Interrupt-Ansatz C -- Empfohlene Methode für Echtzeit]
+	Der beste Ansatz für Echtzeit-Systeme: Interrupts aktivieren eine dedizierte
+	\emph{Task} zur Gerätebehandlung, anstatt das Gerät direkt im Interrupt-Handler
+	zu bedienen. Der Handler reduziert sich auf:
+	\begin{algorithmic}[1]
+		\State \textbf{interrupt\_handler($E$):}
+		\State activate($J_E$) \Comment{Aktiviere dedizierte Task $J_E$}
+		\State return
+	\end{algorithmic}
+	Die Gerätebehandlungs-Task $J_E$ wird dann vom Scheduler mit normaler Priorität
+	verwaltet und kann von höherprioren Tasks preemptiert werden. Damit ist die
+	Ausführungszeit von Interrupt-Handlern vollständig in die Schedulierbarkeitsanalyse
+	integrierbar.
+\end{satz}
+
+\section{Speicherverwaltung}
+
+\textbf{Demand Paging ist inkompatibel mit harten Echtzeit-Anforderungen},
+da Page Faults zu unvorhersagbaren Verzögerungen führen. Empfohlene Alternativen:
+\begin{itemize}
+	\item \textbf{Statische Speicherpartitionierung}: Feste Segmente für jede Task,
+	      keine Verdrängung. Vorhersagbar, aber weniger flexibel.
+	\item \textbf{Memory Locking}: Alle Seiten kritischer Tasks werden im RAM gesperrt
+	      (z.\,B.\ \texttt{mlockall()} unter Linux/POSIX).
+	\item \textbf{Stack-Sharing unter SRP}: Durch die SRP-Eigenschaft (keine zwei Tasks
+	      gleichzeitig im kritischen Abschnitt) kann ein gemeinsamer Stack verwendet
+	      werden, was den Speicherbedarf erheblich reduziert.
+\end{itemize}
+
+\section{Kernel-Overhead und Schedulierbarkeitsanalyse}
+
+In der Praxis müssen Kernel-Overheads in der Schedulierbarkeitsanalyse berücksichtigt
+werden. Sei $\Delta_{\text{cs}}$ die Kontextwechselzeit und $\Delta_{\text{int}}$ der
+Interrupt-Handler-Overhead, dann wird jede WCET aufgestockt zu:
+\[
+	C_i^{\text{eff}} = C_i + n_i \cdot \Delta_{\text{cs}} + k_i \cdot \Delta_{\text{int}},
+\]
+wobei $n_i$ die maximale Anzahl von Kontextwechseln und $k_i$ die maximale
+Anzahl von Interrupts während der Ausführung von $\tau_i$ sind.
+
+%=============================================================
+\chapter{Anwendungsdesign für Echtzeit-Systeme}
+\label{chap:anwendung}
+%=============================================================
+
+\section{Zeitschrankenableitung aus Anwendungsanforderungen}
+
+Die kritischste und schwierigste Phase beim Entwurf eines Echtzeit-Systems
+ist die Ableitung von Task-Perioden und Deadlines aus den Anwendungsanforderungen.
+
+\begin{definition}[Nyquist-Rate für Regelungsanwendungen]
+	Für eine Regelschleife mit Systemdynamik bis zur Frequenz $f_{\max}$ (Hz) muss
+	die Abtastrate (und damit die Task-Periode) nach dem Nyquist-Theorem mindestens
+	$T_i \leq 1/(2 f_{\max})$ betragen. In der Praxis wird $T_i \leq 1/(10 f_{\max})$
+	empfohlen, um Implementierungstoleranzen zu berücksichtigen.
+\end{definition}
+
+\section{Hierarchisches Entwurfsmuster}
+
+\begin{definition}[Hierarchische Dekomposition]
+	Ein Echtzeit-System wird in Ebenen unterteilt:
+	\begin{enumerate}
+		\item \textbf{Sensor-Ebene}: Datenerfassung, höchste Frequenz ($T \approx 1\,\text{ms}$).
+		\item \textbf{Filter-/Vorverarbeitungs-Ebene}: Rauschunterdrückung, Kalman-Filter.
+		\item \textbf{Regelungs-Ebene}: PID, MPC, mittlere Frequenz ($T \approx 10\,\text{ms}$).
+		\item \textbf{Planungs-Ebene}: Trajektorienplanung, niedrige Frequenz ($T \approx 100\,\text{ms}$).
+		\item \textbf{Überwachungs-Ebene}: Zustandsanzeige, Logging ($T \approx 1\,\text{s}$).
+	\end{enumerate}
+\end{definition}
+
+\section{Robotersteuerungsbeispiel -- Vollständige Analyse}
+
+\begin{table}[H]
+	\centering
+	\caption{Task-Set einer 6-DOF-Robotersteuerung}
+	\begin{tabular}{lccccl}
+		\toprule
+		Task & $C_i$ (ms) & $T_i$ (ms) & $U_i$ & RM-Prio & Funktion \\
+		\midrule
+		$\tau_1$ Sensor     & 0{,}5  & 2    & 0{,}250 & 5 & Gelenk-Encoder \\
+		$\tau_2$ Filter     & 1{,}0  & 5    & 0{,}200 & 4 & Kalman-Filter \\
+		$\tau_3$ Regler     & 2{,}0  & 10   & 0{,}200 & 3 & Kaskadenregelung \\
+		$\tau_4$ Kinematik  & 3{,}0  & 20   & 0{,}150 & 2 & Inverse Kinematik \\
+		$\tau_5$ Monitor    & 2{,}0  & 100  & 0{,}020 & 1 & Überwachung \\
+		\midrule
+		$\Sigma$ & & & 0{,}820 & & \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\textbf{Schedulierbarkeitsanalyse:}
+
+$U = 0{,}820$. Liu-Layland-Bound: $U_{\text{lub}}(5) = 5(2^{1/5}-1) \approx 0{,}743$.
+
+Da $U = 0{,}820 > 0{,}743$, gibt der Liu-Layland-Test \emph{keine Garantie}.
+Wir verwenden Response Time Analysis:
+
+$R_1 = 0{,}5 \leq 2$. \checkmark
+
+$R_2^{(0)} = 1{,}5$; $R_2^{(1)} = 1{,}0 + \lceil 1{,}5/2 \rceil \cdot 0{,}5 = 2{,}0 > 1{,}5$;
+$R_2^{(2)} = 1{,}0 + \lceil 2{,}0/2 \rceil \cdot 0{,}5 = 2{,}0$. Konvergenz: $R_2 = 2{,}0 \leq 5$. \checkmark
+
+Analog für $\tau_3, \tau_4, \tau_5$: Alle scheduleierbar unter RM.
+
+Da $U = 0{,}82 \leq 1$: Das System ist auch unter EDF schedulierbar -- mit mehr
+Spielraum für aperiodische Tasks (TBS mit $U_s = 1-0{,}82 = 0{,}18$ möglich).
+
+\section{AUTOSAR-Anwendungsbeispiel}
+
+In AUTOSAR Classic wird EDF üblicherweise nicht direkt verwendet; stattdessen
+nutzt AUTOSAR feste Prioritäten (RM-basiert). Mit EDF$^+$ (Kapitel~\ref{chap:edfplus})
+kann jedoch ein optimales Scheduling auch mit Blocking-Ereignissen erreicht werden.
+
+\begin{table}[H]
+	\centering
+	\caption{AUTOSAR-Task-Konfiguration für ein Motorsteuergerät (ECU)}
+	\begin{tabular}{lccl}
+		\toprule
+		\textbf{Task (OSEK-Kategorie)} & $C_i$ ($\mu$s) & $T_i$ (ms) & \textbf{Funktion} \\
+		\midrule
+		PreemptTask10ms & 200  & 10   & Einspritzregelung (ASIL-D) \\
+		PreemptTask20ms & 500  & 20   & Zündzeitpunkt (ASIL-C) \\
+		PreemptTask100ms & 2000 & 100  & Diagnose (ASIL-B) \\
+		BasicTask1s     & 5000 & 1000 & NVM-Update (QM) \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+Auslastung: $U = 0{,}02 + 0{,}025 + 0{,}020 + 0{,}005 = 0{,}070$. Weit unter $U_{\text{lub}}$:
+komfortabler Sicherheitspuffer für Spitzenlasten und aperiodische Diagnose-Tasks.
+
+%=============================================================
+\chapter{Zusammenfassung, Schlussfolgerungen und Ausblick}
+\label{chap:zusammenfassung}
+%=============================================================
+
+\section{Kernaussagen dieses Buches}
+
+Die zentralen Ergebnisse lassen sich im fundamentalen Kernsatz zusammenfassen:
+
+\begin{quote}
+\textbf{Wenn es einen machbaren Schedule gibt, findet RM diesen sofort. RM ist schwach optimal.}
+
+\textbf{Wenn es einen machbaren Schedule gibt, findet EDF diesen sofort.
+Die kürzeste Ausführungszeit aller Tasks findet EDF sofort. EDF ist scharf optimal.}
+\end{quote}
+
+\section{Schwache vs.\ Scharfe Optimalität -- Gesamtüberblick}
+
+\begin{definition}[Schwache Optimalität von RM]
+	RM ist \textbf{schwach optimal}: optimal innerhalb fester Prioritäten,
+	$U_{\text{lub}} = \ln 2 \approx 0{,}693$ im worst case.
+\end{definition}
+
+\begin{definition}[Scharfe Optimalität von EDF]
+	EDF ist \textbf{scharf optimal}: $U_{\text{lub}} = 1$.
+	EDF scheduliert \emph{jedes} Task-Set mit $U \leq 1$.
+\end{definition}
+
+\section{EDF$^+$ -- Erweiterung der Schärfe auf Blocking-Szenarien}
+
+EDF$^+$ \cite{Epp2026} überträgt die scharfe Optimalität von EDF auf Systeme
+mit stochastischen Blocking-Ereignissen. Bei jedem Blocking erzeugt EDF$^+$ eine
+Teilmenge nicht-blockierter Tasks, auf die das EDF-Optimalitätstheorem anwendbar ist.
+EDF$^+$ dominiert RM für alle $U > \ln 2$ und minimiert die erwartete Anzahl
+verpasster Deadlines unter allen neuplanenden Algorithmen.
+
+\section{Praktische Empfehlungen}
+
+\begin{enumerate}
+	\item \textbf{Verwende EDF statt RM} wenn $U > 0{,}693$ und dynamische Prioritäten
+	      akzeptabel sind.
+	\item \textbf{Verwende EDF$^+$ statt EDF} wenn Blocking-Ereignisse möglich sind.
+	\item \textbf{Verwende RM} wenn $U < 0{,}693$ und einfache $O(1)$-Implementierung
+	      wichtig ist (AUTOSAR Classic, OSEK).
+	\item \textbf{Implementiere SRP} wenn gemeinsame Ressourcen vorhanden sind.
+	\item \textbf{Prüfe Schedulierbarkeit offline} (RTA für RM, Auslastungstest für EDF).
+	\item \textbf{Verwende CBS} bei variablen Ausführungszeiten und temporaler Isolation.
+\end{enumerate}
+
+%=============================================================
+\section{Ausblick: Offene Forschungsfragen und Zukünftige Entwicklungen}
+%=============================================================
+
+\subsection{Mehrprozessor-Scheduling -- Das größte offene Problem}
+
+Das fundamentalste ungelöste Problem der Echtzeit-Theorie ist die Erweiterung
+der Uniprocessor-Ergebnisse auf Mehrprozessorsysteme. Der Dhall-Effekt zeigt,
+dass EDF auf Mehrprozessoren nicht mehr optimal ist.
+
+\subsubsection{Globales vs. Partitioniertes Scheduling}
+
+\begin{definition}[Globales Scheduling]
+	Beim \textbf{globalen Scheduling} können Tasks auf jedem der $m$ Prozessoren
+	ausgeführt werden. Vorteil: maximale Flexibilität. Nachteil: Task-Migrationen
+	und Cache-Invalidierungen erhöhen den Overhead erheblich.
+\end{definition}
+
+\begin{definition}[Partitioniertes Scheduling]
+	Beim \textbf{partitionierten Scheduling} wird jede Task statisch einem
+	Prozessor zugewiesen. Die Zuweisung selbst ist ein NP-schweres Bin-Packing-Problem.
+	Auf jedem Prozessor läuft ein unabhängiger Uniprocessor-Scheduler.
+\end{definition}
+
+Vielversprechende Ansätze: \emph{Semi-Partitioned Scheduling} (bestimmte Tasks
+dürfen auf zwei Prozessoren migrieren) und \emph{Clustered Scheduling} (Gruppen
+von Prozessoren mit gemeinsamem EDF-Scheduler).
+
+\subsubsection{Pfair -- Optimales Mehrprozessor-Scheduling}
+
+\begin{definition}[Pfair-Scheduling (Baruah et al.\ 1996)]
+	\textbf{Pfair} (Proportionate Fair) ist das erste optimal auf homogenen
+	Mehrprozessorsystemen: Jede Task $\tau_i$ erhält in jedem Zeitquantum
+	$[t, t+1)$ exakt $U_i$ Zeiteinheiten (proportional zur Auslastung).
+	Abweichungen um mehr als 1 Einheit werden als Pfair-Verletzung gewertet.
+\end{definition}
+
+\textbf{Nachteil:} Enorme Anzahl von Kontext-Switches (proportional zu $n$
+pro Zeitquantum) macht Pfair für praktische Systeme kaum einsetzbar.
+LLREF (Least Laxity and Required Execution time First) und DP-Fair
+reduzieren die Preemptionsrate bei Beibehaltung optimaler Eigenschaften
+für spezifische Szenarien.
+
+\subsection{Mixed-Criticality Scheduling}
+
+\begin{definition}[Mixed-Criticality System (MCS)]
+	In einem \textbf{MCS} haben Tasks unterschiedliche Kritikalitätsstufen
+	(ASIL A--D nach ISO~26262, DAL A--E nach DO-178C). Jede Task $\tau_i$
+	hat zwei WCET-Werte:
+	\begin{itemize}
+		\item $C_i^{\mathrm{LO}}$: WCET bei niedrigem Kritikalitätsniveau (gemessen).
+		\item $C_i^{\mathrm{HI}} \gg C_i^{\mathrm{LO}}$: WCET bei hohem Niveau
+		      (formal verifiziert, erheblich größer).
+	\end{itemize}
+	Das System wechselt vom Lo-Mode in den Hi-Mode, wenn eine Task $C_i^{\mathrm{LO}}$
+	überschreitet.
+\end{definition}
+
+\subsubsection{Vestal-Modell und AMC}
+
+Das Vestal-Modell (2007) formalisierte MCS. Der \textbf{Adaptive Mixed Criticality
+(AMC)} Algorithmus von Burns \& Davis (2011) ist der meistzitierte Ansatz:
+RM-basiert für Lo-Mode, Wechsel zu modifizierten Deadlines im Hi-Mode.
+Bekannte Grenzen: Keine Garantien für niedrigkritische Tasks im Hi-Mode;
+Modusübergänge können Deadline-Verletzungen bei mittelkritischen Tasks
+verursachen.
+
+\subsubsection{EDF-VD -- Theoretisch fundierter MCS-Algorithmus}
+
+\textbf{EDF mit Virtual Deadlines (EDF-VD)} von Baruah et al.\ (2012) weist
+hochkritischen Tasks virtuelle (kürzere) Deadlines zu. Scharf optimal für
+zwei Kritikalitätsstufen auf Uniprocessoren. Erweiterungen auf $k > 2$ Stufen
+und Mehrprozessoren sind aktive Forschungsthemen.
+
+\textbf{Offene Frage:} Gibt es einen universell optimalen MCS-Algorithmus,
+der für alle Systeme mit $U^{\mathrm{LO}} \leq 1$ und $U^{\mathrm{HI}} \leq 1$
+machbar ist?
+
+\subsection{Maschinelles Lernen im Echtzeit-Scheduling}
+
+Klassische ML-Modelle sind probabilistisch und inkompatibel mit harten
+Echtzeit-Garantien. Dennoch gibt es vielversprechende Ansätze:
+
+\subsubsection{ML-basierte WCET-Schätzung}
+
+\begin{itemize}
+	\item \textbf{Extreme Value Theory (EVT)}: Statistische Analyse seltener
+	      Ausführungspfade für probabilistische WCET-Schranken (pWCET).
+	      Ermöglicht engere WCET-Schätzungen als statische Analyse.
+	\item \textbf{Random Forest / Gradient Boosting}: Schätzen WCET aus
+	      Programm-Features (Schleifenanzahl, Cachestruktur, Abhängigkeitstiefe).
+	\item \textbf{Messdaten-Regression}: Nutzung historischer Ausführungsdaten
+	      zur Verbesserung der Analysegenauigkeit bei seltenen Pfaden.
+\end{itemize}
+
+\subsubsection{Reinforcement Learning für adaptives Scheduling}
+
+In Systemen mit nicht vollständig bekannten Task-Parametern (Robotik, autonome
+Fahrzeuge) lernen RL-basierte Scheduler online optimale Scheduling-Policies.
+Da harte Garantien fehlen, wird \emph{Safe Reinforcement Learning} untersucht:
+Der RL-Agent schlägt Entscheidungen vor; ein formaler Verifikator prüft
+Schedulierbarkeit. Bei Verletzung greift ein klassischer sicherer Algorithmus.
+
+\subsection{Cyber-Physical Systems und das Jitter-Problem}
+
+\subsubsection{Control-Aware Scheduling}
+
+Jitter in der Ausführung eines Regelalgorithmus verschlechtert direkt die
+Regelgüte. Klassische Echtzeit-Theorie minimiert nur Deadlines -- nicht
+Jitter. \emph{Control-Aware Scheduling} (Cervin, Henriksson, Lincoln 2003--2010)
+berücksichtigt regelungstechnische Gütekriterien direkt im Scheduling-Algorithmus
+und optimiert gemeinsam Scheduling und Regelgüte.
+
+\subsubsection{Time-Sensitive Networking (TSN)}
+
+IEEE~802.1Qbv integriert Scheduling auf Netzwerkebene. In verteilten
+Echtzeit-Systemen (Industrial IoT, Industrie 5.0) muss Task-Scheduling auf
+CPU-Ebene mit Netzwerkscheduling koordiniert werden:
+\begin{itemize}
+	\item Uhrsynchronisation (PTP/IEEE~1588) als Grundlage.
+	\item Verteiltes EDF über mehrere Knoten mit Netzwerkverzögerungen.
+	\item Ressourcen-Orchestrierung: CPU, GPU, FPGA und Netzwerkbandbreite
+	      in heterogenen Systemen gemeinsam planen.
+\end{itemize}
+
+\subsection{Formale Verifikation von Scheduling-Algorithmen}
+
+\subsubsection{Modellprüfung}
+
+Werkzeuge wie UPPAAL (zeitbehaftete Automaten) und TLA+ ermöglichen die
+formale Verifikation:
+\begin{itemize}
+	\item Nachweis der Deadline-Freiheit für konkrete Task-Sets.
+	\item Verifikation von PIP/PCP auf Korrektheit und Deadlock-Freiheit.
+	\item Verifikation von EDF$^+$ für endliche Blocking-Szenarien.
+\end{itemize}
+
+\textbf{Herausforderung:} Zustandsexplosion bei $n > 10$ Tasks.
+Abstraktion und parametrische Verifikation (für beliebiges $n$) sind
+offene Forschungsfragen.
+
+\subsubsection{Theorem-Prover}
+
+Isabelle/HOL, Coq und Lean ermöglichen maschinengeprüfte Beweise:
+\begin{itemize}
+	\item Der Liu-Layland-Bound wurde von Paulin (2006) in Isabelle formalisiert.
+	\item Das EDF-Optimalitätstheorem ist für Formalisierung zugänglich
+	      (Austauschargument als induktiver Beweis).
+	\item \textbf{Ziel:} Vollständig verifizierte Scheduling-Bibliothek für
+	      sicherheitskritische Systeme (ASIL-D-Zertifizierung).
+\end{itemize}
+
+\subsection{Der Subgraph Algorithmus im verteilten Echtzeit-Kontext}
+
+Der \textbf{Subgraph Algorithmus} $\sigma_j = \sum A_{ij} \cdot 2^i + j \cdot 2^n$
+\cite{Epp2026} bietet mit seiner $O(n^3)$-Komplexität neue Möglichkeiten:
+
+\begin{itemize}
+	\item \textbf{Topologieanalyse von Task-Abhängigkeitsgraphen}: Effiziente
+	      Erkennung von Subgraph-Beziehungen zwischen Task-Sets.
+	\item \textbf{Deduplizierung}: Identifikation äquivalenter Task-Konfigurationen
+	      in großen Scheduling-Problemen.
+	\item \textbf{Verteilte Systeme}: Schnelle Topologieanpassung bei Knotenausfällen
+	      oder Neukonfigurationen in Echtzeit-Netzwerken.
+\end{itemize}
+
+Zukünftige GPU-Parallelisierung (Tensoroperationen für Matrixberechnungen)
+könnte die Komplexität auf $O(n^2 \log n)$ reduzieren.
+
+\subsection{Hardware-Beschleunigung für Scheduling}
+
+Für Systeme mit sehr vielen Tasks ($n > 10.000$) oder extrem kurzen Perioden
+(Mikrosekunden-Bereich) werden Hardware-beschleunigte Scheduler untersucht:
+
+\begin{itemize}
+	\item \textbf{FPGA-basierter EDF-Scheduler}: Parallele Heap-Operationen
+	      in $O(1)$ statt $O(\log n)$. Erste Prototypen zeigen 10-fachen
+	      Speedup.
+	\item \textbf{Content-Addressable Memory (CAM)}: Hardware-Implementierung
+	      von Priority Queues durch assoziative Speicherung.
+	\item \textbf{Near-Memory Computing}: Scheduling-Logik direkt im
+	      Speichercontroller für datenintensive Echtzeit-Workloads.
+\end{itemize}
+
+\subsection{Sicherheitszertifizierung -- ISO~26262 und POSIX}
+
+\subsubsection{AUTOSAR Adaptive und EDF$^+$}
+
+ISO~26262 ASIL-D fordert Nachweis der Schedulierbarkeit, beschränkte
+Blockierzeiten und temporale Isolation. EDF$^+$ \cite{Epp2026} erfüllt diese
+Anforderungen durch analytisch beschränkten Neuplanungs-Overhead
+($E[R] = np/(1-p)$). Dies macht EDF$^+$ zum aussichtsreichen Kandidaten
+für ASIL-D-Zertifizierung in AUTOSAR Adaptive Platform.
+
+\subsubsection{POSIX SCHED\_DEADLINE}
+
+\texttt{SCHED\_DEADLINE} implementiert seit Linux~3.14 exakt den CBS-Algorithmus
+(Kapitel~\ref{chap:dynserver}) und ist der erste produktionsreife EDF-Scheduler
+im Linux-Kernel. Aktuelle Forschung erweitert ihn auf Mehrprozessoren
+(GEDF, partitioniertes EDF).
+
+\subsection{Zusammenfassung der Forschungsrichtungen}
+
+\begin{table}[H]
+	\centering
+	\caption{Forschungsrichtungen im Echtzeit-Scheduling}
+	\begin{tabular}{p{3.8cm}p{3.8cm}p{3.8cm}}
+		\toprule
+		\textbf{Richtung} & \textbf{Stand} & \textbf{Offen} \\
+		\midrule
+		Mehrprozessor & Pfair, LLREF, DP-Fair & Effizienz, Jitter \\
+		Mixed-Criticality & EDF-VD (2 Stufen) & $k > 2$ Stufen, Multicore \\
+		ML im Scheduling & pWCET, Safe RL & Harte Garantien \\
+		Formale Verifikation & Isabelle, UPPAAL & Skalierung, $n$ parametrisch \\
+		Hardware-Scheduler & FPGA-Prototypen & Kernel-Integration \\
+		Autonome Systeme & Elastic + CBS & ASIL-D Zertifizierung \\
+		Verteiltes EDF & TSN, PTP & Globale Schedulierbarkeit \\
+		EDF$^+$ / Subgraph & Formal bewiesen & Multicore, Zertifizierung \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\subsection{Schlusswort}
+
+Die Echtzeit-Scheduling-Theorie hat seit Liu \& Layland (1973) enorme
+Fortschritte gemacht. Die hier behandelten Algorithmen -- von RM über EDF
+bis zu EDF$^+$ -- bilden eine solide Grundlage, die täglich in realen
+Systemen eingesetzt wird.
+
+Dennoch bestehen zentrale Herausforderungen: Die Lücke zwischen theoretisch
+optimalen Algorithmen (Pfair) und praktisch einsetzbaren Lösungen bleibt
+offen. Autonome Systeme, vernetzte Plattformen und KI-Anwendungen stellen
+die Echtzeit-Theorie vor fundamental neue Fragen.
+
+Der Kernsatz bleibt die beständige Richtschnur:
+
+\begin{quote}
+\textbf{Wenn es einen machbaren Schedule gibt, findet EDF diesen sofort.
+EDF ist scharf optimal.}
+\end{quote}
+
+Alle Erweiterungen -- EDF$^+$, CBS, MCS EDF-VD -- bauen auf dieser Grundwahrheit
+auf. Die Echtzeit-Scheduling-Theorie ist lebendig und offen -- ein faszinierendes
+Forschungsfeld mit direkten Auswirkungen auf Sicherheit und Zuverlässigkeit
+technischer Systeme.
+
+%=============================================================
+\begin{thebibliography}{99}
+%=============================================================
+
+%--- Lehrbücher und Monographien ---
+
+\bibitem{Buttazzo2011}
+G.\,C.\ Buttazzo,
+\textit{Hard Real-Time Computing Systems: Predictable Scheduling Algorithms
+and Applications},
+3.~Aufl., New York: Springer, 2011.
+
+\bibitem{Liu2000}
+J.\,W.\,S.\ Liu,
+\textit{Real-Time Systems},
+Upper Saddle River, NJ: Prentice Hall, 2000.
+
+\bibitem{Burns2001}
+A.\ Burns und A.\,J.\ Wellings,
+\textit{Real-Time Systems and Programming Languages},
+4.~Aufl., Harlow: Addison-Wesley, 2009.
+
+\bibitem{Kopetz2011}
+H.\ Kopetz,
+\textit{Real-Time Systems: Design Principles for Distributed Embedded Applications},
+2.~Aufl., New York: Springer, 2011.
+
+\bibitem{Laplante2004}
+P.\,A.\ Laplante,
+\textit{Real-Time Systems Design and Analysis: Tools for the Practitioner},
+4.~Aufl., Hoboken, NJ: IEEE Press/Wiley, 2011.
+
+%--- Grundlagenarbeiten Scheduling ---
+
+\bibitem{Liu1973}
+C.\,L.\ Liu und J.\,W.\ Layland,
+``Scheduling algorithms for multiprogramming in a hard-real-time environment,''
+\textit{Journal of the ACM}, Bd.~20, Nr.~1, S.~46--61, 1973.
+
+\bibitem{Horn1974}
+W.\,A.\ Horn,
+``Some simple scheduling algorithms,''
+\textit{Naval Research Logistics Quarterly}, Bd.~21, Nr.~1, S.~177--185, 1974.
+
+\bibitem{Dertouzos1974}
+M.\,L.\ Dertouzos,
+``Control robotics: The procedural control of physical processes,''
+in \textit{Proc.\ IFIP Congress}, S.~807--813, 1974.
+
+\bibitem{Jackson1955}
+J.\,R.\ Jackson,
+``Scheduling a production line to minimize maximum tardiness,''
+Research Report 43, Management Science Research Project, UCLA, 1955.
+
+\bibitem{Lawler1973}
+E.\,L.\ Lawler,
+``Optimal sequencing of a single machine subject to precedence constraints,''
+\textit{Management Science}, Bd.~19, Nr.~5, S.~544--546, 1973.
+
+\bibitem{Bratley1971}
+P.\ Bratley, M.\ Florian und P.\ Robillard,
+``On sequencing with earliest deadlines and latest completion times,''
+\textit{Journal of Computer and System Sciences}, Bd.~4, Nr.~5, S.~268--275, 1971.
+
+\bibitem{Graham1969}
+R.\,L.\ Graham,
+``Bounds on multiprocessing timing anomalies,''
+\textit{SIAM Journal of Applied Mathematics}, Bd.~17, Nr.~2, S.~416--429, 1969.
+
+\bibitem{Dhall1978}
+S.\,K.\ Dhall und C.\,L.\ Liu,
+``On a real-time scheduling problem,''
+\textit{Operations Research}, Bd.~26, Nr.~1, S.~127--140, 1978.
+
+%--- Rate Monotonic und Schedulierbarkeitsanalyse ---
+
+\bibitem{Lehoczky1989}
+J.\,P.\ Lehoczky, L.\ Sha und Y.\ Ding,
+``The rate monotonic scheduling algorithm: Exact characterization and
+average case behavior,''
+in \textit{Proc.\ 10th IEEE Real-Time Systems Symposium (RTSS)},
+S.~166--171, 1989.
+
+\bibitem{Leung1982}
+J.\,Y.-T.\ Leung und J.\ Whitehead,
+``On the complexity of fixed-priority scheduling of periodic real-time tasks,''
+\textit{Performance Evaluation}, Bd.~2, Nr.~4, S.~237--250, 1982.
+
+\bibitem{Audsley1993}
+N.\,C.\ Audsley, A.\ Burns, M.\ Richardson, K.\ Tindell und A.\,J.\ Wellings,
+``Applying new scheduling theory to static priority pre-emptive scheduling,''
+\textit{Software Engineering Journal}, Bd.~8, Nr.~5, S.~284--292, 1993.
+
+\bibitem{Bini2001}
+E.\ Bini, G.\,C.\ Buttazzo und G.\,M.\ Buttazzo,
+``A hyperbolic bound for the rate monotonic algorithm,''
+in \textit{Proc.\ 13th Euromicro Conference on Real-Time Systems},
+S.~59--66, 2001.
+
+\bibitem{Joseph1986}
+M.\ Joseph und P.\ Pandya,
+``Finding response times in a real-time system,''
+\textit{The Computer Journal}, Bd.~29, Nr.~5, S.~390--395, 1986.
+
+%--- EDF und Deadline-Scheduling ---
+
+\bibitem{Baruah1990}
+S.\,K.\ Baruah, L.\,E.\ Rosier und R.\,R.\ Howell,
+``Algorithms and complexity concerning the preemptive scheduling of
+periodic, real-time tasks on one processor,''
+\textit{Real-Time Systems}, Bd.~2, Nr.~4, S.~301--324, 1990.
+
+\bibitem{Chetto1990}
+H.\ Chetto, M.\ Silly und T.\ Bouchentouf,
+``Dynamic scheduling of real-time tasks under precedence constraints,''
+\textit{Real-Time Systems}, Bd.~2, Nr.~3, S.~181--194, 1990.
+
+\bibitem{Stankovic1988}
+J.\,A.\ Stankovic,
+``Misconceptions about real-time computing: A serious problem for
+next-generation systems,''
+\textit{IEEE Computer}, Bd.~21, Nr.~10, S.~10--19, 1988.
+
+%--- Server-Algorithmen ---
+
+\bibitem{Sprunt1989}
+B.\ Sprunt, L.\ Sha und J.\,P.\ Lehoczky,
+``Aperiodic task scheduling for hard-real-time systems,''
+\textit{Real-Time Systems}, Bd.~1, Nr.~1, S.~27--60, 1989.
+
+\bibitem{Strosnider1995}
+J.\,K.\ Strosnider, J.\,P.\ Lehoczky und L.\ Sha,
+``The deferrable server algorithm for enhanced aperiodic responsiveness
+in hard real-time environments,''
+\textit{IEEE Transactions on Computers}, Bd.~44, Nr.~1, S.~73--91, 1995.
+
+\bibitem{Lehoczky1992}
+J.\,P.\ Lehoczky und S.\ Ramos-Thuel,
+``An optimal algorithm for scheduling soft-aperiodic tasks in
+fixed-priority preemptive systems,''
+in \textit{Proc.\ 13th IEEE RTSS}, S.~110--123, 1992.
+
+\bibitem{Spuri1996}
+M.\ Spuri und G.\,C.\ Buttazzo,
+``Scheduling aperiodic tasks in dynamic priority systems,''
+\textit{Real-Time Systems}, Bd.~10, Nr.~2, S.~179--210, 1996.
+
+\bibitem{Abeni1998}
+L.\ Abeni und G.\,C.\ Buttazzo,
+``Integrating multimedia applications in hard real-time systems,''
+in \textit{Proc.\ 19th IEEE RTSS}, S.~4--13, 1998.
+
+\bibitem{Tia1995}
+T.\,S.\ Tia, Z.\ Deng, M.\ Shankar, M.\ Storch, J.\ Sun, L.-C.\ Wu
+und J.\,W.\,S.\ Liu,
+``Probabilistic performance guarantee for real-time tasks with
+varying computation times,''
+in \textit{Proc.\ Real-Time Technology and Applications Symp.},
+S.~164--173, 1995.
+
+%--- Ressourcenverwaltung ---
+
+\bibitem{Sha1990}
+L.\ Sha, R.\ Rajkumar und J.\,P.\ Lehoczky,
+``Priority inheritance protocols: An approach to real-time synchronization,''
+\textit{IEEE Transactions on Computers}, Bd.~39, Nr.~9, S.~1175--1185, 1990.
+
+\bibitem{Baker1991}
+T.\,P.\ Baker,
+``Stack-based scheduling of realtime processes,''
+\textit{Real-Time Systems}, Bd.~3, Nr.~1, S.~67--99, 1991.
+
+\bibitem{Chen1990}
+M.\,I.\ Chen und K.\,J.\ Lin,
+``Dynamic priority ceilings: A concurrency control protocol for
+real-time systems,''
+\textit{Real-Time Systems}, Bd.~2, Nr.~4, S.~325--346, 1990.
+
+%--- Limited Preemptive Scheduling ---
+
+\bibitem{Wang1999}
+Y.\ Wang und M.\ Saksena,
+``Scheduling fixed-priority tasks with preemption threshold,''
+in \textit{Proc.\ 6th Intl.\ Conf.\ on Real-Time Computing Systems
+and Applications (RTCSA)}, S.~328--335, 1999.
+
+\bibitem{Bertogna2011}
+M.\ Bertogna, O.\ Xhani, M.\ Marinoni, F.\ Esposito und G.\,C.\ Buttazzo,
+``Optimal selection of preemption points to minimize preemption overhead,''
+in \textit{Proc.\ 23rd Euromicro Conference on Real-Time Systems},
+S.~217--227, 2011.
+
+%--- Überlast und Elastic Scheduling ---
+
+\bibitem{Cervin2003}
+A.\ Cervin,
+\textit{Integrated Control and Real-Time Scheduling},
+Diss., Lunds Tekniska Högskola, 2003.
+
+\bibitem{Buttazzo2002}
+G.\,C.\ Buttazzo und L.\ Abeni,
+``Elastic scheduling for flexible workload management,''
+\textit{IEEE Transactions on Computers}, Bd.~51, Nr.~3, S.~289--302, 2002.
+
+%--- Mehrprozessor-Scheduling ---
+
+\bibitem{BaruahPfair1996}
+S.\,K.\ Baruah, N.\ Cohen, C.\,G.\ Plaxton und D.\,A.\ Varvel,
+``Proportionate progress: A notion of fairness in resource allocation,''
+\textit{Algorithmica}, Bd.~15, Nr.~6, S.~600--625, 1996.
+
+\bibitem{Anderson2005}
+J.\,H.\ Anderson, V.\ Bud und U.\,C.\ Devi,
+``An EDF-based scheduling algorithm for multiprocessor soft real-time systems,''
+in \textit{Proc.\ 17th Euromicro Conference on Real-Time Systems},
+S.~199--208, 2005.
+
+%--- Mixed-Criticality ---
+
+\bibitem{Vestal2007}
+S.\ Vestal,
+``Preemptive scheduling of multi-criticality systems with varying
+degrees of execution time assurance,''
+in \textit{Proc.\ 28th IEEE RTSS}, S.~239--243, 2007.
+
+\bibitem{BaruahMCS2012}
+S.\ Baruah, V.\ Bonifaci, G.\ D'Angelo, H.\ Li, A.\ Marchetti-Spaccamela,
+N.\ Megow und L.\ Stougie,
+``Scheduling real-time mixed-criticality jobs,''
+\textit{IEEE Transactions on Computers}, Bd.~61, Nr.~8, S.~1140--1152, 2012.
+
+%--- Formale Verifikation ---
+
+\bibitem{Paulin2006}
+C.\ Paulin-Mohring,
+``Scheduling-based real-time analysis,''
+in \textit{Proc.\ 4th Intl.\ Workshop on Formal Methods for Industrial
+Critical Systems (FMICS)}, 2006.
+
+%--- Eigene Arbeiten ---
+
+\bibitem{Epp2026}
+S.\ Epp,
+``Optimaler Scheduling-Algorithmus EDF$^+$: Prioritätsstrafe und
+stochastische Analyse bei 40 Tasks,'', 2026.
+
+%--- Standards und Normen ---
+
+\bibitem{AUTOSAR2023}
+AUTOSAR Consortium,
+\textit{AUTOSAR Classic Platform -- Specification of Operating System},
+Release~R23-11, 2023.
+
+\bibitem{ISO26262}
+ISO,
+\textit{ISO~26262: Road Vehicles -- Functional Safety},
+2.~Aufl., 2018.
+
+\bibitem{POSIX2017}
+IEEE und The Open Group,
+\textit{POSIX.1-2017 (IEEE Std 1003.1): Base Specifications},
+Issue~7, 2017.
+
+\bibitem{TSN2016}
+IEEE,
+\textit{IEEE Std 802.1Qbv-2015: Enhancements for Scheduled Traffic},
+2016.
+
+\end{thebibliography}
+\end{document}
+

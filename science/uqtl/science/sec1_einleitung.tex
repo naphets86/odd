@@ -1,0 +1,104 @@
+﻿% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Einleitung}
+\label{sec:einleitung}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+\subsection{Motivation und Problemstellung}
+\label{subsec:motivation}
+
+Moderne Softwaresysteme sind in hohem Maße polyglott: Unterschiedliche Dienste
+einer verteilten Anwendungslandschaft werden in verschiedenen Programmiersprachen
+entwickelt, greifen jedoch häufig auf gemeinsame relationale Datenbanksysteme zu.
+Python-basierte Datenpipelines, Java-Microservices und C\#-Backend-Dienste
+formulieren dabei konzeptuell identische Datenbankabfragen -- verwenden jedoch
+vollständig unterschiedliche Ausdrucksmittel.
+
+Betrachten wir die simple Frage \emph{,,Alle aktiven Nutzer, deren Umsatz im
+vergangenen Quartal über 1\,000~Euro lag, sortiert nach Name''}: In Python
+(SQLAlchemy), Java (Stream API mit JPA Criteria) und C\#/.NET (LINQ to Entities)
+entstehen syntaktisch völlig unterschiedliche Ausdrücke, die jedoch -- bei
+korrekter Implementierung -- denselben SQL-Ausdruck erzeugen sollten. In der
+Praxis tun sie dies \emph{nicht}: ORMs und Query-Builder unterschiedlicher
+Sprachen und Frameworks produzieren inkompatible, unvollständige oder semantisch
+abweichende SQL-Ausgaben \cite{ansi_sql_2016,hibernate_docs,ef_core_docs}.
+
+Daraus entstehen konkrete Probleme in der Softwareentwicklung:
+
+\begin{itemize}[leftmargin=1.5cm]
+  \item \textbf{Inkonsistente Abfrageergebnisse:} Zwei Dienste, die dieselbe
+    Geschäftslogik ausdrücken, erhalten unterschiedliche Daten.
+  \item \textbf{Erschwerte Code-Reviews:} Entwickler müssen den mentalen Overhead
+    betreiben, Query-Ausdrücke verschiedener Sprachen zu verstehen und zu vergleichen.
+  \item \textbf{Migrations-Risiken:} Bei der Portierung von Java- nach Python-Diensten
+    oder umgekehrt kann keine mechanische Äquivalenzprüfung erfolgen.
+  \item \textbf{Fehlende Testbarkeit:} Ohne definiertes Normalformat ist die
+    automatisierte Verifikation der Query-Äquivalenz nicht möglich.
+\end{itemize}
+
+\subsection{Zielsetzung des Standards}
+\label{subsec:ziel}
+
+Der \textbf{Unified Query Translation Layer (UQTL)} adressiert diese Problematik
+durch die Definition eines umfassenden technischen Standards, der folgende
+Ziele verfolgt:
+
+\begin{enumerate}[leftmargin=1.5cm]
+  \item \textbf{Semantische Äquivalenzgarantie:} Ausdrücke derselben logischen
+    Abfrage in Python, Java und C\# werden stets in dasselbe normalisierte
+    SQL-Statement übersetzt.
+  \item \textbf{Intermediäre Darstellung:} Ein sprachunabhängiger
+    \emph{Intermediate Query Tree (IQT)} dient als gemeinsame Zwischenrepräsentation.
+  \item \textbf{Vollständige Operatorabdeckung:} Alle wesentlichen
+    Query-Operatoren (Filter, Projektion, Aggregation, Sortierung, Joins,
+    Fensterfunktionen, Unterabfragen) sind standardisiert.
+  \item \textbf{Erweiterbarkeit:} Der Standard definiert Erweiterungspunkte
+    für datenbankspezifische Dialekte (PostgreSQL, MySQL, Oracle, MSSQL).
+  \item \textbf{Konformitätsstufen:} Vier Konformitätsstufen (CL-1 bis CL-4)
+    erlauben schrittweise Implementierungen.
+\end{enumerate}
+
+\begin{infobox}
+\textbf{Kerndefinition des Standards:}
+
+Für jede Menge logisch äquivalenter Query-Ausdrücke $Q_{py}$, $Q_{java}$,
+$Q_{cs}$ aus Python, Java bzw.\ C\# gilt unter UQTL:
+\[
+  \mathrm{SQL}(Q_{py}) \;\equiv_\sigma\; \mathrm{SQL}(Q_{java})
+  \;\equiv_\sigma\; \mathrm{SQL}(Q_{cs})
+\]
+wobei $\equiv_\sigma$ die semantische SQL-Äquivalenz unter einer gegebenen
+Datenbankschema-Instanz $\sigma$ bezeichnet.
+\end{infobox}
+
+\subsection{Abgrenzung}
+\label{subsec:abgrenzung}
+
+Der UQTL-Standard ist \emph{kein} vollständiges ORM-Framework und definiert
+\emph{keine} Laufzeitbibliothek. Er spezifiziert:
+
+\begin{itemize}[leftmargin=1.5cm]
+  \item Die formale Syntax und Semantik des Intermediate Query Tree (IQT)
+  \item Übersetzungsregeln von den drei Quellsprachen in den IQT
+  \item Übersetzungsregeln vom IQT nach ANSI SQL:2016
+  \item Normalisierungsregeln für eindeutige SQL-Ausgaben
+  \item Konformitätsanforderungen für Implementierungen
+\end{itemize}
+
+Explizit nicht Teil des Standards sind: Datenbankzugriff, Verbindungsverwaltung,
+Entity-Mapping, Caching-Strategien sowie dialektspezifische Optimierungen
+(diese können als optionale Erweiterungen definiert werden).
+
+\subsection{Aufbau der Arbeit}
+\label{subsec:aufbau}
+
+\ref{sec:grundlagen} legt die theoretischen Grundlagen dar:
+relationale Algebra, Query-Abstraktionen und bestehende Ansätze.
+\ref{sec:iqt} definiert den Intermediate Query Tree formal.
+\ref{sec:operatoren} spezifiziert alle Übersetzungsregeln.
+\ref{sec:beispiele} demonstriert den Standard anhand umfangreicher
+Praxisbeispiele.
+\ref{sec:konformitaet} definiert die Konformitätsstufen.
+\ref{sec:implementierung} beschreibt Referenzimplementierungen.
+\ref{sec:diskussion} diskutiert Limitierungen und Erweiterungen.
+\ref{sec:zusammenfassung} fasst die Ergebnisse zusammen.
+

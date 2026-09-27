@@ -1,0 +1,882 @@
+﻿% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Praxisbeispiele}
+\label{sec:beispiele}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Dieses Kapitel demonstriert den UQTL-Standard anhand vollständiger,
+realistischer Datenbankszenarien. Für jedes Beispiel wird zunächst das
+Datenbankschema beschrieben, dann die Abfrage in allen drei Quellsprachen
+formuliert, und schließlich das vom Standard definierte normalisierte
+SQL-Ergebnis angegeben.
+
+\subsection{Datenmodell für die Beispiele}
+\label{subsec:datenmodell}
+
+Alle Beispiele basieren auf folgendem vereinfachten E-Commerce-Schema:
+
+\begin{lstlisting}[style=sqlstyle, caption={Datenbankschema für Beispiele},
+  label=lst:schema]
+CREATE TABLE customers (
+    id          INTEGER PRIMARY KEY,
+    name        VARCHAR(200) NOT NULL,
+    email       VARCHAR(200) UNIQUE,
+    country     VARCHAR(50),
+    active      BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMP NOT NULL,
+    tier        VARCHAR(20)  -- 'bronze', 'silver', 'gold', 'platinum'
+);
+
+CREATE TABLE orders (
+    id          INTEGER PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id),
+    order_date  DATE NOT NULL,
+    status      VARCHAR(30),  -- 'pending','confirmed','shipped','delivered'
+    total       DECIMAL(12,2) NOT NULL
+);
+
+CREATE TABLE order_items (
+    id          INTEGER PRIMARY KEY,
+    order_id    INTEGER REFERENCES orders(id),
+    product_id  INTEGER REFERENCES products(id),
+    quantity    INTEGER NOT NULL,
+    unit_price  DECIMAL(10,2) NOT NULL
+);
+
+CREATE TABLE products (
+    id          INTEGER PRIMARY KEY,
+    name        VARCHAR(200) NOT NULL,
+    category    VARCHAR(100),
+    price       DECIMAL(10,2) NOT NULL,
+    stock       INTEGER NOT NULL DEFAULT 0
+);
+\end{lstlisting}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 1: Einfache Filterung und Projektion}
+\label{subsec:bsp1}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Alle aktiven Kunden aus Deutschland, nur Name und E-Mail,
+alphabetisch sortiert.
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 1 -- Python (SQLAlchemy 2.0)},
+  label=lst:bsp1_py]
+from sqlalchemy import select
+from models import Customer
+
+stmt = (
+    select(Customer.name, Customer.email)
+    .where(Customer.active == True)
+    .where(Customer.country == "DE")
+    .order_by(Customer.name.asc())
+)
+results = session.execute(stmt).all()
+\end{lstlisting}
+
+\begin{lstlisting}[style=javastyle, caption={Beispiel 1 -- Java (JPA Criteria API)},
+  label=lst:bsp1_java]
+CriteriaBuilder cb = em.getCriteriaBuilder();
+CriteriaQuery<Object[]> cq = cb.createQuery(Object[].class);
+Root<Customer> c = cq.from(Customer.class);
+
+cq.multiselect(c.get("name"), c.get("email"))
+  .where(
+      cb.and(
+          cb.isTrue(c.get("active")),
+          cb.equal(c.get("country"), "DE")
+      )
+  )
+  .orderBy(cb.asc(c.get("name")));
+
+List<Object[]> results = em.createQuery(cq).getResultList();
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 1 -- C\# (EF Core / LINQ)},
+  label=lst:bsp1_cs]
+// Query Syntax
+var results = from c in context.Customers
+              where c.Active == true && c.Country == "DE"
+              orderby c.Name ascending
+              select new { c.Name, c.Email };
+
+// Equivalent Method Syntax
+var results = context.Customers
+    .Where(c => c.Active == true && c.Country == "DE")
+    .OrderBy(c => c.Name)
+    .Select(c => new { c.Name, c.Email });
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL (identisch für alle drei Quellsprachen):}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+SELECT t1.name, t1.email
+FROM customers AS t1
+WHERE t1.active = TRUE
+  AND t1.country = 'DE'
+ORDER BY t1.name ASC
+\end{lstlisting}
+\end{successbox}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 2: Aggregation mit GROUP BY und HAVING}
+\label{subsec:bsp2}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Anzahl bestätigter Bestellungen und Gesamtumsatz pro Kunde,
+nur Kunden mit mehr als 3 Bestellungen, absteigend nach Umsatz.
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 2 -- Python},
+  label=lst:bsp2_py]
+from sqlalchemy import select, func
+
+stmt = (
+    select(
+        Order.customer_id,
+        func.count(Order.id).label("order_count"),
+        func.sum(Order.total).label("total_revenue")
+    )
+    .where(Order.status == "confirmed")
+    .group_by(Order.customer_id)
+    .having(func.count(Order.id) > 3)
+    .order_by(func.sum(Order.total).desc())
+)
+\end{lstlisting}
+
+\begin{lstlisting}[style=javastyle, caption={Beispiel 2 -- Java},
+  label=lst:bsp2_java]
+CriteriaBuilder cb = em.getCriteriaBuilder();
+CriteriaQuery<Object[]> cq = cb.createQuery(Object[].class);
+Root<Order> o = cq.from(Order.class);
+
+Expression<Long>    cnt = cb.count(o.get("id"));
+Expression<Double>  rev = cb.sum(o.<Double>get("total"));
+
+cq.multiselect(o.get("customerId"), cnt, rev)
+  .where(cb.equal(o.get("status"), "confirmed"))
+  .groupBy(o.get("customerId"))
+  .having(cb.gt(cnt, 3L))
+  .orderBy(cb.desc(rev));
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 2 -- C\#},
+  label=lst:bsp2_cs]
+var results = context.Orders
+    .Where(o => o.Status == "confirmed")
+    .GroupBy(o => o.CustomerId)
+    .Where(g => g.Count() > 3)
+    .OrderByDescending(g => g.Sum(o => o.Total))
+    .Select(g => new {
+        CustomerId   = g.Key,
+        OrderCount   = g.Count(),
+        TotalRevenue = g.Sum(o => o.Total)
+    });
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL:}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+SELECT t1.customer_id,
+       COUNT(t1.id)    AS order_count,
+       SUM(t1.total)   AS total_revenue
+FROM orders AS t1
+WHERE t1.status = 'confirmed'
+GROUP BY t1.customer_id
+HAVING COUNT(t1.id) > 3
+ORDER BY SUM(t1.total) DESC
+\end{lstlisting}
+\end{successbox}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 3: INNER JOIN mit mehreren Bedingungen}
+\label{subsec:bsp3}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Name und E-Mail der Kunden, die mindestens eine
+gelieferte Bestellung im Wert über 500~EUR hatten, im Jahr 2024.
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 3 -- Python (JOIN)},
+  label=lst:bsp3_py]
+from sqlalchemy import select, extract
+
+stmt = (
+    select(Customer.name, Customer.email)
+    .join(Order, Customer.id == Order.customer_id)
+    .where(Order.status == "delivered")
+    .where(Order.total > 500)
+    .where(extract("year", Order.order_date) == 2024)
+    .distinct()
+)
+\end{lstlisting}
+
+\begin{lstlisting}[style=javastyle, caption={Beispiel 3 -- Java (JOIN)},
+  label=lst:bsp3_java]
+CriteriaBuilder cb = em.getCriteriaBuilder();
+CriteriaQuery<Object[]> cq = cb.createQuery(Object[].class);
+Root<Customer> c = cq.from(Customer.class);
+Join<Customer, Order> o = c.join("orders", JoinType.INNER);
+
+cq.multiselect(c.get("name"), c.get("email"))
+  .where(cb.and(
+      cb.equal(o.get("status"), "delivered"),
+      cb.gt(o.<BigDecimal>get("total"), new BigDecimal("500")),
+      cb.equal(
+          cb.function("YEAR", Integer.class, o.get("orderDate")),
+          2024
+      )
+  ))
+  .distinct(true);
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 3 -- C\# (JOIN)},
+  label=lst:bsp3_cs]
+var results = (from c in context.Customers
+               join o in context.Orders
+                 on c.Id equals o.CustomerId
+               where o.Status == "delivered"
+                  && o.Total > 500m
+                  && o.OrderDate.Year == 2024
+               select new { c.Name, c.Email })
+              .Distinct();
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL:}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+SELECT DISTINCT t1.name, t1.email
+FROM customers AS t1
+INNER JOIN orders AS t2
+  ON t1.id = t2.customer_id
+WHERE t2.status = 'delivered'
+  AND t2.total > 500
+  AND EXTRACT(YEAR FROM t2.order_date) = 2024
+\end{lstlisting}
+\end{successbox}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 4: LEFT OUTER JOIN und NULL-Behandlung}
+\label{subsec:bsp4}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Alle Kunden mit Anzahl ihrer Bestellungen (auch solche ohne Bestellungen).
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 4 -- Python (LEFT JOIN)},
+  label=lst:bsp4_py]
+from sqlalchemy import select, func, outerjoin
+
+stmt = (
+    select(
+        Customer.id,
+        Customer.name,
+        func.count(Order.id).label("order_count")
+    )
+    .outerjoin(Order, Customer.id == Order.customer_id)
+    .group_by(Customer.id, Customer.name)
+    .order_by(Customer.name)
+)
+\end{lstlisting}
+
+\begin{lstlisting}[style=javastyle, caption={Beispiel 4 -- Java (LEFT JOIN)},
+  label=lst:bsp4_java]
+CriteriaBuilder cb = em.getCriteriaBuilder();
+CriteriaQuery<Object[]> cq = cb.createQuery(Object[].class);
+Root<Customer> c = cq.from(Customer.class);
+Join<Customer, Order> o = c.join("orders", JoinType.LEFT);
+
+cq.multiselect(c.get("id"), c.get("name"), cb.count(o.get("id")))
+  .groupBy(c.get("id"), c.get("name"))
+  .orderBy(cb.asc(c.get("name")));
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 4 -- C\# (LEFT JOIN)},
+  label=lst:bsp4_cs]
+var results = from c in context.Customers
+              join o in context.Orders
+                on c.Id equals o.CustomerId into orders
+              from o in orders.DefaultIfEmpty()
+              group o by new { c.Id, c.Name } into g
+              orderby g.Key.Name
+              select new {
+                  g.Key.Id,
+                  g.Key.Name,
+                  OrderCount = g.Count(o => o != null)
+              };
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL:}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+SELECT t1.id, t1.name, COUNT(t2.id) AS order_count
+FROM customers AS t1
+LEFT OUTER JOIN orders AS t2
+  ON t1.id = t2.customer_id
+GROUP BY t1.id, t1.name
+ORDER BY t1.name ASC
+\end{lstlisting}
+\end{successbox}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 5: Fensterfunktionen (OVER PARTITION BY)}
+\label{subsec:bsp5}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Für jede Bestellung: Rang innerhalb des Kunden nach Bestellwert
+(teuerste = Rang 1), laufende Summe der Bestellwerte pro Kunde.
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 5 -- Python (Window Functions)},
+  label=lst:bsp5_py]
+from sqlalchemy import select, func
+from sqlalchemy import over
+
+rnk = func.rank().over(
+    partition_by=Order.customer_id,
+    order_by=Order.total.desc()
+).label("rnk")
+
+run_total = func.sum(Order.total).over(
+    partition_by=Order.customer_id,
+    order_by=Order.order_date.asc(),
+    rows=(None, 0)  # UNBOUNDED PRECEDING to CURRENT ROW
+).label("running_total")
+
+stmt = select(
+    Order.id,
+    Order.customer_id,
+    Order.total,
+    rnk,
+    run_total
+).order_by(Order.customer_id, rnk)
+\end{lstlisting}
+
+\begin{lstlisting}[style=javastyle, caption={Beispiel 5 -- Java (Window via JPQL / Blaze-Persistence)},
+  label=lst:bsp5_java]
+// Java JPA hat keine native Window Function API.
+// Blaze-Persistence oder native Queries werden benoetigt:
+String jpql = """
+    SELECT o.id, o.customerId, o.total,
+           RANK() OVER (PARTITION BY o.customerId ORDER BY o.total DESC),
+           SUM(o.total) OVER (
+               PARTITION BY o.customerId
+               ORDER BY o.orderDate
+               ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+           )
+    FROM Order o
+    ORDER BY o.customerId, 4
+    """;
+List<Object[]> results = em.createQuery(jpql).getResultList();
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 5 -- C\# (EF Core Window Functions)},
+  label=lst:bsp5_cs]
+// EF Core 8+ mit Window Function Unterstuetzung:
+var results = context.Orders
+    .Select(o => new {
+        o.Id,
+        o.CustomerId,
+        o.Total,
+        Rank = EF.Functions.Rank()
+            .Over()
+            .PartitionBy(o.CustomerId)
+            .OrderByDescending(o.Total),
+        RunningTotal = EF.Functions.Sum(o.Total)
+            .Over()
+            .PartitionBy(o.CustomerId)
+            .OrderBy(o.OrderDate)
+            .RowsBetween(
+                EF.Functions.RowsOrRangeBoundary.UnboundedPreceding,
+                EF.Functions.RowsOrRangeBoundary.CurrentRow)
+    })
+    .OrderBy(x => x.CustomerId)
+    .ThenBy(x => x.Rank);
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL:}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+SELECT t1.id,
+       t1.customer_id,
+       t1.total,
+       RANK() OVER (
+           PARTITION BY t1.customer_id
+           ORDER BY t1.total DESC
+       ) AS rnk,
+       SUM(t1.total) OVER (
+           PARTITION BY t1.customer_id
+           ORDER BY t1.order_date ASC
+           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+       ) AS running_total
+FROM orders AS t1
+ORDER BY t1.customer_id ASC, rnk ASC
+\end{lstlisting}
+\end{successbox}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 6: Unterabfragen (Subqueries)}
+\label{subsec:bsp6}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Kunden, deren letzter Bestellwert über dem Durchschnitt
+aller Bestellwerte liegt.
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 6 -- Python (Subquery)},
+  label=lst:bsp6_py]
+from sqlalchemy import select, func
+
+# Unterabfrage: Durchschnittlicher Bestellwert
+avg_subq = select(func.avg(Order.total)).scalar_subquery()
+
+# Unterabfrage: Letzte Bestellung je Kunde
+last_order = (
+    select(Order.customer_id, func.max(Order.order_date).label("last_date"))
+    .group_by(Order.customer_id)
+    .subquery()
+)
+
+# Hauptabfrage
+stmt = (
+    select(Customer.id, Customer.name)
+    .join(last_order, Customer.id == last_order.c.customer_id)
+    .join(Order, (Order.customer_id == Customer.id) &
+                 (Order.order_date == last_order.c.last_date))
+    .where(Order.total > avg_subq)
+    .order_by(Customer.name)
+)
+\end{lstlisting}
+
+\begin{lstlisting}[style=javastyle, caption={Beispiel 6 -- Java (Subquery)},
+  label=lst:bsp6_java]
+CriteriaBuilder cb = em.getCriteriaBuilder();
+CriteriaQuery<Object[]> cq = cb.createQuery(Object[].class);
+Root<Customer> c = cq.from(Customer.class);
+Join<Customer, Order> o = c.join("orders", JoinType.INNER);
+
+// Scalar Subquery: Durchschnitt
+Subquery<Double> avgSub = cq.subquery(Double.class);
+Root<Order> so = avgSub.from(Order.class);
+avgSub.select(cb.avg(so.<Double>get("total")));
+
+cq.multiselect(c.get("id"), c.get("name"))
+  .where(cb.and(
+      cb.gt(o.<Double>get("total"), avgSub),
+      // letzte Bestellung via correlated subquery ...
+      cb.equal(o.get("orderDate"),
+          cb.greatest(o.<java.time.LocalDate>get("orderDate")))
+  ))
+  .orderBy(cb.asc(c.get("name")));
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 6 -- C\# (Subquery via LINQ)},
+  label=lst:bsp6_cs]
+var avgTotal = context.Orders.Average(o => o.Total);
+
+var lastOrders = context.Orders
+    .GroupBy(o => o.CustomerId)
+    .Select(g => new {
+        CustomerId = g.Key,
+        LastDate   = g.Max(o => o.OrderDate)
+    });
+
+var results = from c in context.Customers
+              join lo in lastOrders on c.Id equals lo.CustomerId
+              join o in context.Orders
+                on new { c.Id, lo.LastDate }
+                equals new { Id = o.CustomerId, LastDate = o.OrderDate }
+              where o.Total > avgTotal
+              orderby c.Name
+              select new { c.Id, c.Name };
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL:}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+SELECT t1.id, t1.name
+FROM customers AS t1
+INNER JOIN orders AS t2
+  ON t1.id = t2.customer_id
+WHERE t2.order_date = (
+    SELECT MAX(t3.order_date)
+    FROM orders AS t3
+    WHERE t3.customer_id = t1.id
+)
+  AND t2.total > (
+    SELECT AVG(t4.total)
+    FROM orders AS t4
+)
+ORDER BY t1.name ASC
+\end{lstlisting}
+\end{successbox}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 7: Komplexer Multi-Join mit Aggregation}
+\label{subsec:bsp7}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Top-5-Produkte nach Umsatz (Menge $\times$ Einzelpreis),
+nur Produkte der Kategorie ,,Elektronik'', mit Anzahl unterschiedlicher Käufer.
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 7 -- Python (Multi-Join + Aggregation)},
+  label=lst:bsp7_py]
+from sqlalchemy import select, func
+
+stmt = (
+    select(
+        Product.id,
+        Product.name,
+        func.sum(OrderItem.quantity * OrderItem.unit_price).label("revenue"),
+        func.count(Order.customer_id.distinct()).label("unique_buyers")
+    )
+    .join(OrderItem, Product.id == OrderItem.product_id)
+    .join(Order, OrderItem.order_id == Order.id)
+    .where(Product.category == "Elektronik")
+    .group_by(Product.id, Product.name)
+    .order_by(func.sum(
+        OrderItem.quantity * OrderItem.unit_price).desc())
+    .limit(5)
+)
+\end{lstlisting}
+
+\begin{lstlisting}[style=javastyle, caption={Beispiel 7 -- Java (Multi-Join + Aggregation)},
+  label=lst:bsp7_java]
+CriteriaBuilder cb = em.getCriteriaBuilder();
+CriteriaQuery<Object[]> cq = cb.createQuery(Object[].class);
+Root<Product> p = cq.from(Product.class);
+Join<Product, OrderItem> oi = p.join("orderItems", JoinType.INNER);
+Join<OrderItem, Order>   o  = oi.join("order",      JoinType.INNER);
+
+Expression<BigDecimal> revenue =
+    cb.sum(cb.prod(oi.<Integer>get("quantity"),
+                   oi.<BigDecimal>get("unitPrice")));
+Expression<Long> buyers =
+    cb.countDistinct(o.get("customerId"));
+
+cq.multiselect(p.get("id"), p.get("name"), revenue, buyers)
+  .where(cb.equal(p.get("category"), "Elektronik"))
+  .groupBy(p.get("id"), p.get("name"))
+  .orderBy(cb.desc(revenue));
+
+List<Object[]> result = em.createQuery(cq)
+    .setMaxResults(5)
+    .getResultList();
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 7 -- C\# (Multi-Join + Aggregation)},
+  label=lst:bsp7_cs]
+var results = context.Products
+    .Where(p => p.Category == "Elektronik")
+    .Join(context.OrderItems,
+          p  => p.Id,
+          oi => oi.ProductId,
+          (p, oi) => new { p, oi })
+    .Join(context.Orders,
+          x  => x.oi.OrderId,
+          o  => o.Id,
+          (x, o) => new { x.p, x.oi, o })
+    .GroupBy(x => new { x.p.Id, x.p.Name })
+    .Select(g => new {
+        g.Key.Id,
+        g.Key.Name,
+        Revenue      = g.Sum(x => x.oi.Quantity * x.oi.UnitPrice),
+        UniqueBuyers = g.Select(x => x.o.CustomerId).Distinct().Count()
+    })
+    .OrderByDescending(x => x.Revenue)
+    .Take(5);
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL:}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+SELECT t1.id,
+       t1.name,
+       SUM(t2.quantity * t2.unit_price)   AS revenue,
+       COUNT(DISTINCT t3.customer_id)     AS unique_buyers
+FROM products AS t1
+INNER JOIN order_items AS t2
+  ON t1.id = t2.product_id
+INNER JOIN orders AS t3
+  ON t2.order_id = t3.id
+WHERE t1.category = 'Elektronik'
+GROUP BY t1.id, t1.name
+ORDER BY SUM(t2.quantity * t2.unit_price) DESC
+LIMIT 5
+\end{lstlisting}
+\end{successbox}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 8: EXISTS-Unterabfrage}
+\label{subsec:bsp8}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Alle Kunden, die mindestens eine Bestellung mit dem Status
+,,shipped'' aber noch keine mit dem Status ,,delivered'' haben.
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 8 -- Python (EXISTS)},
+  label=lst:bsp8_py]
+from sqlalchemy import select, exists
+
+has_shipped = exists(
+    select(Order.id)
+    .where(Order.customer_id == Customer.id)
+    .where(Order.status == "shipped")
+)
+has_delivered = exists(
+    select(Order.id)
+    .where(Order.customer_id == Customer.id)
+    .where(Order.status == "delivered")
+)
+
+stmt = (
+    select(Customer)
+    .where(has_shipped)
+    .where(~has_delivered)
+    .order_by(Customer.name)
+)
+\end{lstlisting}
+
+\begin{lstlisting}[style=javastyle, caption={Beispiel 8 -- Java (EXISTS)},
+  label=lst:bsp8_java]
+CriteriaBuilder cb = em.getCriteriaBuilder();
+CriteriaQuery<Customer> cq = cb.createQuery(Customer.class);
+Root<Customer> c = cq.from(Customer.class);
+
+Subquery<Integer> shipped   = cq.subquery(Integer.class);
+Root<Order> os = shipped.from(Order.class);
+shipped.select(cb.literal(1))
+    .where(cb.and(
+        cb.equal(os.get("customerId"), c.get("id")),
+        cb.equal(os.get("status"), "shipped")
+    ));
+
+Subquery<Integer> delivered = cq.subquery(Integer.class);
+Root<Order> od = delivered.from(Order.class);
+delivered.select(cb.literal(1))
+    .where(cb.and(
+        cb.equal(od.get("customerId"), c.get("id")),
+        cb.equal(od.get("status"), "delivered")
+    ));
+
+cq.select(c)
+  .where(cb.and(
+      cb.exists(shipped),
+      cb.not(cb.exists(delivered))
+  ))
+  .orderBy(cb.asc(c.get("name")));
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 8 -- C\# (EXISTS via Any)},
+  label=lst:bsp8_cs]
+var results = context.Customers
+    .Where(c =>
+        context.Orders.Any(o => o.CustomerId == c.Id
+                             && o.Status == "shipped") &&
+       !context.Orders.Any(o => o.CustomerId == c.Id
+                             && o.Status == "delivered"))
+    .OrderBy(c => c.Name);
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL:}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+SELECT t1.id, t1.name, t1.email, t1.country,
+       t1.active, t1.created_at, t1.tier
+FROM customers AS t1
+WHERE EXISTS (
+    SELECT 1
+    FROM orders AS t2
+    WHERE t2.customer_id = t1.id
+      AND t2.status = 'shipped'
+)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM orders AS t3
+    WHERE t3.customer_id = t1.id
+      AND t3.status = 'delivered'
+)
+ORDER BY t1.name ASC
+\end{lstlisting}
+\end{successbox}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 9: Common Table Expressions (WITH)}
+\label{subsec:bsp9}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Kunden mit überdurchschnittlichem Umsatz (Top-Tier-Analyse),
+unter Verwendung von CTEs für Lesbarkeit.
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 9 -- Python (CTE)},
+  label=lst:bsp9_py]
+from sqlalchemy import select, func
+
+# CTE 1: Gesamtumsatz je Kunde
+customer_revenue = (
+    select(
+        Order.customer_id,
+        func.sum(Order.total).label("total_revenue")
+    )
+    .group_by(Order.customer_id)
+    .cte("customer_revenue")
+)
+
+# CTE 2: Durchschnittsumsatz
+avg_revenue = (
+    select(func.avg(customer_revenue.c.total_revenue).label("avg_rev"))
+    .cte("avg_revenue")
+)
+
+# Hauptabfrage
+stmt = (
+    select(Customer.name, Customer.email,
+           customer_revenue.c.total_revenue)
+    .join(customer_revenue,
+          Customer.id == customer_revenue.c.customer_id)
+    .where(customer_revenue.c.total_revenue >
+           select(avg_revenue.c.avg_rev).scalar_subquery())
+    .order_by(customer_revenue.c.total_revenue.desc())
+)
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 9 -- C\# (CTE-Aequivalent)},
+  label=lst:bsp9_cs]
+// EF Core: CTEs werden als verkettete LINQ-Ausdruecke modelliert
+var customerRevenue = context.Orders
+    .GroupBy(o => o.CustomerId)
+    .Select(g => new {
+        CustomerId    = g.Key,
+        TotalRevenue  = g.Sum(o => o.Total)
+    });
+
+var avgRevenue = customerRevenue.Average(x => x.TotalRevenue);
+
+var results = context.Customers
+    .Join(customerRevenue,
+          c  => c.Id,
+          cr => cr.CustomerId,
+          (c, cr) => new { c, cr })
+    .Where(x => x.cr.TotalRevenue > avgRevenue)
+    .OrderByDescending(x => x.cr.TotalRevenue)
+    .Select(x => new {
+        x.c.Name,
+        x.c.Email,
+        x.cr.TotalRevenue
+    });
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL (mit CTE):}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+WITH customer_revenue AS (
+    SELECT t2.customer_id,
+           SUM(t2.total) AS total_revenue
+    FROM orders AS t2
+    GROUP BY t2.customer_id
+),
+avg_revenue AS (
+    SELECT AVG(cr.total_revenue) AS avg_rev
+    FROM customer_revenue AS cr
+)
+SELECT t1.name, t1.email, cr.total_revenue
+FROM customers AS t1
+INNER JOIN customer_revenue AS cr
+  ON t1.id = cr.customer_id
+WHERE cr.total_revenue > (SELECT avg_rev FROM avg_revenue)
+ORDER BY cr.total_revenue DESC
+\end{lstlisting}
+\end{successbox}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\subsection{Beispiel 10: Vollständige Geschäftslogik-Abfrage}
+\label{subsec:bsp10}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\textbf{Aufgabe:} Monatlicher Umsatzbericht für das Jahr 2024: Monat, Gesamtumsatz,
+Anzahl Bestellungen, Anzahl eindeutiger Kunden, Vergleich zum Vormonat
+(via LAG-Fensterfunktion).
+
+\begin{lstlisting}[style=pythonstyle, caption={Beispiel 10 -- Python (Business Report)},
+  label=lst:bsp10_py]
+from sqlalchemy import select, func, extract
+
+monthly = (
+    select(
+        extract("year",  Order.order_date).label("year"),
+        extract("month", Order.order_date).label("month"),
+        func.sum(Order.total).label("revenue"),
+        func.count(Order.id).label("order_count"),
+        func.count(Order.customer_id.distinct()).label("unique_customers")
+    )
+    .where(extract("year", Order.order_date) == 2024)
+    .where(Order.status != "pending")
+    .group_by(
+        extract("year",  Order.order_date),
+        extract("month", Order.order_date)
+    )
+    .order_by(
+        extract("year",  Order.order_date),
+        extract("month", Order.order_date)
+    )
+    .subquery()
+)
+
+prev_rev = func.lag(monthly.c.revenue, 1).over(
+    order_by=[monthly.c.year, monthly.c.month]
+).label("prev_month_revenue")
+
+stmt = select(monthly, prev_rev)
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharpstyle, caption={Beispiel 10 -- C\# (Business Report)},
+  label=lst:bsp10_cs]
+var monthly = context.Orders
+    .Where(o => o.OrderDate.Year == 2024
+             && o.Status != "pending")
+    .GroupBy(o => new {
+        Year  = o.OrderDate.Year,
+        Month = o.OrderDate.Month
+    })
+    .Select(g => new {
+        g.Key.Year,
+        g.Key.Month,
+        Revenue         = g.Sum(o => o.Total),
+        OrderCount      = g.Count(),
+        UniqueCustomers = g.Select(o => o.CustomerId).Distinct().Count()
+    })
+    .OrderBy(x => x.Year)
+    .ThenBy(x => x.Month);
+
+// LAG-Fenster: EF Core 8+
+var withLag = monthly
+    .Select(m => new {
+        m.Year, m.Month, m.Revenue, m.OrderCount, m.UniqueCustomers,
+        PrevMonthRevenue = EF.Functions.Lag(m.Revenue, 1)
+            .Over()
+            .OrderBy(m.Year).ThenBy(m.Month)
+    });
+\end{lstlisting}
+
+\begin{successbox}
+\textbf{UQTL-Normiertes SQL:}
+\begin{lstlisting}[style=sqlstyle, numbers=none]
+SELECT sub.year,
+       sub.month,
+       sub.revenue,
+       sub.order_count,
+       sub.unique_customers,
+       LAG(sub.revenue, 1) OVER (
+           ORDER BY sub.year ASC, sub.month ASC
+       ) AS prev_month_revenue
+FROM (
+    SELECT EXTRACT(YEAR  FROM t1.order_date) AS year,
+           EXTRACT(MONTH FROM t1.order_date) AS month,
+           SUM(t1.total)                      AS revenue,
+           COUNT(t1.id)                       AS order_count,
+           COUNT(DISTINCT t1.customer_id)     AS unique_customers
+    FROM orders AS t1
+    WHERE EXTRACT(YEAR FROM t1.order_date) = 2024
+      AND t1.status != 'pending'
+    GROUP BY EXTRACT(YEAR  FROM t1.order_date),
+             EXTRACT(MONTH FROM t1.order_date)
+    ORDER BY EXTRACT(YEAR  FROM t1.order_date) ASC,
+             EXTRACT(MONTH FROM t1.order_date) ASC
+) AS sub
+\end{lstlisting}
+\end{successbox}
+

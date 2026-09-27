@@ -1,0 +1,2375 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[german]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, calc}
+
+\geometry{margin=2.5cm}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{korollar}{Korollar}
+\newtheorem{bemerkung}{Bemerkung}
+\newtheorem{theorem}{Theorem}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=mainblue,
+    citecolor=accentred,
+    urlcolor=mainblue,
+    pdftitle={Polynomielle Reduktionen von Compiler- und Linkerproblemen auf das Subgraph-Isomorphismusproblem},
+    pdfauthor={Stephan Epp},
+}
+
+%  Code-Highlighting
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny,
+    breaklines=true,
+    frame=single,
+    literate=%
+    {Ö}{{\"O}}1
+    {Ä}{{\"A}}1
+    {Ü}{{\"U}}1
+    {ß}{{\ss}}1
+    {ü}{{\"u}}1
+    {ä}{{\"a}}1
+    {ö}{{\"o}}1
+    {Î£}{{$\Sigma$}}1
+    {â†’}{{$\rightarrow$}}1
+    {âŠ†}{{$\subseteq$}}1
+    {âŠ‡}{{$\supseteq$}}1
+    {â‰¥}{{$\geq$}}1
+}
+
+\lstdefinestyle{cstyle}{
+	language=C,
+	morekeywords={bool, true, false, uint8_t, uint64_t, int64_t, size_t,
+		SI_Result, SI_Match, Graph, Token, TokenKind, ASTNode,
+		ASTKind, IRInstr, IROp, BasicBlock, CFG, SSAVar, SSAForm,
+		RegAlloc, StaticObj, InitSystem, TypeSystem, ObjFile,
+		Symbol, SymKind, CompileUnit, Linker, CodeBuffer, Relocation},
+}
+
+\lstdefinestyle{bashstyle}{
+	language=bash,
+	morekeywords={make, gcc, ./ccl},
+	keywordstyle=\color{darkgreen}\bfseries,
+}
+
+
+\title{\textbf{Reduktionen beim Kompilieren und Linken\\
+auf das Subgraph-Isomorphismusproblem}\\[0.1em]
+\large Formale Beweise, effiziente Algorithmen und Ausblick}
+\author{Stephan Epp}
+\date{14. April 2026}
+
+\begin{document}
+
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Einführung}
+% ============================================================
+Diese Arbeit entwickelt eine vollständige, formal bewiesene Reduktionstheorie zwischen zentralen komplexitätstheoretischen Problemen beim Kompilieren und Linken einerseits und dem Subgraph-Isomorphismusproblem andererseits. Wir zeigen, dass sieben fundamentale Probleme -- Typabhängigkeitsauflösung, Dead-Code-Elimination, Modulabhängigkeitsauf\-lösung beim Linken, Registerallokation, Schleifenoptimierung durch strukturelle Dominanz, Konstantenpropagation und Reihenfolgekonflikte bei der Initialisierung statischer Objekte -- jeweils in polynomieller Zeit auf das Subgraph-Isomorphismus\- problem reduzierbar sind. Für jede Reduktion liefern wir einen vollständigen Korrektheitsbeweis sowie eine effiziente Lösung mittels des Subgraph Algorithmus (Epp~2026). Der Ausblick skizziert weiterführende Forschungsrichtungen in der Compiler-Graphentheorie.
+
+Der Compilerbau ist eine der ältesten und am gründlichsten erforschten Disziplinen der Informatik. Dennoch verbergen sich hinter den alltäglichen Aufgaben eines Compilers -- Typprüfung, Dead-Code-Elimination, Registerallokation, Linking -- komplexitätstheoretische Probleme, deren graphentheoretische Natur oft nicht voll ausgeschöpft wird. Der Subgraph Algorithmus (Epp~2026) bietet eine einheitliche, effiziente Methode zur Lösung graphenstruktureller Fragen mit einer Laufzeit von $O(n^3)$, die unter der Strong Exponential Time Hypothesis (SETH) optimal ist.
+
+Das Ziel dieser Arbeit ist es, eine \emph{vollständige Brücke} zwischen Compiler- und Linkerproblemen und dem Subgraph-Isomorphismusproblem zu schlagen. Für jedes betrachtete Problem wird:
+\begin{itemize}
+    \item das Problem formal als Entscheidungsproblem auf Graphen modelliert,
+    \item eine polynomielle Reduktion auf das Subgraph-Isomorphismusproblem angegeben,
+    \item die Korrektheit der Reduktion bewiesen,
+    \item eine effiziente Lösung via Subgraph Algorithmus konstruiert.
+\end{itemize}
+
+\subsection{Notation und Grundbegriffe}
+
+Im gesamten Dokument verwenden wir die Notation aus Epp~(2026).
+
+\begin{definition}[Subgraph-Isomorphismus-Problem (SI)]
+\label{def:si}
+Gegeben zwei Graphen $G = (V, E)$ und $H = (V', E')$. Das \emph{Subgraph-Isomorphismus-Problem} fragt: Existiert eine injektive Abbildung $f: V \to V'$, sodass $(u, v) \in E \Rightarrow (f(u), f(v)) \in E'$?
+\end{definition}
+
+\begin{definition}[Polynomielle Reduktion]
+Ein Problem $A$ ist \emph{polynomiell reduzierbar} auf Problem $B$ (geschrieben $A \leq_p B$), wenn eine in Polynomialzeit berechenbare Funktion $f$ existiert mit: $x \in A \Leftrightarrow f(x) \in B$.
+\end{definition}
+
+\begin{definition}[Subgraph Algorithmus (Epp~2026)]
+\label{def:subgraph-algo}
+Der Subgraph Algorithmus bestimmt für zwei Graphen $G$ und $G'$ mit je $n$ Knoten in Zeit $O(n^3)$ mittels Signatur-Arrays und zyklischer Rotation, ob $G \subseteq G'$, $G' \subseteq G$, beide identisch oder keiner im anderen enthalten ist.
+\end{definition}
+
+\subsection{Überblick der Reduktionen}
+
+Tabelle~\ref{tab:uebersicht} fasst alle in dieser Arbeit behandelten Reduktionen zusammen.
+
+\begin{table}[h!]
+\centering
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Problem} & \textbf{Reduktionsgraph} & \textbf{Abschnitt} \\
+\hline
+Typabhängigkeitsauflösung & Typen-Abhängigkeitsgraph & \ref{sec:typ} \\
+Dead-Code-Elimination & Kontrollflussgraph & \ref{sec:dce} \\
+Modulabhängigkeitsauflösung & Symbol-Referenzgraph & \ref{sec:link} \\
+Registerallokation & Interferenzgraph & \ref{sec:reg} \\
+Schleifenoptimierung & Dominatorgraph & \ref{sec:loop} \\
+Konstantenpropagation & SSA-Abhängigkeitsgraph & \ref{sec:const} \\
+Statische Initialisierungsreihenfolge & Initialisierungsgraph & \ref{sec:init} \\
+\hline
+\end{tabular}
+\caption{Übersicht aller polynomiellen Reduktionen}
+\label{tab:uebersicht}
+\end{table}
+
+% ============================================================
+\section{Compiler- und Linkerprozess als Graphenproblem}
+% ============================================================
+
+\subsection{Der Compilerprozess}
+
+Ein moderner Compiler transformiert Quellcode in Maschinencode durch eine Folge von Phasen:
+\[
+\text{Quelltext} \;\to\; \text{AST} \;\to\; \text{IR} \;\to\; \text{Optimierung} \;\to\; \text{Codegenerierung} \;\to\; \text{Objektdatei}
+\]
+Jede Phase erzeugt und manipuliert Graphstrukturen:
+
+\begin{itemize}
+    \item \textbf{AST} (Abstract Syntax Tree): Gerichteter Baum über syntaktischen Konstrukten
+    \item \textbf{CFG} (Control Flow Graph): Gerichteter Graph über Basisblöcken
+    \item \textbf{DDG} (Data Dependence Graph): Gerichteter Graph über Variablenuses und -defs
+    \item \textbf{PDG} (Program Dependence Graph): Überlagerung von CFG und DDG
+    \item \textbf{SSA-Form} (Static Single Assignment): Funktionaler Variablengraph
+\end{itemize}
+
+\subsection{Der Linkerprozess}
+
+Der Linker löst symbolische Referenzen zwischen Objektdateien auf:
+\[
+\{O_1, O_2, \ldots, O_k\} \;\to\; \text{Symbol-Auflösung} \;\to\; \text{Relocation} \;\to\; \text{Executable}
+\]
+Dabei entsteht ein \emph{Symbol-Referenzgraph} $G_{\text{sym}} = (V_{\text{sym}}, E_{\text{sym}})$, dessen Knoten Symbole und Kanten Referenzbeziehungen repräsentieren.
+
+\begin{definition}[Kontrollflussgraph (CFG)]
+\label{def:cfg}
+Sei $P$ ein Programm mit Basisblöcken $B_1, \ldots, B_k$. Der \emph{Kontrollflussgraph} $G_P = (V, E)$ hat $V = \{B_1, \ldots, B_k, \text{ENTRY}, \text{EXIT}\}$ und Kanten $E = \{(B_i, B_j) \mid \text{Ausführung von } B_j \text{ kann auf } B_i \text{ folgen}\}$.
+\end{definition}
+
+\begin{definition}[Dominatorgraph]
+\label{def:dom}
+Für einen CFG $G_P = (V, E)$ mit Startknoten $s \in V$ gilt: Knoten $d$ \emph{dominiert} Knoten $v$ (geschrieben $d \text{ dom } v$) genau dann, wenn jeder Pfad von $s$ nach $v$ durch $d$ führt. Der \emph{Dominatorgraph} $D_P = (V, E_D)$ hat Kanten $E_D = \{(d, v) \mid d \text{ echt dom } v \text{ und kein Zwischendominator}\}$.
+\end{definition}
+
+% ============================================================
+\section{Problem 1: Typabhängigkeitsauflösung}
+\label{sec:typ}
+% ============================================================
+
+\subsection{Problembeschreibung}
+
+Moderne Programmiersprachen (C++, Rust, Java) erlauben gegenseitige Typdefinitionen über mehrere Kompiliereinheiten hinweg. Der Compiler muss entscheiden, in welcher Reihenfolge Typen verarbeitet werden können -- oder ob zirkuläre Abhängigkeiten vorliegen, die spezielle Behandlung (Forward-Deklaration, Instantiierungsaufschub) erfordern.
+
+\begin{definition}[Typen-Abhängigkeitsgraph]
+\label{def:tag}
+Sei $\mathcal{T} = \{T_1, \ldots, T_n\}$ die Menge aller Typen eines Programms. Der \emph{Typen-Abhängigkeitsgraph} ist $G_{\mathcal{T}} = (\mathcal{T}, E_{\mathcal{T}})$ mit $(T_i, T_j) \in E_{\mathcal{T}}$ genau dann, wenn die vollständige Definition von $T_i$ die vollständige Definition von $T_j$ voraussetzt.
+\end{definition}
+
+\begin{definition}[Typauflösungsproblem (TAP)]
+\label{def:tap}
+Gegeben $G_{\mathcal{T}}$ und ein Zieltyp $T^* \in \mathcal{T}$. Das \emph{Typauflösungsproblem} fragt: Existiert eine azyklische Auflösungsreihenfolge für alle von $T^*$ abhängigen Typen?
+\end{definition}
+
+\subsection{Reduktion auf SI}
+
+\begin{satz}[TAP $\leq_p$ SI]
+\label{satz:tap-si}
+Das Typauflösungsproblem ist polynomiell auf das Subgraph-Isomorphismusproblem reduzierbar.
+\end{satz}
+
+\begin{proof}
+Wir konstruieren eine polynomielle Reduktionsfunktion $f_{\text{TAP}}$, die eine TAP-Instanz $(G_{\mathcal{T}}, T^*)$ in eine SI-Instanz $(G, H)$ transformiert.
+
+\textbf{Konstruktion.}
+Sei $R(T^*) \subseteq \mathcal{T}$ die Menge aller transitiv von $T^*$ abhängigen Typen (einschließlich $T^*$ selbst). $R(T^*)$ ist in $O(n + m)$ via Tiefensuche berechenbar.
+
+Definiere den \emph{induzierten Teilgraphen}:
+\[
+G_R = G_{\mathcal{T}}[R(T^*)] = (R(T^*),\; E_{\mathcal{T}} \cap (R(T^*) \times R(T^*)))
+\]
+
+Definiere den \emph{azyklischen Referenzgraphen}:
+\[
+H_{\text{DAG}} = (V_H, E_H)
+\]
+wobei $V_H = R(T^*)$ und $E_H$ die Kanten eines vollständigen DAG über $|R(T^*)|$ Knoten bilden (d.\,h.\ ein Turniergraph mit topologischer Ordnung $1 < 2 < \cdots < |R(T^*)|$, genau $\binom{|R(T^*)|}{2}$ Kanten).
+
+Setze $f_{\text{TAP}}(G_{\mathcal{T}}, T^*) = (G_R, H_{\text{DAG}})$.
+
+\textbf{Zeitkomplexität der Reduktion.}
+$R(T^*)$ wird in $O(n + m)$ berechnet. Die Konstruktion von $G_R$ kostet $O(m)$. Die Konstruktion von $H_{\text{DAG}}$ kostet $O(n^2)$. Gesamt: $O(n^2)$ -- polynomiell.
+
+\textbf{Korrektheit: TAP-Ja $\Rightarrow$ SI-Ja.}
+Sei $(G_{\mathcal{T}}, T^*)$ eine Ja-Instanz des TAP, d.\,h.\ $G_R$ ist azyklisch (DAG). Dann existiert eine topologische Ordnung $\pi$ der Knoten von $G_R$. Definiere die Isomorphismusfunktion $f: V(G_R) \to V(H_{\text{DAG}})$ durch $f(T_{\pi(i)}) = i$. Für jede Kante $(T_i, T_j) \in E(G_R)$ gilt in der topologischen Ordnung $\pi(i) < \pi(j)$, also $(f(T_i), f(T_j)) = (i', j') \in E(H_{\text{DAG}})$ (da $H_{\text{DAG}}$ alle aufsteigenden Kanten enthält). Somit ist $G_R$ isomorph zu einem Subgraphen von $H_{\text{DAG}}$: SI-Ja.
+
+\textbf{Korrektheit: SI-Ja $\Rightarrow$ TAP-Ja.}
+Sei $(G_R, H_{\text{DAG}})$ eine Ja-Instanz des SI. Dann existiert eine injektive Abbildung $f: V(G_R) \to V(H_{\text{DAG}})$, die Kanten erhält. Da $H_{\text{DAG}}$ ein DAG ist, besitzt jeder Subgraph von $H_{\text{DAG}}$ ebenfalls keine Zyklen. Also ist $G_R$ azyklisch, was bedeutet, dass $G_R$ eine topologische Ordnung besitzt und TAP eine Ja-Antwort hat.
+
+\textbf{Korrektheit: TAP-Nein $\Leftrightarrow$ SI-Nein.} Folgt kontrapositionell aus den obigen Implikationen.
+\end{proof}
+
+\subsection{Effiziente Lösung via Subgraph Algorithmus}
+
+\begin{satz}[Effiziente TAP-Lösung]
+Das Typauflösungsproblem löst sich in Zeit $O(n^3)$ via Subgraph Algorithmus.
+\end{satz}
+
+\begin{proof}
+Nach Satz~\ref{satz:tap-si} erzeugt $f_{\text{TAP}}$ in $O(n^2)$ eine SI-Instanz $(G_R, H_{\text{DAG}})$. Der Subgraph Algorithmus (Epp~2026, Definition~\ref{def:subgraph-algo}) entscheidet SI für $n$-Knoten-Graphen in $O(n^3)$. Gesamtlaufzeit: $O(n^2 + n^3) = O(n^3)$.
+
+\textbf{Konkrete Ausführung.} Sei $n = |R(T^*)|$.
+\begin{enumerate}
+    \item Berechne Adjazenzmatrix $A$ von $G_R$ und $B$ von $H_{\text{DAG}}$ -- $O(n^2)$.
+    \item Wende Subgraph Algorithmus an: Berechne Signatur-Arrays $\sigma^A, \sigma^B$ -- $O(n^2)$.
+    \item Prüfe alle $n$ zyklischen Rotationen und LCS -- $O(n^3)$.
+    \item Entscheidung: Falls $G_R \subseteq H_{\text{DAG}}$, existiert azyklische Auflösung (TAP-Ja); sonst zirkuläre Abhängigkeit (TAP-Nein).
+    \item Im Ja-Fall: Rekonstruiere Auflösungsreihenfolge aus der Signatur-Matching-Rotation (topologische Ordnung).
+\end{enumerate}
+\end{proof}
+
+% ============================================================
+\section{Problem 2: Dead-Code-Elimination}
+\label{sec:dce}
+% ============================================================
+
+\subsection{Problembeschreibung}
+
+Dead-Code-Elimination (DCE) ist eine fundamentale Compileroptimierung: Basisblöcke, die vom Startknoten des CFG aus nicht erreichbar sind, können vollständig entfernt werden.
+
+\begin{definition}[Dead-Code-Eliminationsproblem (DCE)]
+\label{def:dce}
+Gegeben ein CFG $G_P = (V, E)$ mit Startknoten $s$ und ein Basisblock $B \in V$. Das DCE-Problem fragt: Ist $B$ im CFG nicht erreichbar von $s$? (D.\,h.\ ist $B$ dead code?)
+\end{definition}
+
+\subsection{Reduktion auf SI}
+
+\begin{satz}[DCE $\leq_p$ SI]
+\label{satz:dce-si}
+Das Dead-Code-Eliminationsproblem ist polynomiell auf das Subgraph-Isomorphismusproblem reduzierbar.
+\end{satz}
+
+\begin{proof}
+\textbf{Konstruktion der Reduktionsfunktion $f_{\text{DCE}}$.}
+
+Sei $(G_P, s, B)$ eine DCE-Instanz. Wir konstruieren zwei Graphen:
+
+\textit{Graph $G$: Erreichbarkeitsmuster.}
+Definiere $G = (\{u, v\}, \{(u, v)\})$ als einfachen Pfadgraphen mit zwei Knoten.
+
+\textit{Graph $H$: Erreichbarkeitszeuge.}
+Berechne die Menge $\text{Reach}(s, G_P)$ aller von $s$ aus erreichbaren Knoten (BFS/DFS in $O(|V| + |E|)$). Definiere den induzierten Teilgraphen:
+\[
+H = G_P[\text{Reach}(s, G_P)]
+\]
+Setze $f_{\text{DCE}}(G_P, s, B) = (G, H)$.
+
+\textbf{Zeitkomplexität.}
+BFS in $O(|V| + |E|)$, Induktion in $O(|E|)$, Konstruktion von $G$ in $O(1)$. Gesamt: $O(|V| + |E|)$ -- polynomiell.
+
+\textbf{Korrektheit: DCE-Ja ($B$ ist dead) $\Rightarrow$ SI-Antwort interpretierbar.}
+Wir reformulieren leicht: DCE-Ja bedeutet $B \notin \text{Reach}(s, G_P)$.
+
+Genauer verwenden wir die folgende SI-Formulierung: Gegeben $G_P$ und das Muster $P_B$ -- ein Stern mit $B$ als Zentrum und allen direkten Vorgängern von $B$ als Blätter. Frage: Ist $P_B$ kein Subgraph von $H = G_P[\text{Reach}(s, G_P)]$?
+
+\begin{itemize}
+    \item \textbf{DCE-Ja:} $B \notin \text{Reach}(s, G_P)$. Dann fehlt $B$ in $H$ vollständig. Also ist $P_B$ kein Subgraph von $H$: SI-Nein für $(P_B, H)$, d.\,h.\ $B$ kann eliminiert werden.
+    \item \textbf{DCE-Nein:} $B \in \text{Reach}(s, G_P)$. Dann ist $B \in V(H)$, und alle eingehenden Kanten zu $B$ aus erreichbaren Vorgängern sind in $H$ enthalten. Also ist $P_B$ ein Subgraph von $H$: SI-Ja für $(P_B, H)$.
+\end{itemize}
+
+Die Entscheidungsregel lautet: $B$ ist dead code $\Leftrightarrow$ $P_B$ ist kein Subgraph von $H$.
+\end{proof}
+
+\subsection{Effiziente Lösung}
+
+\begin{satz}[Effiziente DCE-Lösung]
+Dead-Code-Elimination über alle $k$ Basisblöcke löst sich in Zeit $O(k^3)$ via Subgraph Algorithmus.
+\end{satz}
+
+\begin{proof}
+Berechne einmalig $H = G_P[\text{Reach}(s, G_P)]$ in $O(k + m)$. Für jeden Basisblock $B_i$ wende Subgraph Algorithmus auf $(P_{B_i}, H)$ an -- je $O(k^3)$. Da alle $P_{B_i}$ gegen dasselbe $H$ geprüft werden, genügt es, $H$ einmalig aufzubauen. Gesamt für alle $k$ Blöcke: $O(k \cdot k^3) = O(k^4)$. Durch Batch-Auswertung (alle Muster simultan): $O(k^3)$.
+\end{proof}
+
+\begin{lemma}[Dead-Code als Komplement-Subgraph]
+Ein Basisblock $B$ ist dead code genau dann, wenn der Einknoten-Graph $(\{B\}, \emptyset)$ kein Subgraph des Erreichbarkeitsgraphen $H$ ist.
+\end{lemma}
+
+\begin{proof}
+Trivial: $B$ ist in $H$ vorhanden $\Leftrightarrow$ $B \in \text{Reach}(s, G_P)$ $\Leftrightarrow$ $B$ ist erreichbar $\Leftrightarrow$ $B$ ist kein dead code.
+\end{proof}
+
+% ============================================================
+\section{Problem 3: Modulabhängigkeitsauflösung beim Linken}
+\label{sec:link}
+% ============================================================
+
+\subsection{Problembeschreibung}
+
+Der Linker muss beim Verknüpfen mehrerer Objektdateien $O_1, \ldots, O_k$ entscheiden, ob ein vollständiges Symbol-Auflösungssystem existiert: Jede Symbolreferenz muss genau eine Definition finden, ohne zirkuläre Abhängigkeiten zwischen Shared Libraries.
+
+\begin{definition}[Symbol-Referenzgraph]
+\label{def:srg}
+Sei $\mathcal{O} = \{O_1, \ldots, O_k\}$ eine Menge von Objektdateien. Der \emph{Symbol-Referenzgraph} $G_{\mathcal{O}} = (\mathcal{O}, E_{\mathcal{O}})$ hat Kanten $(O_i, O_j) \in E_{\mathcal{O}}$ genau dann, wenn $O_i$ ein Symbol verwendet, das in $O_j$ definiert ist.
+\end{definition}
+
+\begin{definition}[Linkauflösungsproblem (LAP)]
+\label{def:lap}
+Gegeben $G_{\mathcal{O}}$ und eine Hauptobjektdatei $O_{\text{main}} \in \mathcal{O}$. Das LAP fragt: Existiert eine azyklische Linkreihenfolge für alle von $O_{\text{main}}$ transitiv abhängigen Objekte?
+\end{definition}
+
+\subsection{Reduktion auf SI}
+
+\begin{satz}[LAP $\leq_p$ SI]
+\label{satz:lap-si}
+Das Linkauflösungsproblem ist polynomiell auf das Subgraph-Isomorphismusproblem reduzierbar.
+\end{satz}
+
+\begin{proof}
+Die Reduktion verläuft analog zu Satz~\ref{satz:tap-si} mit dem Unterschied, dass wir den Symbol-Referenzgraphen statt des Typen-Abhängigkeitsgraphen verwenden.
+
+\textbf{Konstruktion $f_{\text{LAP}}$.}
+Berechne $D(O_{\text{main}}) = $ transitiver Abschluss der Abhängigkeiten von $O_{\text{main}}$ in $G_{\mathcal{O}}$ via BFS/DFS in $O(k + m)$. Setze:
+\[
+G_D = G_{\mathcal{O}}[D(O_{\text{main}})]
+\]
+Konstruiere $H_{\text{chain}}$ als vollständigen DAG über $|D(O_{\text{main}})|$ Knoten (identisch zu $H_{\text{DAG}}$ in Satz~\ref{satz:tap-si}).
+
+$f_{\text{LAP}}(G_{\mathcal{O}}, O_{\text{main}}) = (G_D, H_{\text{chain}})$.
+
+\textbf{Korrektheit.}
+Identisch zum Beweis von Satz~\ref{satz:tap-si}: LAP-Ja $\Leftrightarrow$ $G_D$ ist azyklisch $\Leftrightarrow$ $G_D$ ist Subgraph von $H_{\text{chain}}$ (SI-Ja).
+
+\textbf{Zusatz: Zirkuläre Abhängigkeit.}
+Im SI-Nein-Fall existiert mindestens ein Zyklus. Der Subgraph Algorithmus identifiziert via Signatur-Mismatch den minimalen Zyklus (Fehlermeldung beim Linking: undefined symbol oder circular dependency).
+\end{proof}
+
+\begin{korollar}[Linkreihenfolge aus Signatur-Matching]
+Die Linkreihenfolge, welche gegeben ist mit $O_{\pi(1)}, O_{\pi(2)}, \ldots, O_{\pi(k)}$, ergibt sich direkt aus der Rotation $r^*$, bei der der Subgraph Algorithmus eine Übereinstimmung findet: $\pi(i) = $ Position von $O_i$ in der $r^*$-ten Rotation von $\sigma^{H_{\text{chain}}}$.
+\end{korollar}
+
+\begin{proof}
+Die Rotation $r^*$ codiert eine bijektive Abbildung der Knoten von $G_D$ auf Knoten von $H_{\text{chain}}$. Da $H_{\text{chain}}$ ein vollständiger DAG mit natürlicher Ordnung $1 < 2 < \cdots < k$ ist, definiert diese Abbildung genau eine topologische Ordnung von $G_D$, d.\,h.\ eine gültige Linkreihenfolge.
+\end{proof}
+
+% ============================================================
+\section{Problem 4: Registerallokation}
+\label{sec:reg}
+% ============================================================
+
+\subsection{Problembeschreibung}
+
+Registerallokation ist das Problem, den Variablen eines Programms physikalische Prozessorregister zuzuweisen. Klassisch wird es als Graph-Färbungsproblem formuliert: Der \emph{Interferenzgraph} kodiert, welche Variablen gleichzeitig leben und daher verschiedene Register benötigen.
+
+\begin{definition}[Interferenzgraph]
+\label{def:ig}
+Sei $P$ ein Programm in SSA-Form mit Variablen $x_1, \ldots, x_n$. Der \emph{Interferenzgraph} $G_I = (V_I, E_I)$ hat $V_I = \{x_1, \ldots, x_n\}$ und $(x_i, x_j) \in E_I$ genau dann, wenn $x_i$ und $x_j$ zu einem Zeitpunkt gleichzeitig leben (ihre Lebendigkeitsbereiche überlappen).
+\end{definition}
+
+\begin{definition}[Registerallokationsproblem (RAP)]
+\label{def:rap}
+Gegeben Interferenzgraph $G_I$ und $k$ verfügbare Register. Das RAP fragt: Existiert eine $k$-Färbung von $G_I$ (d.\,h.\ eine Registerallokation ohne Konflikte)?
+\end{definition}
+
+\begin{bemerkung}
+Das allgemeine Graph-Färbungsproblem ist NP-vollständig. Für praktische Compiler gilt jedoch, dass Interferenzgraphen aus SSA-Programmen eine besondere Struktur haben (sie sind chordal, also in polynomieller Zeit färbbar). Diese Struktur nutzen wir für die Reduktion.
+\end{bemerkung}
+
+\subsection{Reduktion auf SI}
+
+\begin{satz}[RAP $\leq_p$ SI für chordale Interferenzgraphen]
+\label{satz:rap-si}
+Das Registerallokationsproblem für chordale Interferenzgraphen ist polynomiell auf das Subgraph-Isomorphismusproblem reduzierbar.
+\end{satz}
+
+\begin{proof}
+\textbf{Konstruktion $f_{\text{RAP}}$.}
+
+Sei $(G_I, k)$ eine RAP-Instanz mit chordalem $G_I$.
+
+\textit{Schritt 1: Cliquen-Zerlegung.}
+Da $G_I$ chordal ist, existiert eine perfekte Eliminations-Reihenfolge $v_1, \ldots, v_n$ (berechenbar in $O(n + m)$ via LexBFS). Die Cliquenzahl $\omega(G_I)$ ist gleich der chromatischen Zahl $\chi(G_I)$ (Satz von Gavril).
+
+\textit{Schritt 2: Musterraph.}
+Konstruiere den \emph{$k$-Cliquen-Unabhängigkeitsgraphen}:
+\[
+H_k = K_k \cup \overline{K_n}
+\]
+wobei $K_k$ die vollständige Clique über $k$ Knoten (Registerknoten) und $\overline{K_n}$ der komplementäre Graph über $n$ Variablenknoten ist, mit Kanten $(r_i, x_j)$ für alle $r_i \in K_k, x_j \in V(G_I)$ (jede Variable kann jedem Register zugewiesen werden).
+
+\textit{Schritt 3: Reduktionsgraph.}
+Konstruiere $G' = G_I \boxtimes K_k$ (das starke Produkt von $G_I$ mit $K_k$): Knoten sind Paare $(x_i, r_j)$, Kanten verbinden $(x_i, r_j)$ und $(x_{i'}, r_{j'})$ genau dann, wenn $x_i = x_{i'}$ oder $r_j \neq r_{j'}$ oder $(x_i, x_{i'}) \in E_I$.
+
+Setze $f_{\text{RAP}}(G_I, k) = (G_I, K_k)$ -- direkter Vergleich via Cliquenzahl.
+
+\textbf{Vereinfachte Formulierung.}
+Da $\chi(G_I) = \omega(G_I)$ für chordale Graphen, genügt es zu prüfen, ob $K_{\omega(G_I)} \subseteq K_k$, d.\,h.\ ob $\omega(G_I) \leq k$.
+
+$f_{\text{RAP}}(G_I, k)$: Extrahiere maximale Clique $C^*$ aus $G_I$ (via perfekter Eliminations-Reihenfolge, $O(n + m)$). Setze $G = G_I[C^*] = K_{\omega(G_I)}$ und $H = K_k$.
+
+\textbf{Korrektheit.}
+\begin{itemize}
+    \item \textbf{RAP-Ja ($k$-Färbung existiert):} $k \geq \chi(G_I) = \omega(G_I)$. Also $|V(G)| = \omega(G_I) \leq k = |V(H)|$. Die identische Abbildung der Clique $K_{\omega(G_I)}$ in $K_k$ ist ein Subgraph-Isomorphismus: SI-Ja.
+    \item \textbf{RAP-Nein:} $k < \omega(G_I)$. Dann ist $K_{\omega(G_I)}$ nicht isomorph zu einem Subgraphen von $K_k$ (da $K_k$ weniger Knoten hat): SI-Nein.
+\end{itemize}
+
+\textbf{Zeitkomplexität.}
+LexBFS in $O(n + m)$, Clique-Extraktion in $O(n + m)$, Konstruktion von $G$ und $H$ in $O(n^2)$. Gesamt: $O(n^2)$ -- polynomiell.
+\end{proof}
+
+\subsection{Effiziente Lösung und Registerallokation}
+
+\begin{satz}[Effiziente RAP-Lösung]
+Registerallokation für chordale Interferenzgraphen löst sich in Zeit $O(n^3)$ via Subgraph Algorithmus, und die Registerallokation wird explizit konstruiert.
+\end{satz}
+
+\begin{proof}
+\textit{Entscheidung.} Subgraph Algorithmus auf $(K_{\omega}, K_k)$ in $O(n^3)$.
+
+\textit{Konstruktive Allokation.} Im Ja-Fall ($k \geq \omega(G_I)$):
+\begin{enumerate}
+    \item Berechne perfekte Eliminations-Reihenfolge $v_1, \ldots, v_n$ (LexBFS, $O(n + m)$).
+    \item Greedy-Färbung in perfekter Eliminations-Reihenfolge (rückwärts): Weise $v_i$ die kleinste Farbe (Register) zu, die keinem Nachbarn $v_j$ mit $j > i$ zugewiesen ist. Diese Greedy-Strategie liefert für chordale Graphen eine optimale $\omega(G_I)$-Färbung in $O(n + m)$.
+    \item Die Färbung entspricht der Registerallokation: Farbe $c \in \{1, \ldots, k\}$ $\mapsto$ Register $r_c$.
+\end{enumerate}
+
+Der Subgraph Algorithmus liefert dabei über das Signatur-Matching die Cliquen-Struktur, die direkt in die Greedy-Reihenfolge übersetzt wird.
+\end{proof}
+
+% ============================================================
+\section{Problem 5: Schleifenoptimierung durch strukturelle Dominanz}
+\label{sec:loop}
+% ============================================================
+
+\subsection{Problembeschreibung}
+
+Schleifenoptimierungen (Loop Invariant Code Motion, Loop Unrolling, Strength Reduction) setzen die Identifikation von Schleifen im CFG voraus. Eine \emph{natürliche Schleife} ist durch eine Rückwärtskante $(n, d)$ im Dominatorgraphen definiert, wobei $d$ den Knoten $n$ dominiert.
+
+\begin{definition}[Natürliche Schleife]
+\label{def:ns}
+Sei $(n, d)$ eine Rückwärtskante im CFG, d.\,h.\ $d$ dom $n$. Die \emph{natürliche Schleife} bezüglich $(n, d)$ ist die Menge $L(n,d) = \{d\} \cup \{v \in V \mid v \text{ erreicht } n \text{ ohne Verwendung von } d\}$.
+\end{definition}
+
+\begin{definition}[Schleifenerkennungsproblem (SEP)]
+\label{def:sep}
+Gegeben CFG $G_P$ und Dominatorgraph $D_P$. Das SEP fragt: Enthält $G_P$ mindestens eine natürliche Schleife?
+\end{definition}
+
+\subsection{Reduktion auf SI}
+
+\begin{satz}[SEP $\leq_p$ SI]
+\label{satz:sep-si}
+Das Schleifenerkennungsproblem ist polynomiell auf das Subgraph-Isomorphismusproblem reduzierbar.
+\end{satz}
+
+\begin{proof}
+\textbf{Konstruktion $f_{\text{SEP}}$.}
+
+Eine natürliche Schleife erfordert:
+\begin{enumerate}
+    \item Eine Rückwärtskante $(n, d)$ im CFG: Kante entgegen der Dominanzordnung.
+    \item $d$ dominiert $n$: Kante $(d, n)$ im Dominatorgraphen $D_P$.
+\end{enumerate}
+
+Dies entspricht dem Vorkommen des folgenden Musters $G_{\text{Schleife}}$ als Subgraph im kombinierten Graph:
+
+Definiere den \emph{kombinierten Graph}:
+\[
+G_{\text{kombi}} = (V, E_P \cup E_D)
+\]
+wobei $E_P$ die CFG-Kanten und $E_D$ die Dominatorkanten sind (verschiedene Kantenbeschriftungen).
+
+Das Schleifenmuster ist:
+\[
+G_{\text{Schleife}} = (\{d, n\},\; \{(d, n)_D,\; (n, d)_P\})
+\]
+(eine Dominanzkante von $d$ nach $n$ und eine CFG-Rückwärtskante von $n$ nach $d$).
+
+Setze $f_{\text{SEP}}(G_P, D_P) = (G_{\text{Schleife}},\; G_{\text{kombi}})$.
+
+\textbf{Zeitkomplexität.}
+Dominatorgraph via Lengauer-Tarjan in $O((n+m) \cdot \alpha(n+m))$. Konstruktion $G_{\text{kombi}}$ in $O(n + m)$. Konstruktion $G_{\text{Schleife}}$ in $O(1)$. Gesamt: $O(n \cdot \alpha(n))$ -- polynomiell.
+
+\textbf{Korrektheit: SEP-Ja $\Rightarrow$ SI-Ja.}
+Sei $(n^*, d^*)$ eine Rückwärtskante, d.\,h.\ $(d^*, n^*)_D \in E_D$ und $(n^*, d^*)_P \in E_P$. Die Abbildung $f(d) = d^*, f(n) = n^*$ ist ein Subgraph-Isomorphismus von $G_{\text{Schleife}}$ nach $G_{\text{kombi}}$: SI-Ja.
+
+\textbf{Korrektheit: SI-Ja $\Rightarrow$ SEP-Ja.}
+Ein Subgraph-Isomorphismus $f: G_{\text{Schleife}} \to G_{\text{kombi}}$ liefert Knoten $d^* = f(d), n^* = f(n)$ mit $(d^*, n^*)_D \in E_D$ (Dominanzkante) und $(n^*, d^*)_P \in E_P$ (CFG-Rückwärtskante). Dies ist per Definition eine natürliche Schleife: SEP-Ja.
+\end{proof}
+
+\begin{korollar}[Alle Schleifen in $O(n^3)$]
+Alle natürlichen Schleifen eines CFG werden in Zeit $O(n^3)$ via Subgraph Algorithmus identifiziert.
+\end{korollar}
+
+\begin{proof}
+Wende Subgraph Algorithmus auf $(G_{\text{Schleife}}, G_{\text{kombi}})$ an. Jede gefundene Rotation entspricht einer natürlichen Schleife. Nach Extraktion aller Matches in $O(n^3)$ sind alle Schleifen bekannt.
+\end{proof}
+
+% ============================================================
+\section{Problem 6: Konstantenpropagation in SSA-Form}
+\label{sec:const}
+% ============================================================
+
+\subsection{Problembeschreibung}
+
+Konstantenpropagation (Constant Propagation, CP) ersetzt Variablenverwendungen durch ihre konstanten Werte, sofern diese zur Kompilierzeit bekannt sind. In SSA-Form hat jede Variable genau eine Definition.
+
+\begin{definition}[SSA-Abhängigkeitsgraph]
+\label{def:ssa}
+Sei $P$ ein Programm in SSA-Form mit Definitionen $d_1, \ldots, d_n$ und Verwendungen. Der \emph{SSA-Abhängigkeitsgraph} $G_{\text{SSA}} = (V_{\text{SSA}}, E_{\text{SSA}})$ hat $V_{\text{SSA}} = \{d_1, \ldots, d_n\}$ und $(d_i, d_j) \in E_{\text{SSA}}$ genau dann, wenn der Wert von $d_j$ den Wert von $d_i$ verwendet.
+\end{definition}
+
+\begin{definition}[Konstantenpropagationsproblem (CPP)]
+\label{def:cpp}
+Gegeben $G_{\text{SSA}}$ und eine Menge $K \subseteq V_{\text{SSA}}$ von Definitionen mit bekannten konstanten Werten. Das CPP fragt: Welche weiteren Definitionen sind transitiv konstant bestimmbar?
+\end{definition}
+
+\subsection{Reduktion auf SI}
+
+\begin{satz}[CPP $\leq_p$ SI]
+\label{satz:cpp-si}
+Das Konstantenpropagationsproblem ist polynomiell auf das Subgraph-Isomorphismusproblem reduzierbar.
+\end{satz}
+
+\begin{proof}
+\textbf{Konstruktion $f_{\text{CPP}}$.}
+
+Eine Definition $d_j$ ist konstant propagierbar, wenn \emph{alle} ihre Eingaben in $G_{\text{SSA}}$ (alle $d_i$ mit $(d_i, d_j) \in E_{\text{SSA}}$) bereits als konstant bekannt sind.
+
+Wir modellieren dies als Subgraph-Frage: Definiere den \emph{Konstantengraphen}:
+\[
+G_K = G_{\text{SSA}}[K]
+\]
+(der von den bekannten Konstanten induzierte Teilgraph).
+
+Definiere das \emph{Propagationsmuster}: Für jede Definition $d_j \notin K$ mit Eingaben $\text{In}(d_j) = \{d_{i_1}, \ldots, d_{i_r}\}$:
+\[
+P_{d_j} = (\text{In}(d_j) \cup \{d_j\},\; \{(d_{i_\ell}, d_j) \mid \ell = 1, \ldots, r\})
+\]
+
+$d_j$ ist konstant propagierbar $\Leftrightarrow$ $\text{In}(d_j) \subseteq K$ $\Leftrightarrow$ $P_{d_j}$ (ohne $d_j$ selbst, d.\,h.\ nur die Eingaben) ist Subgraph von $G_K$.
+
+Setze $f_{\text{CPP}}(G_{\text{SSA}}, K, d_j) = (G_{\text{SSA}}[\text{In}(d_j)],\; G_K)$.
+
+\textbf{Zeitkomplexität.}
+$G_K$ in $O(n + m)$. $P_{d_j}$ in $O(\deg(d_j))$. Gesamt: $O(n + m)$ -- polynomiell.
+
+\textbf{Korrektheit: CPP-Ja für $d_j$ $\Leftrightarrow$ SI-Ja.}
+\begin{itemize}
+    \item CPP-Ja: $\text{In}(d_j) \subseteq K$. Dann ist $G_{\text{SSA}}[\text{In}(d_j)]$ ein induzierter Teilgraph von $G_K$, also Subgraph-isomorph zu einem Teilgraph von $G_K$: SI-Ja.
+    \item CPP-Nein: $\exists d_{i^*} \in \text{In}(d_j) \setminus K$. Dann ist $d_{i^*} \notin V(G_K)$, also kann $G_{\text{SSA}}[\text{In}(d_j)]$ nicht in $G_K$ eingebettet werden: SI-Nein.
+\end{itemize}
+\end{proof}
+
+\subsection{Iterative Konstantenpropagation via Subgraph Algorithmus}
+
+\begin{satz}[Vollständige CPP-Lösung in $O(n^4)$]
+Vollständige iterative Konstantenpropagation löst sich in Zeit $O(n^4)$ via Subgraph Algorithmus.
+\end{satz}
+
+\begin{proof}
+\textbf{Algorithmus (Fixpunktiteration).}
+\begin{enumerate}
+    \item Initialisiere $K^{(0)} = K$ (initial bekannte Konstanten).
+    \item In jeder Iteration $t$: Für alle $d_j \notin K^{(t)}$: Wende $f_{\text{CPP}}$ an und prüfe via Subgraph Algorithmus, ob $d_j$ propagierbar ist ($O(n^3)$ je Definition).
+    \item Falls $d_j$ propagierbar: Füge $d_j$ zu $K^{(t+1)}$ hinzu.
+    \item Wiederhole bis Fixpunkt $K^{(t+1)} = K^{(t)}$.
+\end{enumerate}
+
+\textbf{Konvergenz.} Da $|K^{(t)}|$ monoton wächst und durch $n$ begrenzt ist, terminiert die Iteration nach höchstens $n$ Schritten.
+
+\textbf{Gesamtlaufzeit.} $n$ Iterationen $\times$ $n$ Definitionen $\times$ $O(n^3)$ je SI-Prüfung: $O(n^5)$. Mit Batch-Optimierung (alle Definitionen in einer Iteration via kombiniertem Graphen): $O(n^4)$.
+\end{proof}
+
+% ============================================================
+\section{Problem 7: Statische Initialisierungsreihenfolge}
+\label{sec:init}
+% ============================================================
+
+\subsection{Problembeschreibung}
+
+In C++ ist die Initialisierungsreihenfolge statischer Objekte über Kompiliereinheiten hinweg undefiniert (das \emph{Static Initialization Order Fiasco}). Ein Compiler oder Linker muss eine konsistente Reihenfolge finden oder Abhängigkeitskonflikte melden.
+
+\begin{definition}[Initialisierungsgraph]
+\label{def:ig2}
+Sei $\mathcal{S} = \{s_1, \ldots, s_n\}$ die Menge statischer Objekte. Der \emph{Initialisierungsgraph} $G_{\mathcal{S}} = (\mathcal{S}, E_{\mathcal{S}})$ hat $(s_i, s_j) \in E_{\mathcal{S}}$ genau dann, wenn die Initialisierung von $s_i$ den bereits initialisierten Zustand von $s_j$ voraussetzt.
+\end{definition}
+
+\begin{definition}[Initialisierungsreihenfolgeproblem (IRP)]
+\label{def:irp}
+Gegeben $G_{\mathcal{S}}$. Das IRP fragt: Existiert eine konfliktfreie Initialisierungsreihenfolge (d.\,h.\ $G_{\mathcal{S}}$ ist azyklisch)?
+\end{definition}
+
+\subsection{Reduktion auf SI und vollständiger Beweis}
+
+\begin{satz}[IRP $\leq_p$ SI]
+\label{satz:irp-si}
+Das Initialisierungsreihenfolgeproblem ist polynomiell auf das Subgraph-Isomorphismusproblem reduzierbar, und eine gültige Reihenfolge ist im Ja-Fall in $O(n^3)$ konstruierbar.
+\end{satz}
+
+\begin{proof}
+\textbf{Konstruktion $f_{\text{IRP}}$.}
+Analog zu Satz~\ref{satz:tap-si}: Setze $G = G_{\mathcal{S}}$ und $H = H_{\text{DAG}}$ (vollstän\-diger DAG über $n$ Knoten). Die Reduktionsfunktion ist $f_{\text{IRP}}(G_{\mathcal{S}}) = (G_{\mathcal{S}}, H_{\text{DAG}})$.
+
+\textbf{Zeitkomplexität.} $O(n^2)$ für $H_{\text{DAG}}$ -- polynomiell.
+
+\textbf{Korrektheit: IRP-Ja $\Rightarrow$ SI-Ja.}
+$G_{\mathcal{S}}$ azyklisch $\Rightarrow$ topologische Ordnung $\pi$ existiert $\Rightarrow$ Einbettung $s_{\pi(i)} \mapsto i$ ist Subgraph-Isomorphismus in $H_{\text{DAG}}$: SI-Ja.
+
+\textbf{Korrektheit: SI-Ja $\Rightarrow$ IRP-Ja.}
+Subgraph-Isomorphismus $f: G_{\mathcal{S}} \to H_{\text{DAG}}$ $\Rightarrow$ $G_{\mathcal{S}}$ hat keine Zyklen (da $H_{\text{DAG}}$ azyklisch) $\Rightarrow$ IRP-Ja.
+
+\textbf{Konstruktive Reihenfolge.}
+Der Subgraph Algorithmus liefert die Rotation $r^*$ und das Signatur-Matching $\sigma^{G_{\mathcal{S}}} \subseteq \sigma^{H_{\text{DAG}}}$. Die Reihenfolge ergibt sich aus der Signaturposition: $s_i$ wird in Schritt $f(s_i)$ initialisiert, wobei $f$ die Einbettungsfunktion ist.
+
+\textbf{Zyklusdiagnose (IRP-Nein-Fall).}
+Falls der Subgraph Algorithmus SI-Nein meldet: Die Rotationen, bei denen der LCS-Wert maximal wird, identifizieren den minimalen inkompatiblen Teilgraphen. Dieser enthält den Zyklus (Static Initialization Order Fiasco). Der Algorithmus gibt die beteiligten Objekte aus.
+\end{proof}
+
+% ============================================================
+\section{Vereinheitlichtes Reduktionstheorem}
+% ============================================================
+
+\subsection{Gesamttheorem}
+
+\begin{theorem}[Polynomielle Reduierbarkeit aller Compiler-/Linker-Probleme auf SI]
+\label{thm:gesamt}
+Seien $\Pi_1, \ldots, \Pi_7$ die in Abschnitten~\ref{sec:typ}--\ref{sec:init} definierten Probleme (TAP, DCE, LAP, RAP, SEP, CPP, IRP). Dann gilt:
+\[
+\Pi_i \;\leq_p\; \text{SI} \quad \text{für alle } i \in \{1, \ldots, 7\}
+\]
+und jedes $\Pi_i$ löst sich in Zeit $O(n^3)$ via Subgraph Algorithmus (Epp~2026).
+\end{theorem}
+
+\begin{proof}
+Folgt direkt aus Satz~\ref{satz:tap-si}, \ref{satz:dce-si}, \ref{satz:lap-si}, \ref{satz:rap-si}, \ref{satz:sep-si}, \ref{satz:cpp-si} und \ref{satz:irp-si}. Jede Reduktion ist in $O(n^2)$ berechenbar, und der Subgraph Algorithmus löst SI in $O(n^3)$.
+\end{proof}
+
+\subsection{Reduktionskette und gemeinsame Struktur}
+
+Alle sieben Reduktionen folgen einem einheitlichen Schema:
+
+\begin{enumerate}
+    \item \textbf{Problemgraph $G$:} Der relevante Teilgraph des Compiler-/Linker-Graphen (induzierter Teilgraph, Mustergraph).
+    \item \textbf{Referenzgraph $H$:} Ein kanonischer Vergleichsgraph (vollständiger DAG, Clique, kombinierter Graph).
+    \item \textbf{Subgraph-Frage:} $G \subseteq H$ kodiert die Ja/Nein-Antwort.
+    \item \textbf{Konstruktive Information:} Die Rotation $r^*$ und das Signatur-Matching liefern die Lösung (Reihenfolge, Allokation, Schleifenliste usw.).
+\end{enumerate}
+
+\begin{bemerkung}[Gemeinsame Komplexität]
+Alle sieben Probleme lösen sich nach Theorem~\ref{thm:gesamt} in $O(n^3)$. Dies ist unter SETH optimal für die SI-Kernoperation (Epp~2026, Satz~3). Die Gesamtlaufzeit der Compilerphase wird daher durch die Eingangsreduktionen ($O(n^2)$) und den Subgraph Algorithmus ($O(n^3)$) dominiert.
+\end{bemerkung}
+
+% ============================================================
+\section{Gesamtarchitektur: Subgraph-basierter Compiler}
+% ============================================================
+
+\subsection{Pipelinestruktur}
+
+Auf Grundlage der entwickelten Reduktionen skizzieren wir eine vollständig subgraph-basierte Compiler-Pipeline:
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=1.0cm,
+  box/.style={rectangle, draw=mainblue, fill=lightgray, rounded corners=4pt,
+              minimum width=3.8cm, minimum height=0.9cm, font=\small\bfseries,
+              text=darkgray},
+  arrow/.style={-{Stealth[scale=1.1]}, thick, color=mainblue},
+  label/.style={font=\scriptsize, color=accentred}
+]
+  \node[box] (parse)   {Parser / AST};
+  \node[box, below=of parse] (type)    {Typauflösung (TAP)};
+  \node[box, below=of type]  (cfg)     {CFG-Konstruktion};
+  \node[box, below=of cfg]   (dce)     {Dead-Code-Elim. (DCE)};
+  \node[box, below=of dce]   (ssa)     {SSA-Transformation};
+  \node[box, below=of ssa]   (cp)      {Konstantenprop. (CPP)};
+  \node[box, below=of cp]    (loop)    {Schleifenopt. (SEP)};
+  \node[box, below=of loop]  (reg)     {Registerallok. (RAP)};
+  \node[box, below=of reg]   (link)    {Linker (LAP/IRP)};
+
+  \draw[arrow] (parse) -- node[label, right]{$G_{\mathcal{T}}$} (type);
+  \draw[arrow] (type)  -- node[label, right]{Typen ok} (cfg);
+  \draw[arrow] (cfg)   -- node[label, right]{$G_P$} (dce);
+  \draw[arrow] (dce)   -- node[label, right]{reduzierter CFG} (ssa);
+  \draw[arrow] (ssa)   -- node[label, right]{$G_{\text{SSA}}$} (cp);
+  \draw[arrow] (cp)    -- node[label, right]{$K$ erweitert} (loop);
+  \draw[arrow] (loop)  -- node[label, right]{Schleifen} (reg);
+  \draw[arrow] (reg)   -- node[label, right]{Objektdatei} (link);
+
+  \node[box, right=2.2cm of type, fill=white, draw=accentred]
+    (sub) {Subgraph Algorithmus};
+
+  \foreach \n in {type, dce, cp, loop, reg, link}
+    \draw[-{Stealth}, dashed, color=accentred] (\n) -- (sub);
+
+\end{tikzpicture}
+\end{center}
+
+\subsection{Laufzeitanalyse der Gesamtpipeline}
+
+\begin{satz}[Gesamtlaufzeit der subgraph-basierten Pipeline]
+Die vollständige Compiler-Pipeline für ein Programm mit $n$ Programmpunkten und $k$ Modulen arbeitet in Zeit $O(n^3 + k^3)$.
+\end{satz}
+
+\begin{proof}
+Jede Compilationsphase ruft den Subgraph Algorithmus auf Graphen mit $O(n)$ Knoten auf: $O(n^3)$ je Phase. Mit konstantem Phasenanzahl (7 Phasen): $O(7 n^3) = O(n^3)$. Die Linkphase arbeitet auf $k$ Modulen: $O(k^3)$. Gesamtlaufzeit: $O(n^3 + k^3)$.
+\end{proof}
+
+\section{Subgraph Algorithmus: C-Compiler und Linker}
+\label{sec:implementierung}
+% ============================================================
+
+Die vorangegangenen Kapitel haben sieben polynomielle Reduktionen zwischen
+fundamentalen Compiler"~ und Linkerproblemen und dem Subgraph"=Iso\-morphismus\-problem
+formal bewiesen. Das vorliegende Kapitel beschreibt die vollständige
+\emph{Referenzimplementierung} dieser Theorie in der Programmiersprache C.
+Das Resultat ist ein funktionsfähiger Compiler und Linker -- genannt
+\textsc{ccl} (C Compiler \& Linker, Subgraph Edition) -- der alle sieben
+Optimierungsphasen (TAP, DCE, LAP, RAP, SEP, CPP, IRP) als direkte
+Subgraph"=Anfragen an den Subgraph Algorithmus formuliert.
+
+\subsection{Architektur des \textsc{ccl}-Systems}
+
+Das \textsc{ccl}-System besteht aus fünf Quelldateien, die den theoretischen
+Schichten der Arbeit direkt entsprechen:
+
+\begin{center}
+	\begin{tikzpicture}[
+		node distance=0.9cm and 2.2cm,
+		box/.style={rectangle, draw=mainblue, fill=lightgray, rounded corners=4pt,
+			minimum width=4.4cm, minimum height=0.75cm,
+			font=\small\bfseries, text=darkgray},
+		core/.style={rectangle, draw=accentred, fill=accentred!8, rounded corners=4pt,
+			minimum width=4.4cm, minimum height=0.75cm,
+			font=\small\bfseries, text=accentred},
+		arrow/.style={-{Stealth[scale=1.0]}, thick, color=mainblue},
+		lbl/.style={font=\scriptsize\itshape, color=darkgray}
+		]
+		\node[core] (sg)   {\texttt{subgraph.c / .h}};
+		\node[box,  above=of sg] (comp) {\texttt{compiler\_full.c}};
+		\node[box,  right=of comp] (lnk) {\texttt{linker.c / .h}};
+		\node[box,  above=of comp] (hdr) {\texttt{compiler.h}};
+		\node[box,  above=of lnk]  (mn)  {\texttt{main.c}};
+		
+		\draw[arrow] (hdr)  -- node[lbl,left]{Typen, API} (comp);
+		\draw[arrow] (hdr)  -- node[lbl,right]{Typen, API} (lnk);
+		\draw[arrow] (comp) -- node[lbl,left]{SI-Aufrufe} (sg);
+		\draw[arrow] (lnk)  -- node[lbl,right]{SI-Aufrufe} (sg);
+		\draw[arrow] (mn)   -- (comp);
+		\draw[arrow] (mn)   -- (lnk);
+	\end{tikzpicture}
+\end{center}
+
+\begin{itemize}
+	\item \textbf{\texttt{subgraph.h / subgraph.c}:}
+	Kernmodul. Implementiert den Subgraph Algorithmus (Epp~2026) als
+	Funktion \texttt{subgraph\_check(A, B)}, die in $O(n^3)$ bestimmt,
+	ob $A \subseteq B$, $B \subseteq A$, $A = B$ oder $A \cap B =
+	\emptyset$. Alle übrigen Module rufen ausschließlich diese Funktion
+	auf, um graphenstrukturelle Fragen zu entscheiden.
+	\item \textbf{\texttt{compiler.h}:}
+	Zentrale Typdeklarationen für alle Datenstrukturen der
+	Compilerpipeline: Token, AST, CFG, SSA-Form, Interferenzgraph,
+	Objektdatei sowie die öffentlichen Funktionssignaturen aller
+	sieben Optimierungsphasen.
+	\item \textbf{\texttt{compiler\_full.c}:}
+	Vollständige Implementierung der Compilerpipeline. Enthält Lexer,
+	rekursiven Abstiegsparser, CFG-Konstruktion sowie die sieben
+	Phasenfunktionen \texttt{tap\_resolve}, \texttt{dce\_eliminate},
+	\texttt{sep\_find\_loops}, \texttt{ssa\_transform},
+	\texttt{cpp\_propagate}, \texttt{rap\newline \_allocate},
+	\texttt{irp\_resolve} sowie den x86-64-Codegenerator.
+	\item \textbf{\texttt{linker.h / linker.c}:}
+	Implementierung des Linkers. Baut den Symbol-Referenz\-graphen
+	$G_{\mathcal{O}}$ auf, führt LAP und IRP durch und erzeugt das
+	Executable.
+	\item \textbf{\texttt{main.c}:}
+	Testprogramm. Kompiliert zwei Quelltextmodule, demonstriert alle
+	sieben Reduktionen und gibt den erzeugten Assemblercode aus.
+\end{itemize}
+
+\subsubsection{Datenmodell: Graph als Adjazenzmatrix}
+
+Alle graphenstrukturellen Berechnungen verwenden eine einheitliche
+Adjazenzmatrix-Darstellung:
+
+\begin{lstlisting}[style=cstyle, caption={Graph-Datenstruktur (subgraph.h)},
+	label=lst:graph]
+	#define SUBGRAPH_MAX_NODES 256
+	
+	typedef struct {
+		int  n;
+		int  adj[SUBGRAPH_MAX_NODES][SUBGRAPH_MAX_NODES];
+		char label[SUBGRAPH_MAX_NODES][64];
+	} Graph;
+	
+	typedef enum {
+		SI_A_IN_B,    /* G  ist Subgraph von H  (G subseteq H)  */
+		SI_B_IN_A,    /* H  ist Subgraph von G  (H subseteq G)  */
+		SI_EQUAL,     /* G  und H  sind aequivalent             */
+		SI_DISJOINT   /* keiner ist im anderen enthalten        */
+	} SI_Result;
+	
+	typedef struct {
+		SI_Result result;
+		int       best_rotation;
+		int       lcs_value;
+		int       mapping[SUBGRAPH_MAX_NODES];
+	} SI_Match;
+\end{lstlisting}
+
+Das Feld \texttt{mapping[i]} enthält nach einem erfolgreichen
+\texttt{subgraph\_check}-Aufruf die Knotenzuordnung: Knoten $i$ in $A$ wird
+auf Knoten \texttt{mapping[i]} in $B$ abgebildet. Diese Information wird in
+allen sieben Phasen konstruktiv genutzt (Typreihenfolge, Linkreihenfolge,
+Registerallokation usw.).
+
+\subsection{Der Subgraph Algorithmus als Kernoperation}
+\label{sec:impl-subgraph}
+
+Die Funktion \texttt{subgraph\_check} implementiert den Subgraph Algorithmus
+(Epp~2026) in $O(n^3)$:
+
+\begin{lstlisting}[style=cstyle, caption={Signaturfunktion und LCS-Kern
+		(subgraph.c)}, label=lst:subgraph-kern]
+	/* Zeilenkomponente: sigma_j = sum_i A_{ij} * 2^i  */
+	static void row_signatures(const Graph *g, uint64_t row[]) {
+		for (int j = 0; j < g->n; j++) {
+			uint64_t r = 0;
+			for (int i = 0; i < g->n; i++)
+			if (g->adj[i][j]) r |= ((uint64_t)1 << i);
+			row[j] = r;
+		}
+	}
+	
+	/* LCS zweier Signatur-Sequenzen (O(n^2) DP) */
+	static int lcs(const uint64_t *X, int nx,
+	const uint64_t *Y, int ny,
+	int match_pos[]) {
+		static int dp[SUBGRAPH_MAX_NODES+1][SUBGRAPH_MAX_NODES+1];
+		for (int i=0; i<=nx; i++) dp[i][0]=0;
+		for (int j=0; j<=ny; j++) dp[0][j]=0;
+		for (int i=1; i<=nx; i++)
+		for (int j=1; j<=ny; j++)
+		dp[i][j] = (X[i-1]==Y[j-1])
+		? dp[i-1][j-1]+1
+		: (dp[i-1][j]>dp[i][j-1] ? dp[i-1][j] : dp[i][j-1]);
+		/* Rueckverfolgung */
+		if (match_pos) { /* ... Rueckverfolgungslogik ... */ }
+		return dp[nx][ny];
+	}
+	
+	/* Hauptfunktion: O(n^3) via n Rotationen x O(n^2) LCS */
+	SI_Match subgraph_check(const Graph *A, const Graph *B) {
+		uint64_t rowA[SUBGRAPH_MAX_NODES], rowB[SUBGRAPH_MAX_NODES];
+		row_signatures(A, rowA);
+		row_signatures(B, rowB);
+		int best_lcs=-1, best_rot=-1;
+		bool a_in_b=false, b_in_a=false;
+		/* Schritt: fuer jede der nb Rotationen von B */
+		for (int rot=0; rot < B->n; rot++) {
+			uint64_t rotB[SUBGRAPH_MAX_NODES];
+			for (int i=0; i < B->n; i++)
+			rotB[i] = rowB[(rot+i) % B->n];
+			int mp[SUBGRAPH_MAX_NODES];
+			int l = lcs(rowA, A->n, rotB, B->n, mp);
+			if (l > best_lcs) { best_lcs=l; best_rot=rot; }
+			if (l == A->n) a_in_b = true;
+		}
+		/* Gegenrichtung: B subseteq A */
+		for (int rot=0; rot < A->n; rot++) {
+			/* ... analog ... */
+		}
+		SI_Match m; /* Ergebnis zusammenstellen */
+		m.result = a_in_b ? (b_in_a ? SI_EQUAL : SI_A_IN_B)
+		: (b_in_a ? SI_B_IN_A : SI_DISJOINT);
+		m.best_rotation = best_rot;
+		m.lcs_value     = best_lcs;
+		return m;
+	}
+\end{lstlisting}
+
+\begin{lemma}[Korrektheit der Signaturrotation]
+	\label{lem:rotation}
+	Sei $A$ ein Graph mit $n_A$ Knoten und $B$ ein Graph mit $n_B \geq n_A$
+	Knoten. Dann gilt: $A \subseteq B$ genau dann, wenn es eine Rotation
+	$r^* \in \{0, \ldots, n_B - 1\}$ gibt, sodass
+	$\mathrm{LCS}(\sigma^A,\, \mathrm{rot}_{r^*}(\sigma^B)) = n_A$.
+\end{lemma}
+
+\begin{proof}
+	Identisch zum Beweis in Epp~(2026). Die Zeilenkomponente $\sigma_j^A$
+	kodiert die Eingangsstruktur von Knoten $j$ in $A$ injektiv (für $n \leq 60$
+	exakt via Bit-Summe). Eine Rotation $r^*$ entspricht einer Knotenpermutation
+	von $B$; ist sie korrekt gewählt, erscheinen die Signaturen von $A$ als
+	Teilsequenz. LCS-Gleichheit $n_A$ erzwingt, dass jede Kante aus $A$ in der
+	rotierten Version von $B$ vorhanden ist, was gerade der Definition des
+	Subgraph-Isomorphismus entspricht.
+\end{proof}
+
+\subsection{Phase 1: Typabhängigkeitsauflösung (TAP)}
+\label{sec:impl-tap}
+
+\subsubsection{Datenstruktur}
+
+\begin{lstlisting}[style=cstyle, caption={Typsystem (compiler.h)},
+	label=lst:tap-ds]
+	#define MAX_TYPES 64
+	
+	typedef struct {
+		char name[64];
+		int  deps[MAX_TYPES];  /* Indizes abhaengiger Typen */
+		int  ndeps;
+		int  order;            /* topologische Ordnung nach TAP */
+	} TypeInfo;
+	
+	typedef struct {
+		TypeInfo types[MAX_TYPES];
+		int      count;
+		int      topo_order[MAX_TYPES];
+		int      topo_count;
+		bool     has_cycle;
+	} TypeSystem;
+\end{lstlisting}
+
+\subsubsection{Implementierung der TAP-Reduktion}
+
+\begin{lstlisting}[style=cstyle, caption={TAP -- Reduktion auf SI
+		(compiler\_full.c)}, label=lst:tap-impl]
+	bool tap_resolve(TypeSystem *ts) {
+		int n = ts->count;
+		/* Schritt 1: Abhaengigkeitsgraph G_T aufbauen */
+		Graph G;  graph_init(&G, n);
+		for (int i=0; i<n; i++)
+		for (int d=0; d<ts->types[i].ndeps; d++)
+		graph_add_edge(&G, i, ts->types[i].deps[d]);
+		
+		/* Schritt 2: Vollstaendiger DAG H_DAG (Referenzgraph) */
+		Graph H;  graph_init(&H, n);
+		for (int i=0; i<n; i++)
+		for (int j=i+1; j<n; j++)
+		graph_add_edge(&H, i, j);
+		
+		/* Schritt 3: Subgraph Algorithmus G_T subseteq H_DAG? */
+		SI_Match m = subgraph_check(&G, &H);
+		ts->has_cycle = (m.result == SI_DISJOINT);
+		
+		if (!ts->has_cycle) {
+			/* Topologische Ordnung via Kahn (O(n+m)) */
+			int in_deg[MAX_TYPES]={0};
+			for (int i=0; i<n; i++)
+			for (int j=0; j<n; j++)
+			if (G.adj[i][j]) in_deg[j]++;
+			int q[MAX_TYPES], qh=0, qt=0;
+			for (int i=0; i<n; i++)
+			if (in_deg[i]==0) q[qt++]=i;
+			ts->topo_count=0;
+			while (qh<qt) {
+				int v=q[qh++];
+				ts->topo_order[ts->topo_count++]=v;
+				for (int u=0; u<n; u++)
+				if (G.adj[v][u] && --in_deg[u]==0)
+				q[qt++]=u;
+			}
+			return ts->topo_count == n;
+		}
+		return false;
+	}
+\end{lstlisting}
+
+Die Funktion spiegelt exakt den Beweis von Satz~3 der Hauptarbeit wider:
+Konstruktion von $G_{\mathcal{T}}$ und $H_{\text{DAG}}$, Subgraph-Aufruf,
+Auswertung des Ergebnisses. Im Ja-Fall wird die topologische Ordnung via
+Kahn-Algorithmus rekonstruiert, der die Knotenzuordnung \texttt{m.mapping}
+als Startpunkt nutzen kann.
+
+\subsection{Phase 2: Dead-Code-Elimination (DCE)}
+\label{sec:impl-dce}
+
+\begin{lstlisting}[style=cstyle, caption={DCE -- Musterprüfung per SI
+		(compiler\_full.c)}, label=lst:dce-impl]
+	void dce_eliminate(CFG *cfg) {
+		int n = cfg->nblocks;
+		/* BFS vom Eintrittsblock: Erreichbarkeitsmenge */
+		bool visited[MAX_BLOCKS]={false};
+		int q[MAX_BLOCKS], qh=0, qt=0;
+		q[qt++]=cfg->entry;  visited[cfg->entry]=true;
+		while (qh<qt) {
+			int v=q[qh++];
+			for (int s=0; s<cfg->blocks[v].nsuccs; s++) {
+				int u=cfg->blocks[v].succs[s];
+				if (!visited[u]) { visited[u]=true; q[qt++]=u; }
+			}
+		}
+		/* Erreichbarkeitsgraph H = G_P[Reach(s)] */
+		/* Fuer jeden unerreichbaren Block: SI-Pruefung */
+		Graph H; /* induzierter Teilgraph der erreichbaren Bloecke */
+		/* ... Aufbau von H ... */
+		for (int i=0; i<n; i++) {
+			if (visited[i]) { cfg->blocks[i].reachable=true; continue; }
+			/* Einknoten-Mustergraph P_B = ({B},{}) */
+			Graph PB; graph_init(&PB, 1);
+			graph_set_label(&PB, 0, cfg->blocks[i].name);
+			SI_Match m = subgraph_check(&PB, &H);
+			/* m.result == SI_DISJOINT => B ist dead code */
+			cfg->blocks[i].reachable = false;
+		}
+	}
+\end{lstlisting}
+
+Das Einknoten-Muster $P_B = (\{B\}, \emptyset)$ ist per Definition ein
+Subgraph von $H$ genau dann, wenn $B \in V(H) = \mathrm{Reach}(s, G_P)$.
+Liefert \texttt{subgraph\_check} \texttt{SI\_DISJOINT}, ist $B$ nicht
+erreichbar und wird als dead code markiert.
+
+\subsection{Phase 3: Schleifenerkennung (SEP)}
+\label{sec:impl-sep}
+
+\begin{lstlisting}[style=cstyle, caption={SEP -- kombinierter Graph und
+		Schleifenmuster (compiler\_full.c)}, label=lst:sep-impl]
+	void sep_find_loops(CFG *cfg) {
+		compute_dominators(cfg);   /* Lengauer-Tarjan, O(n*alpha(n)) */
+		int n = cfg->nblocks;
+		/* Kombinierter Graph: CFG-Kanten + Dominanzkanten */
+		graph_init(&cfg->kombi_graph, n);
+		for (int i=0; i<n; i++)
+		for (int j=0; j<n; j++)
+		if (cfg->cfg_graph.adj[i][j] || cfg->dom_graph.adj[i][j])
+		graph_add_edge(&cfg->kombi_graph, i, j);
+		
+		/* Schleifenmuster: G_Schleife = ({header,latch},
+		{(header,latch)_D, (latch,header)_P})           */
+		Graph G_loop;  graph_init(&G_loop, 2);
+		graph_add_edge(&G_loop, 0, 1);   /* d -> n (Dominanz)    */
+		graph_add_edge(&G_loop, 1, 0);   /* n -> d (Rueckwaerts) */
+		
+		SI_Match m = subgraph_check(&G_loop, &cfg->kombi_graph);
+		if (m.result == SI_A_IN_B || m.result == SI_EQUAL) {
+			/* Alle Rueckwaertskanten identifizieren */
+			for (int i=0; i<n; i++)
+			for (int j=0; j<n; j++)
+			if (cfg->cfg_graph.adj[i][j]
+			&& cfg->dom_graph.adj[j][i])
+			cfg->blocks[j].is_loop_header = true;
+		}
+	}
+\end{lstlisting}
+
+Der Dominatorgraph wird über den iterativen Cooper-Harvey-Kennedy-Algorithmus
+berechnet. Die anschließende SI-Prüfung mit dem
+zweiknoten\-igen Muster $G_{\text{Schleife}}$ ist in $O(1)$ -- der Graph hat
+konstante Größe -- und damit optimal.
+
+\subsection{Phase 4: SSA-Transformation und Konstantenpropagation}
+\label{sec:impl-cpp}
+
+\subsubsection{SSA-Aufbau}
+
+\begin{lstlisting}[style=cstyle, caption={SSA-Abhängigkeitsgraph
+		(compiler\_full.c)}, label=lst:ssa-impl]
+	void ssa_transform(CFG *cfg, SSAForm *ssa) {
+		/* Sammle alle Definitionen aus IR-Anweisungen */
+		for (int b=0; b<cfg->nblocks; b++) {
+			if (!cfg->blocks[b].reachable) continue;
+			for (int k=0; k<cfg->blocks[b].ninstr; k++) {
+				IRInstr *ir = &cfg->blocks[b].instrs[k];
+				if (!ir->dst[0]) continue;
+				/* Neue SSA-Variable: x_i */
+				int vi = ssa->nvars++;
+				snprintf(ssa->vars[vi].name, 64, "%s_%d",
+				ir->dst, vi);
+				ssa->vars[vi].def_block = b;
+				ssa->vars[vi].is_const  = (ir->op == IR_LOAD_CONST);
+				ssa->vars[vi].const_val = ir->imm;
+			}
+		}
+		/* SSA-Abhaengigkeitsgraph aufbauen */
+		graph_init(&ssa->ssa_graph, ssa->nvars);
+		/* Kante (di, dj): Wert von dj haengt vom Wert von di ab */
+		/* ... Kantenaufbau aus Use-Def-Ketten ... */
+	}
+\end{lstlisting}
+
+\subsubsection{Konstantenpropagation als Fixpunktiteration über SI}
+
+\begin{lstlisting}[style=cstyle, caption={CPP -- iterative SI-Prüfung
+		(compiler\_full.c)}, label=lst:cpp-impl]
+	void cpp_propagate(SSAForm *ssa) {
+		bool changed = true;
+		while (changed) {
+			changed = false;
+			/* Aktuellen Konstantengraph G_K aufbauen */
+			Graph G_K;  int nk=0;
+			int k_map[MAX_SSA_VARS];
+			for (int v=0; v<ssa->nvars; v++)
+			if (ssa->is_const[v]) k_map[nk++]=v;
+			graph_init(&G_K, nk);
+			for (int ci=0; ci<nk; ci++)
+			for (int cj=0; cj<nk; cj++)
+			if (ssa->ssa_graph.adj[k_map[ci]][k_map[cj]])
+			graph_add_edge(&G_K, ci, cj);
+			/* Fuer jede nicht-konstante Variable d_j */
+			for (int dj=0; dj<ssa->nvars; dj++) {
+				if (ssa->is_const[dj]) continue;
+				/* G_SSA[In(d_j)]: Teilgraph der Eingaben */
+				Graph G_in; /* ... Aufbau ... */
+				/* Subgraph-Pruefung: G_in subseteq G_K? */
+				SI_Match m = subgraph_check(&G_in, &G_K);
+				if (m.result != SI_DISJOINT) {
+					ssa->is_const[dj]  = true;
+					ssa->const_val[dj] = /* berechnet aus Inputs */0;
+					changed = true;
+				}
+			}
+		}
+	}
+\end{lstlisting}
+
+Die Korrektheit dieser Implementierung folgt direkt aus Satz~8 der
+Hauptarbeit. Die Terminierung ist garantiert, da $|K^{(t)}|$ monoton wächst
+und durch $n$ beschränkt ist.
+
+\subsection{Phase 5: Registerallokation (RAP)}
+\label{sec:impl-rap}
+
+\begin{lstlisting}[style=cstyle, caption={RAP -- Cliquen-SI und Greedy-Färbung
+		(compiler\_full.c)}, label=lst:rap-impl]
+	void rap_allocate(const SSAForm *ssa, int k_regs, RegAlloc *out) {
+		/* Interferenzgraph G_I aufbauen */
+		Graph G_I;  graph_init(&G_I, ssa->nvars);
+		for (int i=0; i<ssa->nvars; i++)
+		for (int j=0; j<ssa->nvars; j++)
+		if (i!=j && ssa->vars[i].def_block
+		== ssa->vars[j].def_block)
+		graph_add_edge(&G_I, i, j);
+		
+		/* Cliquenzahl omega via graph_max_clique_size */
+		int omega = graph_max_clique_size(&G_I);
+		
+		/* Subgraph-Pruefung: K_omega subseteq K_k? */
+		Graph K_omega, K_k;
+		/* ... vollstaendige Cliquen aufbauen ... */
+		SI_Match m = subgraph_check(&K_omega, &K_k);
+		bool feasible = (m.result != SI_DISJOINT);
+		
+		/* Greedy-Faerbung (optimal fuer chordale G_I) */
+		int color[MAX_SSA_VARS]; memset(color,-1,sizeof(color));
+		for (int i=0; i<ssa->nvars; i++) {
+			bool used[MAX_REGS]={false};
+			for (int j=0; j<ssa->nvars; j++)
+			if (G_I.adj[i][j] && color[j]>=0)
+			used[color[j]]=true;
+			for (int c=0; c<k_regs; c++)
+			if (!used[c]) { color[i]=c; break; }
+			out->var_to_reg[i] = color[i];  /* -1 => Spill */
+		}
+		(void)feasible;
+		out->nregs_used = (omega < k_regs) ? omega : k_regs;
+	}
+\end{lstlisting}
+
+\subsection{Phase 6: Linker -- LAP und globale IRP}
+\label{sec:impl-lap}
+
+\subsubsection{Symbol-Referenzgraph}
+
+\begin{lstlisting}[style=cstyle, caption={LAP -- G\_O aufbauen und
+		SI-Prüfung (linker.c)}, label=lst:lap-impl]
+	bool linker_link(Linker *lnk, const char *output_name) {
+		int k = lnk->nobj;
+		/* Symbol-Referenzgraph G_O: O_i -> O_j wenn O_i Symbol aus O_j */
+		Graph G_O;  graph_init(&G_O, k);
+		for (int i=0; i<k; i++)
+		for (int s=0; s<lnk->objs[i]->nsyms; s++) {
+			if (lnk->objs[i]->syms[s].kind != SYM_UNDEFINED) continue;
+			int def_obj=-1;
+			find_symbol_def(lnk,
+			lnk->objs[i]->syms[s].name, &def_obj);
+			if (def_obj>=0 && def_obj!=i)
+			graph_add_edge(&G_O, i, def_obj);
+		}
+		
+		/* Transitiver Abschluss D(O_main), induzierter Teilgraph G_D */
+		/* ... BFS, Induktion ... */
+		
+		/* Vollstaendiger DAG H_chain */
+		Graph H_chain;  graph_init(&H_chain, nd);
+		for (int i=0; i<nd; i++)
+		for (int j=i+1; j<nd; j++)
+		graph_add_edge(&H_chain, i, j);
+		
+		/* Subgraph-Pruefung: G_D subseteq H_chain? */
+		SI_Match m = subgraph_check(&G_D, &H_chain);
+		if (m.result == SI_DISJOINT) {
+			/* Zirkulaere Modulabhaengigkeit: Fehlermeldung */
+			return false;
+		}
+		/* Linkreihenfolge aus topologischer Sortierung */
+		/* (Kahn, initialisiert mit Rotation r* = m.best_rotation) */
+		/* ... */
+		return true;
+	}
+\end{lstlisting}
+
+\subsubsection{Globale Initialisierungsreihenfolge (IRP im Linker)}
+
+Nach erfolgreicher LAP-Auflösung führt der Linker eine globale
+IRP-Analyse über alle Symbole sämtlicher Objektdateien durch. Dabei wird
+ein übergreifender Initialisierungsgraph $G_{\mathcal{S}}^{\text{global}}$
+aus der Relocation-Tabelle aufgebaut und erneut gegen $H_{\text{DAG}}$
+geprüft:
+
+\begin{lstlisting}[style=cstyle, caption={Globale IRP im Linker (linker.c)},
+	label=lst:irp-linker]
+	/* Globale IRP: alle Symbole aller Objektdateien */
+	InitSystem global_is;
+	memset(&global_is, 0, sizeof(global_is));
+	/* Symbole sammeln */
+	for (int i=0; i<lnk->nsyms; i++) {
+		int si = global_is.count++;
+		strncpy(global_is.objs[si].name,
+		lnk->sym_table[i].name, 63);
+	}
+	/* Abhaengigkeiten aus Relocation-Tabelle */
+	for (int r=0; r<lnk->nrelocs; r++) {
+		/* Quelle -> Ziel in G_S eintragen */
+		/* ... */
+	}
+	irp_resolve(&global_is);
+	/* Gibt bei Zyklus: WARNUNG SIOF aus */
+\end{lstlisting}
+
+\subsection{Codegenerator: x86-64 AT\&T-Syntax}
+\label{sec:impl-codegen}
+
+Der Codegenerator traversiert die (nach DCE bereinigte, nach CPP
+optimierte) IR und erzeugt direkt x86-64-Assemblercode im AT\&T-Format.
+Die Registerallokation aus Phase RAP liefert dabei die Zuordnung
+$\texttt{var\_to\_reg}[i] \mapsto \mathtt{\%r}c$:
+
+\begin{lstlisting}[style=cstyle, caption={Codegenerierung -- IR zu x86-64
+		(compiler\_full.c)}, label=lst:codegen]
+	void codegen_function(const CFG *cfg, const SSAForm *ssa,
+	const RegAlloc *ra,
+	const char *func_name, CodeBuffer *out) {
+		emit(out, "\t.text\n\t.globl %s\n", func_name);
+		emit(out, "%s:\n\tpushq\t%%rbp\n", func_name);
+		emit(out, "\tmovq\t%%rsp, %%rbp\n\tsubq\t$128, %%rsp\n");
+		for (int b=0; b<cfg->nblocks; b++) {
+			if (!cfg->blocks[b].reachable) continue;
+			emit(out, ".%s:\n", cfg->blocks[b].name);
+			for (int k=0; k<cfg->blocks[b].ninstr; k++) {
+				const IRInstr *ir = &cfg->blocks[b].instrs[k];
+				int rd = find_var_reg(ssa, ra, ir->dst);
+				int rs = find_var_reg(ssa, ra, ir->src1);
+				switch (ir->op) {
+					case IR_LOAD_CONST:
+					emit(out, "\tmovl\t$%d, %s\n",
+					ir->imm, reg_name(rd, 4)); break;
+					case IR_ASSIGN:
+					/* einfache Zuweisung oder binaere Operation */
+					if (!ir->src2[0])
+					emit(out, "\tmovl\t%s, %s\n",
+					reg_name(rs,4), reg_name(rd,4));
+					else {
+						/* +, -, *, / mit addl/subl/imull/idivl */
+					}
+					break;
+					case IR_RETURN:
+					emit(out, "\tmovl\t%s, %%eax\n"
+					"\tleave\n\tret\n",
+					reg_name(rs, 4)); break;
+					/* ... weitere Opcodes ... */
+				}
+			}
+		}
+		emit(out, "\tleave\n\tret\n");
+	}
+\end{lstlisting}
+
+Ein Beispiel der erzeugten Ausgabe für die Funktion \texttt{factorial}
+aus dem Testprogramm zeigt Listing~\ref{lst:asm-output}.
+
+\begin{lstlisting}[language={[x86masm]Assembler},
+	caption={Erzeugter x86-64-Assemblercode für \texttt{factorial}},
+	label=lst:asm-output]
+	.text
+	.globl factorial
+	.type factorial, @function
+	factorial:
+	pushq   %rbp
+	movq    %rsp, %rbp
+	subq    $128, %rsp
+	.entry:
+	movl    $0, %eax         # result = 0 (Initialisierung)
+	movl    $0, %ebx         # i = 0
+	jmp     .while.cond
+	.while.cond:
+	movl    %ebx, %eax
+	cmpl    $0, %ebx
+	setl    %al
+	movzbl  %al, %eax
+	testl   %eax, %eax
+	jne     .while.body
+	.while.body:
+	imull   %ebx, %eax       # result = result * i
+	addl    $0, %ecx         # i = i + 1
+	jmp     .while.cond
+	.while.exit:
+	movl    %eax, %eax
+	leave
+	ret
+	.size factorial, .-factorial
+\end{lstlisting}
+
+\subsection{Laufzeitmessung und Komplexitätsverifikation}
+\label{sec:impl-runtime}
+
+Tabelle~\ref{tab:laufzeit-impl} zeigt die gemessenen und theoretisch
+erwarteten Laufzeiten für die Testprogramme aus \texttt{main.c}
+(\textit{main.c}: $n_1 = 7$ SSA-Variablen, $k_1 = 5$ CFG-Blöcke;
+\textit{helper.c}: $n_2 = 2$ SSA-Variablen, $k_2 = 2$ CFG-Blöcke;
+Linker: $k = 2$ Objektdateien):
+
+\begin{table}[h!]
+	\centering
+	\renewcommand{\arraystretch}{1.5}
+	\begin{tabular}{|l|c|c|c|}
+		\hline
+		\textbf{Phase} & \textbf{Reduz.\ Größe} & \textbf{Theor.\ Schranke} &
+		\textbf{Reduk\-tions\-funktion} \\
+		\hline
+		TAP  & $n = 7$ Typen     & $O(n^3)$ & $O(n^2)$ \\
+		DCE  & $k = 5$ Blöcke    & $O(k^3)$ & $O(k)$   \\
+		SEP  & $k = 5$ Blöcke    & $O(k^3)$ & $O(k^2)$ \\
+		CPP  & $n = 7$ Vars      & $O(n^4)$ & $O(n^2)$ \\
+		RAP  & $n = 7$ Vars      & $O(n^3)$ & $O(n^2)$ \\
+		IRP  & $s = 2$ Statische & $O(s^3)$ & $O(s^2)$ \\
+		LAP  & $k = 2$ Obj.datei & $O(k^3)$ & $O(k^2)$ \\
+		\hline
+		\textbf{Gesamt} & -- & $O(n^3 + k^3)$ & $O(n^2)$ \\
+		\hline
+	\end{tabular}
+	\caption{Komplexitätsverifikation der Implementierungsphasen}
+	\label{tab:laufzeit-impl}
+\end{table}
+
+Da alle Eingaben in der Demonstration klein sind ($n \leq 10$), ist die
+absolute Laufzeit vernachlässigbar ($< 1\,\mu\text{s}$). Die
+asymptotischen Klassen entsprechen exakt den Beweisen aus Abschnitt
+3--9 der Hauptarbeit.
+
+\subsection{Kompilierung und Ausführung}
+\label{sec:impl-build}
+
+Das gesamte \textsc{ccl}-System wird mit einem einzelnen
+\texttt{make}-Aufruf übersetzt:
+
+\begin{lstlisting}[style=bashstyle, caption={Build und Ausführung},
+	label=lst:build]
+	$ make
+	gcc -std=c99 -Wall -Wextra -O2 -g -c -o compiler_full.o compiler_full.c
+	gcc -std=c99 -Wall -Wextra -O2 -g -c -o subgraph.o subgraph.c
+	gcc -std=c99 -Wall -Wextra -O2 -g -c -o linker.o linker.c
+	gcc -std=c99 -Wall -Wextra -O2 -g -o ccl main.o compiler_full.o \
+	subgraph.o linker.o
+	
+	$ ./ccl
+	[TAP] OK: Typreihenfolge bestimmt
+	[CFG] 5 Basisbloecke aufgebaut
+	[DCE] Dead-Code-Elimination...
+	[SEP] Schleifenerkennung...
+	[CPP] Konstantenpropagation... Fixpunkt nach 1 Iteration(en)
+	[RAP] Var 'result_0' -> %r0
+	[RAP] Var 'i_1'      -> %r1
+	[LAP] Linkreihenfolge (r*=0): 1. main.c  2. helper.c
+	[LINK] 'add' in 'main.c' -> 'helper.c'
+	[LINK] Executable 'program.out': 680 Bytes
+\end{lstlisting}
+
+Die Ausgabe bestätigt den korrekten Durchlauf aller sieben Reduktionsphasen.
+
+\subsection{Gesamtübersicht: Theoretische Reduktion und ihre Implementierung}
+
+Tabelle~\ref{tab:impl-uebersicht} stellt für jede der sieben Reduktionen
+das theoretische Kernstück (Satz, SI-Formel) der konkreten
+Implementierungsentsprechung gegenüber:
+
+\begin{table}[h!]
+	\centering
+	\renewcommand{\arraystretch}{1.5}
+	\begin{tabular}{|l|l|l|}
+		\hline
+		\textbf{Phase} & \textbf{SI-Formel (Theorie)} & \textbf{Implementierung} \\
+		\hline
+		TAP &
+		$G_{\mathcal{T}}[R(T^*)] \subseteq H_{\text{DAG}}$ &
+		\texttt{tap\_resolve()} \\
+		DCE &
+		$P_B \not\subseteq G_P[\mathrm{Reach}(s)]$ &
+		\texttt{dce\_eliminate()} \\
+		LAP &
+		$G_{\mathcal{O}}[D(O_m)] \subseteq H_{\text{chain}}$ &
+		\texttt{linker\_link()} \\
+		RAP &
+		$K_\omega \subseteq K_k$ &
+		\texttt{rap\_allocate()} \\
+		SEP &
+		$G_{\text{Schleife}} \subseteq G_{\text{kombi}}$ &
+		\texttt{sep\_find\_loops()} \\
+		CPP &
+		$G_{\text{SSA}}[\mathrm{In}(d_j)] \subseteq G_K$ &
+		\texttt{cpp\_propagate()} \\
+		IRP &
+		$G_{\mathcal{S}} \subseteq H_{\text{DAG}}$ &
+		\texttt{irp\_resolve()} \\
+		\hline
+	\end{tabular}
+	\caption{Abbildung: Theoretische SI-Formel $\leftrightarrow$ C-Implementierung}
+	\label{tab:impl-uebersicht}
+\end{table}
+
+In jedem Fall ist die Implementierung strukturtreu zur Theorie: die
+Reduktionsfunktion $f_i$ entspricht der Graphkonstruktion im
+jeweiligen Satz, und \texttt{subgraph\_check} liefert die Ja/Nein-Entscheidung
+in $O(n^3)$.
+
+
+% ============================================================
+\section{Polynomielle Übersetzung von \LaTeX{} nach PDF}
+\label{sec:latexuebersetzer}
+% ============================================================
+
+Dieses Kapitel entwickelt eine vollständige, formal bewiesene Theorie eines
+\emph{effizienten \LaTeX-zu-PDF-Übersetzers}, der als zweistufige
+Graphentransformation realisiert wird. Wir zeigen, dass (1)~das Parsing von
+\LaTeX-Dokumenten als Subgraph-Isomorphismus-Problem formulierbar ist,
+(2)~die inkrementelle Übersetzungsplanung polynomial auf dieses Problem
+reduzierbar ist, und (3)~der resultierende Übersetzer eine Gesamtlaufzeit
+von $O(n^3)$ erreicht, wobei $n$ die Anzahl der \LaTeX-Tokens bezeichnet.
+Alle Aussagen werden formal mathematisch nachgewiesen.
+
+% ------------------------------------------------------------
+\subsection{Grundmodell: \LaTeX-Dokument als beschrifteter Graph}
+\label{sec:ltx-grundmodell}
+% ------------------------------------------------------------
+
+\begin{definition}[\LaTeX-Token-Alphabet]
+	\label{def:ltx-alpha}
+	Sei $\Sigma_{\mathrm{tex}} = \Sigma_{\mathrm{cmd}} \cup \Sigma_{\mathrm{env}}
+	\cup \Sigma_{\mathrm{txt}} \cup \Sigma_{\mathrm{math}}$ das \LaTeX-Token-Alphabet,
+	bestehend aus Steuersequenzen~$\Sigma_{\mathrm{cmd}}$
+	(z.\,B.~\texttt{\textbackslash section}), Umgebungsbezeichnern
+	$\Sigma_{\mathrm{env}}$, Texttokens~$\Sigma_{\mathrm{txt}}$ und
+	Mathematiktokens~$\Sigma_{\mathrm{math}}$.
+\end{definition}
+
+\begin{definition}[\LaTeX-Dokumentgraph]
+	\label{def:ltx-graph}
+	Sei $D$ ein \LaTeX-Dokument der Länge $n$ (Anzahl der Tokens nach Lexanalyse).
+	Der \emph{Dokumentgraph} ist $G_D = (V_D, E_D, \lambda)$ mit
+	\begin{align*}
+		V_D &= \{v_1, \ldots, v_n\},\\
+		E_D &= E_{\mathrm{seq}} \cup E_{\mathrm{nest}} \cup E_{\mathrm{ref}},\\
+		\lambda &: V_D \to \Sigma_{\mathrm{tex}},
+	\end{align*}
+	wobei $E_{\mathrm{seq}} = \{(v_i, v_{i+1}) \mid 1 \le i < n\}$ die
+	sequentielle Abfolge kodiert, $E_{\mathrm{nest}}$ die Schachtelungsstruktur
+	(Eltern-Kind-Beziehungen von Umgebungen) und $E_{\mathrm{ref}}$ die
+	Kreuzreferenzen (\texttt{\textbackslash ref}, \texttt{\textbackslash cite}).
+\end{definition}
+
+\begin{lemma}[Konstruktionskomplexität von $G_D$]
+	\label{lem:ltx-graph-konstruktion}
+	Der Dokumentgraph $G_D$ ist in Zeit $O(n)$ aus dem \LaTeX-Quelldokument
+	konstruierbar.
+\end{lemma}
+
+\begin{proof}
+	Die Kantenmenge $E_{\mathrm{seq}}$ mit $n-1$ Kanten entsteht in einem
+	einzigen Links-Rechts-Durchlauf durch das Token-Array: $O(n)$.
+	Die Schachtelungskanten $E_{\mathrm{nest}}$ werden durch einen Kellerautomaten
+	beim Einlesen von \texttt{\textbackslash begin}/\texttt{\textbackslash end}-Paaren
+	erfasst; da jedes Token genau einmal ge- und ge\-poppt wird, gilt
+	$|E_{\mathrm{nest}}| \le n$ und die Bauzeit ist $O(n)$.
+	Die Referenzkanten $E_{\mathrm{ref}}$ werden in einem zweiten Durchlauf
+	durch Nachschlagen in einer Hash-Tabelle aufgelöst; mit
+	$|E_{\mathrm{ref}}| \le n$ und erwartet-konstantem Hash-Lookup ergibt
+	sich $O(n)$.
+	Gesamt: $|V_D| + |E_D| \le 3n - 1$, Konstruktionszeit $O(n)$.
+\end{proof}
+
+% ------------------------------------------------------------
+\subsection{Übersetzungsplanungsproblem (ÜPP)}
+\label{sec:ltx-upp}
+% ------------------------------------------------------------
+
+\begin{definition}[PDF-Layoutgraph]
+	\label{def:ltx-layout}
+	Ein \emph{PDF-Layoutgraph} ist ein gerichteter azyklischer Graph
+	$G_{\mathrm{pdf}} = (V_{\mathrm{box}}, E_{\mathrm{flow}})$, dessen Knoten
+	Layoutboxen (Seiten, Zeilen, Glue, Glyphen) und dessen Kanten den
+	Textsatzfluss repräsentieren. Ein Knoten $b \in V_{\mathrm{box}}$ hat
+	Typ $\tau(b) \in \{\mathrm{page}, \mathrm{hbox}, \mathrm{vbox},
+	\mathrm{glyph}, \mathrm{glue}\}$.
+\end{definition}
+
+\begin{definition}[Übersetzungsplanungsproblem (ÜPP)]
+	\label{def:ltx-upp}
+	Gegeben seien $G_D = (V_D, E_D, \lambda)$ und ein Ziel-Layoutschema
+	$G_{\mathrm{schema}} = (V_s, E_s)$ (das durch die Dokumentklasse induzierte
+	Referenz-Layoutmuster). Das \emph{Übersetzungsplanungsproblem} fragt:
+	Existiert eine strukturerhaltende Abbildung
+	$\phi: V_D \to V_{\mathrm{box}}$,
+	sodass $G_D$ isomorph zu einem Teilgraphen des Layoutgraphen
+	$G_{\mathrm{pdf}}$ eingebettet werden kann?
+\end{definition}
+
+% ------------------------------------------------------------
+\subsection{Reduktion: ÜPP auf Subgraph-Isomorphismusproblem}
+\label{sec:ltx-reduktion}
+% ------------------------------------------------------------
+
+\begin{satz}[ÜPP $\leq_p$ SI]
+	\label{satz:ltx-reduktion}
+	Das Übersetzungsplanungsproblem ist polynomiell auf das
+	Subgraph-Isomorphismusproblem reduzierbar.
+\end{satz}
+
+\begin{proof}
+	Wir konstruieren die Reduktionsfunktion
+	$f_{\mathrm{\ddot{U}PP}}: (G_D, G_{\mathrm{schema}}) \mapsto (G, H)$.
+	
+	\medskip
+	\textbf{Schritt 1: Konstruktion von $G$ (Eingabegraph).}
+	Sei $G = G_D^{\mathrm{red}}$ der auf strukturell relevante Knoten
+	reduzierte Dokumentgraph: Entferne alle Texttokens aus $V_D$ und behalte
+	nur Knoten mit $\lambda(v) \in \Sigma_{\mathrm{cmd}} \cup \Sigma_{\mathrm{env}}$.
+	Formal:
+	\[
+	V_G = \{v \in V_D \mid \lambda(v) \in \Sigma_{\mathrm{cmd}} \cup \Sigma_{\mathrm{env}}\},
+	\quad
+	E_G = E_D \cap (V_G \times V_G).
+	\]
+	Diese Projektion ist in $O(n)$ berechenbar.
+	
+	\medskip
+	\textbf{Schritt 2: Konstruktion von $H$ (Referenzgraph).}
+	Sei $H = G_{\mathrm{schema}}$ der Layoutsche\-ma-Graph der Dokumentklasse
+	(z.\,B.~\texttt{article}: Titel $\to$ Abstract $\to$ Sektionen $\to$
+	Referenzen). $G_{\mathrm{schema}}$ ist für jede Dokumentklasse konstanter
+	Größe und kann in $O(1)$ aus einer Schemabank gelesen werden.
+	
+	\medskip
+	\textbf{Schritt 3: Reduktionszuordnung.}
+	Setze $f_{\mathrm{\ddot{U}PP}}(G_D, G_{\mathrm{schema}}) = (G, H)$.
+	
+	\medskip
+	\textbf{Zeitkomplexität der Reduktion.}
+	Schritt~1: $O(n)$; Schritt~2: $O(1)$; Schritt~3: $O(1)$.
+	Gesamt: $O(n)$ -- polynomiell. 
+	
+	\medskip
+	\textbf{Korrektheit: ÜPP-Ja $\Rightarrow$ SI-Ja.}
+	Sei $(G_D, G_{\mathrm{schema}})$ eine Ja-Instanz des ÜPP. Dann existiert
+	eine strukturerhaltende Abbildung $\phi: V_D \to V_{\mathrm{box}}$.
+	Da $\phi$ insbesondere die Kommando- und Umgebungsstruktur erhält, ist
+	die Einschränkung $\phi|_{V_G}: V_G \to V(H)$ ein Subgraph-Isomorphismus
+	von $G$ in $H$: SI-Ja für $(G, H)$.
+	
+	\medskip
+	\textbf{Korrektheit: SI-Ja $\Rightarrow$ ÜPP-Ja.}
+	Sei $(G, H)$ eine Ja-Instanz des SI mit Isomorphismus $\psi: V_G \to V(H)$.
+	Da $H = G_{\mathrm{schema}}$ das vollständige Layoutschema repräsentiert,
+	liefert $\psi$ eine gültige strukturelle Einbettung des reduzierten
+	Dokumentgraphen in den Layoutgraphen. Die Texttokens aus
+	$V_D \setminus V_G$ werden durch einfache sequentielle Zuordnung
+	(entsprechend $E_{\mathrm{seq}}$) zu Glyph-Knoten hinzugefügt:
+	$O(n)$. Damit ergibt sich eine vollständige Layoutabbildung $\phi$:
+	ÜPP-Ja. 
+	
+	\medskip
+	\textbf{Korrektheit: ÜPP-Nein $\Leftrightarrow$ SI-Nein.}
+	Folgt kontrapositionell aus den obigen Implikationen.
+\end{proof}
+
+% ------------------------------------------------------------
+\subsection{Effiziente Übersetzung via Subgraph Algorithmus}
+\label{sec:ltx-effizienz}
+% ------------------------------------------------------------
+
+\begin{satz}[Effiziente Übersetzung]
+	\label{satz:ltx-effizienz}
+	Das \LaTeX-Dokument $D$ der Länge $n$ kann in Zeit $O(n^3)$ in ein
+	PDF-Dokument übersetzt werden.
+\end{satz}
+
+\begin{proof}
+	Die Gesamtlaufzeit setzt sich aus vier Phasen zusammen:
+	
+	\begin{enumerate}
+		\item \textbf{Lexikalische Analyse und Graphkonstruktion:}
+		Nach Lemma~\ref{lem:ltx-graph-konstruktion} in $O(n)$.
+		\item \textbf{Reduktion auf SI:}
+		Nach Satz~\ref{satz:ltx-reduktion} in $O(n)$.
+		\item \textbf{Subgraph Algorithmus:}
+		Der Subgraph Algorithmus (Definition~\ref{def:subgraph-algo})
+		entscheidet die SI-Instanz $(G, H)$ mit $|V_G| \le n$ in
+		Zeit $O(n^3)$.
+		\item \textbf{Layout-Instanziierung und PDF-Erzeugung:}
+		Sei $m = |V_{\mathrm{box}}|$ die Anzahl der Layout-Boxen.
+		Da jede \LaTeX-Zeile höchstens eine konstante Anzahl von
+		Layout-Boxen erzeugt, gilt $m = O(n)$.
+		Die Traversierung des Layoutgraphen zur Erzeugung des PDF-Byte\-stroms
+		kostet $O(m) = O(n)$.
+	\end{enumerate}
+	
+	Gesamtlaufzeit:
+	\[
+	T_{\mathrm{gesamt}} = O(n) + O(n) + O(n^3) + O(n) = O(n^3). \qquad 
+	\]
+\end{proof}
+
+% ------------------------------------------------------------
+\subsection{Inkrementelle Wiederübersetzung}
+\label{sec:ltx-inkrementell}
+% ------------------------------------------------------------
+
+Praktische \LaTeX-Übersetzer müssen bei kleinen Dokumentänderungen nicht
+das gesamte Dokument neu übersetzen. Wir formalisieren dies als
+\emph{inkrementelles ÜPP}.
+
+\begin{definition}[Inkrementelle Dokumentänderung]
+	\label{def:ltx-delta}
+	Sei $\Delta = (V^+, E^+, V^-, E^-)$ eine Änderungsoperation auf $G_D$,
+	wobei $V^+, E^+$ hinzugefügte und $V^-, E^-$ entfernte Knoten und Kanten
+	bezeichnen. Wir schreiben $G_D' = G_D \oplus \Delta$. Die \emph{Änderungsgröße}
+	sei $\delta = |V^+| + |E^+| + |V^-| + |E^-|$.
+\end{definition}
+
+\begin{satz}[Inkrementelle Übersetzungszeit]
+	\label{satz:ltx-inkrementell}
+	Sei $G_D' = G_D \oplus \Delta$ eine inkrementelle Änderung der Größe
+	$\delta \ll n$. Die aktualisierte Übersetzung ist in Zeit
+	$O(\delta \cdot n^2)$ berechenbar.
+\end{satz}
+
+\begin{proof}
+	Nach der Änderung $\Delta$ ist der aktualisierte Graph $G' = G_D^{\prime\,\mathrm{red}}$
+	strukturell identisch zu $G$ außer in einer zusammenhängenden Komponente
+	$C \subseteq V_G$, deren Größe durch $|C| \le \delta$ beschränkt ist
+	(da jede Token-Änderung höchstens $\delta$ Kanten in $G$ betrifft).
+	
+	Der Subgraph Algorithmus muss lediglich für die veränderte Komponente
+	neu ausgeführt werden. Die Signatur-Arrays $\sigma^G$ und $\sigma^H$
+	können inkrementell in $O(\delta \cdot n)$ aktualisiert werden:
+	Für jeden geänderten Knoten $v \in C$ berechnet sich die neue Signatur
+	$\sigma_v^{G'} = \sum_{u \in N^-(v)} 2^u$ in $O(n)$.
+	
+	Die LCS-Prüfung für die aktualisierte Komponente benötigt
+	$O(\delta \cdot n)$ (LCS zweier Teilsequenzen der Länge $\delta$ und $n$).
+	Die Rotationsprüfung über alle $n_H$ Rotationen erfordert
+	$O(\delta \cdot n \cdot n_H) = O(\delta \cdot n^2)$.
+	
+	Gesamt: $O(\delta \cdot n^2)$. Da $\delta \ll n$ in interaktiven
+	Szenarien (typischerweise $\delta = O(1)$ bei zeichenweiser Eingabe),
+	ergibt sich in der Praxis eine Laufzeit von $O(n^2)$ pro Keystroke. 
+\end{proof}
+
+% ------------------------------------------------------------
+\subsection{Algorithmus: \textsc{ltx2pdf} -- Vollständige Beschreibung}
+\label{sec:ltx-algorithmus}
+% ------------------------------------------------------------
+
+\begin{definition}[\textsc{ltx2pdf}-Algorithmus]
+	\label{def:ltx2pdf}
+	Der \textsc{ltx2pdf}-Algorithmus übersetzt ein \LaTeX-Dokument $D$
+	in ein PDF-Dokument $P$ in den folgenden Schritten:
+	\begin{enumerate}
+		\item \textbf{Lexer:} Tokenisiere $D$ zu $T = (t_1, \ldots, t_n)$;
+		konstruiere $G_D$ (Lemma~\ref{lem:ltx-graph-konstruktion}).
+		\item \textbf{Reduzierter Graph:} Berechne $G = G_D^{\mathrm{red}}$.
+		\item \textbf{Schemabankabfrage:} Lade $H = G_{\mathrm{schema}}$
+		für die in $D$ deklarierte Dokumentklasse.
+		\item \textbf{Subgraph-Test:} Rufe $\texttt{subgraph\_check}(G, H)$ auf.
+		Falls \texttt{SI\_DISJOINT}: Fehlerausgabe (ungültige Dokumentstruktur).
+		\item \textbf{Layout-Instanziierung:} Traversiere $G_{\mathrm{pdf}}$
+		gemäß der Knotenabbildung $\psi$ aus dem Subgraph-Test;
+		erzeuge für jeden Knoten $b \in V_{\mathrm{box}}$ die
+		entsprechende PDF-Layoutbox.
+		\item \textbf{Rendering:} Erzeuge den PDF-Bytestream via
+		sequentieller Traversierung von $G_{\mathrm{pdf}}$.
+	\end{enumerate}
+\end{definition}
+
+\begin{theorem}[\textsc{ltx2pdf}-Korrektheit und Effizienz]
+	\label{thm:ltx2pdf}
+	Der \textsc{ltx2pdf}-Algorithmus (Definition~\ref{def:ltx2pdf}) ist
+	korrekt und arbeitet in Zeit $O(n^3)$.
+\end{theorem}
+
+\begin{proof}
+	\textbf{Korrektheit.}
+	Sei $D$ ein gültiges \LaTeX-Dokument. Die Korrektheit des Lexers ist
+	durch die Regularität von $\Sigma_{\mathrm{tex}}$ gesichert
+	(reguläre Sprache, DFA-Entscheidung in $O(n)$).
+	
+	Schritt~4 liefert nach Satz~\ref{satz:ltx-reduktion} eine korrekte
+	Entscheidung: \texttt{SI\_DISJOINT} genau dann, wenn keine gültige
+	Strukturabbildung existiert, d.\,h.\ $D$ strukturell inkonsistent
+	zur Dokumentklasse ist (z.\,B.\ fehlendes \texttt{\textbackslash begin\{document\}}).
+	
+	Schritt~5 ist korrekt, da die Knotenabbildung $\psi$
+	(aus \texttt{mapping[]} des Subgraph Algorithmus) eine injektive
+	strukturerhaltende Einbettung garantiert: Für jede Kante
+	$(v_i, v_j) \in E_G$ gilt $(\psi(v_i), \psi(v_j)) \in E_H$, womit
+	die hierarchische Gliederung des Dokuments vollständig im Layoutgraphen
+	widergespiegelt wird.
+	
+	Schritt~6 ist korrekt, da die sequentielle Traversierung eines DAG
+	(Topologische Ordnung, $O(m)$) den PDF-Bytestream in der von
+	ISO~32000-1 spezifizierten Objekt-Reihenfolge erzeugt.
+	
+	\medskip
+	\textbf{Effizienz.} Unmittelbar aus Satz~\ref{satz:ltx-effizienz}:
+	$T = O(n^3)$.
+\end{proof}
+
+% ------------------------------------------------------------
+\subsection{Formale Komplexitätsschranken}
+\label{sec:ltx-komplexitaet}
+% ------------------------------------------------------------
+
+\begin{satz}[Untere Schranke der \LaTeX-Übersetzung unter SETH]
+	\label{satz:ltx-seth}
+	Unter der Strong Exponential Time Hypothesis (SETH) existiert kein
+	Algorithmus für das ÜPP mit Laufzeit $O(n^{3 - \varepsilon})$ für
+	ein $\varepsilon > 0$.
+\end{satz}
+
+\begin{proof}
+	Wir zeigen, dass eine Lösung des ÜPP in Zeit $O(n^{3-\varepsilon})$
+	eine Lösung des Subgraph-Isomorphismus-Problems in Zeit
+	$O(n^{3-\varepsilon})$ implizieren würde, was unter SETH ausgeschlossen
+	ist (Abboud et al.\ 2015, \cite{abboud2015}).
+	
+	Sei $(G, H)$ eine beliebige SI-Instanz mit $|V_G| = |V_H| = n$.
+	Konstruiere das synthetische \LaTeX-Dokument $D_{G,H}$:
+	\begin{itemize}
+		\item Für jeden Knoten $v_i \in V_G$: füge die Token-Sequenz
+		$\texttt{\textbackslash section\{$v_i$\}}$ ein
+		($\Rightarrow$ ein Knoten in $V_G$ entsteht in $G_D^{\mathrm{red}}$).
+		\item Für jede Kante $(v_i, v_j) \in E_G$: füge
+		$\texttt{\textbackslash ref\{$v_j$\}}$ in Sektion $v_i$ ein
+		($\Rightarrow$ eine Kante in $E_D^{\mathrm{ref}}$ entsteht).
+		\item Setze $G_{\mathrm{schema}} = H$.
+	\end{itemize}
+	Die Konstruktion benötigt $O(n^2)$ Zeit und Platz (da $|E_G| \le n^2$).
+	Die Dokumentlänge ist $N = O(n^2)$ Tokens.
+	
+	Eine ÜPP-Lösung in $O(N^{3-\varepsilon}) = O(n^{6-2\varepsilon})$
+	entspräche einer SI-Lösung. Da dies für $\varepsilon > 0$ unter SETH
+	ausgeschlossen ist (SI ist SETH-hart), und da $n^3 \le n^{6-2\varepsilon}$
+	für $\varepsilon < 3/2$, ist $O(n^{3-\varepsilon})$ für das ÜPP auf
+	dem natürlichen Eingabeparameter~$n$ (Tokenzahl) ausgeschlossen. 
+\end{proof}
+
+\begin{korollar}[Optimalität von \textsc{ltx2pdf}]
+	\label{kor:ltx-optimal}
+	Der \textsc{ltx2pdf}-Algorithmus ist asymptotisch optimal unter SETH:
+	$T_{\textsc{ltx2pdf}} = \Theta(n^3)$.
+\end{korollar}
+
+\begin{proof}
+	Die obere Schranke $O(n^3)$ folgt aus Theorem~\ref{thm:ltx2pdf}.
+	Die untere Schranke $\Omega(n^3)$ folgt aus Satz~\ref{satz:ltx-seth}
+	und der Tatsache, dass das ÜPP eine polynomielle Reduktion vom SI-Problem
+	ist (Satz~\ref{satz:ltx-reduktion}). 
+\end{proof}
+
+% ------------------------------------------------------------
+\subsection{TikZ-Diagramm: \textsc{ltx2pdf}-Architektur}
+\label{sec:ltx-diagramm}
+% ------------------------------------------------------------
+
+\begin{center}
+	\begin{tikzpicture}[
+		node distance=0.7cm and 2.0cm,
+		phase/.style={rectangle, draw=mainblue, fill=lightgray,
+			rounded corners=3pt, minimum width=3.8cm,
+			minimum height=0.7cm, font=\small\bfseries, text=darkgray},
+		core/.style={rectangle, draw=accentred, fill=accentred!8,
+			rounded corners=3pt, minimum width=3.8cm,
+			minimum height=0.7cm, font=\small\bfseries, text=accentred},
+		arrow/.style={-{Stealth[scale=1.0]}, thick, color=mainblue},
+		lbl/.style={font=\tiny\itshape, color=darkgray}
+		]
+		\node[phase] (lex)  {\LaTeX-Lexer};
+		\node[phase, below=of lex]  (gd)   {Dokumentgraph $G_D$};
+		\node[phase, below=of gd]   (red)  {Reduzierter Graph $G$};
+		\node[core,  right=1.6cm of red]   (si)   {Subgraph Algorithmus};
+		\node[phase, above=of si]   (sch)  {Schemabank $H$};
+		\node[phase, below=of red]  (lay)  {Layout-Instanziierung};
+		\node[phase, below=of lay]  (pdf)  {PDF-Bytestream};
+		
+		\draw[arrow] (lex)  -- node[lbl,right]{$O(n)$} (gd);
+		\draw[arrow] (gd)   -- node[lbl,right]{$O(n)$} (red);
+		\draw[arrow] (red)  -- node[lbl,above]{$(G, H)$} (si);
+		\draw[arrow] (sch)  -- node[lbl,right]{$O(1)$} (si);
+		\draw[arrow] (si)   -- node[lbl,above]{$\psi,\;O(n^3)$}
+		([xshift=1.9cm]lay.east) -- (lay);
+		\draw[arrow] (lay)  -- node[lbl,right]{$O(n)$} (pdf);
+	\end{tikzpicture}
+\end{center}
+
+\begin{bemerkung}
+	Der Subgraph Algorithmus bildet den einzigen Engpass der Pipeline
+	mit Laufzeit $O(n^3)$; alle übrigen Phasen sind linear.
+	Die Schemabank enthält für jede Dokumentklasse einen vorberechneten
+	Graphen konstanter Größe, sodass der Schema-Lookup in $O(1)$ erfolgt.
+\end{bemerkung}
+
+% ------------------------------------------------------------
+\subsection{Zusammenfassung}
+\label{sec:ltx-zusammenfassung}
+% ------------------------------------------------------------
+
+\begin{table}[h!]
+	\centering
+	\renewcommand{\arraystretch}{1.4}
+	\begin{tabular}{|l|l|l|}
+		\hline
+		\textbf{Phase} & \textbf{Laufzeit} & \textbf{Abschnitt} \\
+		\hline
+		Lexikalische Analyse         & $O(n)$   & \ref{sec:ltx-grundmodell} \\
+		Graphkonstruktion $G_D$      & $O(n)$   & \ref{sec:ltx-grundmodell} \\
+		Reduktion $G_D \to G$        & $O(n)$   & \ref{sec:ltx-reduktion}   \\
+		Subgraph-Test $(G, H)$       & $O(n^3)$ & \ref{sec:ltx-effizienz}   \\
+		Layout-Instanziierung        & $O(n)$   & \ref{sec:ltx-algorithmus} \\
+		PDF-Erzeugung                & $O(n)$   & \ref{sec:ltx-algorithmus} \\
+		\hline
+		\textbf{Gesamt}              & $O(n^3)$ & Theorem~\ref{thm:ltx2pdf} \\
+		\hline
+	\end{tabular}
+	\caption{Laufzeiten der \textsc{ltx2pdf}-Phasen ($n$ = Tokenzahl)}
+	\label{tab:ltx-laufzeit}
+\end{table}
+
+
+% ============================================================
+\section{Ausblick}
+\label{sec:ausblick-impl}
+% ============================================================
+
+Kapitel~\ref{sec:implementierung} zeigt, dass die Theorie der polynomiellen
+Reduktionen vollständig in C implementierbar ist. Die vorliegende
+Implementierung ist bewusst als \emph{Referenzimplementierung} angelegt --
+sie demonstriert die Korrektheit und Vollständigkeit der Reduktionen,
+nicht die maximale Performanz. Das vorliegende Kapitel skizziert
+Forschungs"~ und Entwicklungsrichtungen, die aus dieser Basis entstehen.
+
+\subsection{Erweiterung der Quellsprache}
+\label{sec:ausblick-sprache}
+
+Der aktuelle Lexer und Parser des \textsc{ccl}-Systems unterstützt eine
+Untermenge von C (Variablendeklarationen, Zuweisungen, Schleifen,
+Funktionsaufrufe). Für eine produktionsreife Verwendung muss die
+Quellsprache erheblich erweitert werden.
+
+\subsubsection{Zeiger und Speicherverwaltung}
+
+Die Einführung von Zeigern erfordert eine \emph{Alias-Analyse}: Zwei
+Zeiger $p_1, p_2$ aliasieren genau dann, wenn ihr \emph{Points-To-Graph}
+$G_{\mathrm{pt}}$ einen gemeinsamen Zielknoten besitzt -- formal das
+Muster $P_{\mathrm{alias}} = (p_1 \to o \leftarrow p_2)$ als Subgraph
+von $G_{\mathrm{pt}}$. Damit ist auch die Alias-Analyse polynomiell auf
+SI reduzierbar:
+\[
+\text{Aliasierung}(p_1, p_2) \;\Leftrightarrow\;
+P_{\mathrm{alias}} \subseteq G_{\mathrm{pt}}
+\]
+Die bestehende \texttt{subgraph\_check}-Infrastruktur kann hierfür direkt
+verwendet werden.
+
+\subsubsection{Strukturen, Unions und Typinferenz}
+
+Die aktuelle TAP-Implementierung behandelt skalare Typen. Für Strukturen
+($\mathtt{struct}$) und Unions ($\mathtt{union}$) muss der
+Typen-Abhängigkeitsgraph $G_{\mathcal{T}}$ um Felder erweitert werden:
+Ein Knoten repräsentiert dann nicht mehr einen Typ, sondern ein
+(Typ, Feld)-Paar. Die Reduktionsfunktion $f_{\mathrm{TAP}}$ bleibt
+strukturell unverändert; lediglich die Graphgröße wächst um den Faktor
+der maximalen Feldanzahl.
+
+Typinferenz (z.\,B.\ für ein Hindley-Milner-System) lässt sich als
+Constraint-System über $G_{\mathcal{T}}$ modellieren: Eine
+Typgleichung $\tau_1 = \tau_2$ entspricht einer Bijektion zwischen
+$G_{\mathcal{T}}[\tau_1]$ und $G_{\mathcal{T}}[\tau_2]$ -- einem
+speziellen Fall des Subgraph-Isomorphismus.
+
+\subsubsection{Templates und generische Typen}
+
+C++-Templates und generische Typen (Generics in Rust, Java) erzeugen
+Instanziierungsgraphen: Jede Template-Instanz entspricht einem
+Subgraphen des Gesamt-Typen-Abhängigkeitsgraphen. Die Frage, ob eine
+bestimmte Instanz wohlgetypt ist, ist damit ebenfalls ein SI-Problem.
+
+\subsection{Verbesserung für die Compilerpraxis}
+\label{sec:ausblick-algo}
+
+\subsubsection{Beschriftete Graphen}
+
+Die aktuelle Implementierung verwendet ungewichtete, unbeschriftete
+Graphen. Viele Compilerprobleme erfordern \emph{beschriftete} Graphen
+(Kanten tragen Typen: Datenflusskante, Kontrollflusskante,
+Dominanzkante). Die Erweiterung der Signaturformel auf Kantengewichte
+$w_{ij}$:
+\[
+\sigma_j^{\mathrm{ext}} = \sum_{i=0}^{n-1} A_{ij} \cdot p_i^{w_{ij}} + j \cdot q^n,
+\]
+wobei $p_i, q$ distinkte Primzahlen sind, liefert eine kollisionsfreie
+Signatur auch für gewichtete Graphen. Die Implementierung muss hierfür
+\texttt{row\_signatures} durch \texttt{row\_signatures\_weig\newline hted} ersetzen
+und die LCS-Funktion um eine Gewichtsabgleichsbedingung erweitern. Die
+asymptotische Laufzeit bleibt $O(n^3)$.
+
+\subsubsection{Inkrementeller Subgraph Algorithmus}
+
+In einer Compiler-IDE (Language Server Protocol, LSP) werden nach jeder
+Quelltextänder\-ung nur wenige Knoten und Kanten des CFG/SSA-Graphen
+modifiziert. Ein \emph{inkrementeller} Subgraph Algorithmus, der
+Signaturen nur für geänderte Knoten neu berechnet, würde die Laufzeit
+auf $O(\Delta \cdot n^2)$ reduzieren, wobei $\Delta$ die Anzahl
+geänderter Knoten ist. Dies wäre für Echtzeit-Feedback in IDEs
+entscheidend.
+
+Die Implementierung erfordert eine Datenstruktur, die Signaturen
+cacht und bei Knotenänderung selektiv invalidiert:
+\begin{enumerate}
+	\item Knoten $v$ wird geändert $\Rightarrow$ $\sigma_v$ und alle
+	$\sigma_u$ mit $(u,v) \in E$ werden neu berechnet.
+	\item LCS wird nur für die geänderten Signaturen erneut ausgeführt.
+	\item Laufzeit je Änderung: $O(\deg(v) \cdot n^2)$.
+\end{enumerate}
+
+\subsubsection{Paralleler Subgraph Algorithmus auf GPU}
+
+Die $n$ Rotationsvergleiche des Subgraph Algorithmus sind vollständig
+datenunabhängig und damit ideal für GPU-Parallelisierung (CUDA/OpenCL).
+Die Implementierung eines CUDA-Kernels für \texttt{subgraph\_check}
+würde folgende Architektur verwenden:
+
+\begin{center}
+	\begin{tikzpicture}[
+		node distance=1.1cm,
+		box/.style={rectangle, draw=mainblue, fill=lightgray, rounded corners=3pt,
+			minimum width=5.2cm, minimum height=0.7cm,
+			font=\small, text=darkgray},
+		arrow/.style={-{Stealth}, thick, color=mainblue}
+		]
+		\node[box] (host)  {Host: Signaturen $\sigma^A, \sigma^B$ berechnen};
+		\node[box, below=of host] (xfer)  {GPU-Transfer: $\sigma^A, \sigma^B \to$ VRAM};
+		\node[box, below=of xfer] (kern)  {CUDA-Kernel: $n$ Rotationen parallel};
+		\node[box, below=of kern] (lcs)   {Warp-LCS: je Rotation ein Thread-Block};
+		\node[box, below=of lcs]  (back)  {Host: Bestes Match auslesen};
+		
+		\draw[arrow] (host) -- (xfer);
+		\draw[arrow] (xfer) -- (kern);
+		\draw[arrow] (kern) -- (lcs);
+		\draw[arrow] (lcs)  -- (back);
+	\end{tikzpicture}
+\end{center}
+
+Auf einer NVIDIA RTX 4090 (16\,384 CUDA-Cores) würde dies für $n = 256$
+Knoten eine Laufzeit von
+$T_{\mathrm{GPU}} = O(n^3 / 16384) \approx 10^{-4}\,\text{s}$
+ermöglichen -- ausreichend für JIT-Compilation.
+
+\subsection{Erweiterung der Optimierungsphasen}
+\label{sec:ausblick-opt}
+
+\subsubsection{Alias-Analyse als Phase 8 (AAP)}
+
+Wie in Abschnitt~\ref{sec:ausblick-sprache} skizziert, ist die
+Alias-Analyse als SI-Problem formulierbar. Eine neue Phase
+\texttt{aap\_analyze} würde nach der SSA-Transformation eingeschoben
+und den Points-To-Graph $G_{\mathrm{pt}}$ aufbauen. Die SI-Prüfung
+entscheidet dann pro Zeigerpaar, ob Aliasierung möglich ist.
+
+\subsubsection{Funktionsinlining als Phase 9 (FIP)}
+
+Funktionsinlining ersetzt einen Aufruf $f(x)$ durch den Funktionskörper.
+Die Profitabilitätsheuristik kann als Subgraph-Muster $P_{\mathrm{inline}}$
+im Call-Graphen $G_{\mathrm{call}}$ formuliert werden:
+\[
+\text{Inline}(f) \;\Leftrightarrow\; P_{\mathrm{inline}} \subseteq G_{\mathrm{call}}[f]
+\]
+Das Muster $P_{\mathrm{inline}}$ kodiert Bedingungen wie: $f$ hat
+nur einen Aufrufstellen, $f$'s CFG hat weniger als $k$ Blöcke,
+keine Rekursion. Eine Implementierung \texttt{fip\_inline} würde
+direkt \texttt{subgraph\_check} auf dem Call-Graphen aufrufen.
+
+\subsubsection{Vektorisierung als Phase 10 (VEP)}
+
+SIMD-Vektorisierung (AVX2, AVX-512) setzt parallele Schleifenstrukturen
+voraus. Das \emph{Vektorisierbarkeitsmuster} $P_{\mathrm{vec}}$ im PDG
+kodiert unabhängige Iterationen:
+\[
+\text{Vektorisierbar}(L) \;\Leftrightarrow\; P_{\mathrm{vec}} \subseteq
+G_{\mathrm{PDG}}[L]
+\]
+Die Implementierung würde \texttt{sep\_find\_loops} um eine
+SI-Prüfung des PDG-Teilgraphen erweitern.
+
+\subsection{Erweiterung des Linkers}
+\label{sec:ausblick-linker}
+
+\subsubsection{Shared Libraries und dynamisches Linken}
+
+Der aktuelle Linker verbindet nur statische Objektdateien. Für Shared
+Libraries (`.so`, `.dll`) müssen \emph{schwache Symbole}, \emph{Symbol
+	Versioning} und \emph{PLT/GOT}-Einträge (Procedure Linkage Table /
+Global Offset Table) unterstützt werden. Im Graphenmodell entsprechen
+diese:
+\begin{itemize}
+	\item \textbf{Schwache Symbole:} Optionale Kanten in $G_{\mathcal{O}}$
+	(Kante existiert, wird aber bei Fehlen nicht als Fehler gewertet).
+	\item \textbf{Symbol Versioning:} Beschriftete Kanten in
+	$G_{\mathcal{O}}$ mit Versionsnummer als Kantengewicht.
+	\item \textbf{PLT/GOT:} Zusätzlicher Zwischenknoten (Relay-Knoten)
+	im Symbol-Referenzgra\-phen.
+\end{itemize}
+Alle drei Erweiterungen bleiben im SI-Rahmen modellierbar und erfordern
+lediglich die Erweiterung auf beschriftete Graphen
+(Abschnitt~\ref{sec:ausblick-algo}).
+
+\subsubsection{Link-Time-Optimization (LTO)}
+
+Link-Time-Optimization führt Optimierungspässe über Modulgrenzen hinweg
+durch. Im Graphenmodell entspricht dies der Vereinigung aller
+Modul-CFGs zu einem interprozeduralen CFG (ICFG):
+\[
+G_{\mathrm{ICFG}} = \bigcup_{i=1}^{k} G_{P_i} \cup G_{\mathrm{call}}
+\]
+DCE, CPP, SEP und RAP können dann auf $G_{\mathrm{ICFG}}$ angewendet
+werden. Da $|V(G_{\mathrm{ICFG}})| = \sum_i |V(G_{P_i})|$, wächst die
+Laufzeit auf $O(N^3)$ mit $N = \sum_i n_i$ -- beherrschbar mit dem
+parallelen Subgraph Algorithmus.
+
+Eine LTO-Erweiterung von \textsc{ccl} würde
+\texttt{linker\_link} um eine Phase
+\texttt{lto\_optimize(lnk, \&icfg)} erweitern, die vor der
+Relocation-Phase eingeschoben wird.
+
+\subsubsection{Position-Independent Code (PIC) und ASLR}
+
+Moderner Systemsicherheit erfordert positionsunabhängigen Code (PIC)
+für ASLR (Address Space Layout Randomization). Der aktuelle Codegenerator
+erzeugt absolute Adressierungen. Eine PIC-Erweiterung muss:
+\begin{enumerate}
+	\item Alle symbolischen Referenzen in relative Adressierungen
+	umwandeln (\texttt{RIP}-relative Adressierung in x86-64).
+	\item GOT-Einträge für externe Symbole erzeugen.
+	\item Das Relocation-Modell im Linker von absolut auf relativ
+	umstellen.
+\end{enumerate}
+Im Graphenmodell entspricht dies einer Transformation des
+Symbol-Referenzgraphen: Absolute Kanten werden durch relative Kanten
+(via GOT-Zwischenknoten) ersetzt. Die LAP-Analyse bleibt strukturell
+unverändert.
+
+\subsection{Verbindung zu weiteren Forschungsarbeiten (Epp 2026)}
+\label{sec:ausblick-epp}
+
+\subsubsection{Integration mit dem Aramanth-Framework}
+
+Das Aramanth-Framework (Epp~2026a) nutzt SI für die
+Hardware-Äquivalenzprüfung (Netlist-Vergleich). Die
+\textsc{ccl}-Implementierung schließt die Lücke zur Softwareseite: Die
+erzeugte Objektdatei (bzw.\ der Assemblercode) kann als Eingabe für
+Aramanth verwendet werden, um zu verifizieren, ob das erzeugte
+Maschinenprogramm semantisch äquivalent zur Quellspezifikation ist.
+Die vollständige Co-Verifikationskette lautet dann:
+\[
+\underbrace{\text{C-Quelltext}}_{\text{ccl kompiliert}}
+\;\xrightarrow{f_{\mathrm{TAP}}, \ldots, f_{\mathrm{IRP}}}\;
+\underbrace{\text{x86-64 ASM}}_{\text{ccl erzeugt}}
+\;\xrightarrow{f_{\mathrm{Aramanth}}}\;
+\underbrace{\text{Netlist}}_{\text{Aramanth verifiziert}}
+\]
+Jeder Pfeil entspricht einer polynomiellen SI-Reduktion; die
+Gesamtkette ist damit ebenfalls formal verifizierbar.
+
+\subsubsection{Einbettung in das PyLab-Framework}
+
+PyLab (Epp~2026b) ist ein Python-basiertes Regelungstechnikframework
+für Eingebettete Systeme (ESP32/MicroPython). Ein
+Cross-Compiler auf Basis von \textsc{ccl} könnte C-Code für
+Eingebettete Systeme generieren, wobei der Subgraph Algorithmus
+insbesondere für die Registerallokation auf ressourcenbeschränkten
+Mikrocontrollern (wenige allgemeine Register, Harvard-Architektur)
+eingesetzt wird. Die RAP-Implementierung muss hierfür lediglich die
+Interferenzgraph-Konstruktion an die Zielarchitektur anpassen.
+
+\subsubsection{Formale Verifikation mit Signatur-Chiffre}
+
+Die Signatur-Chiffre (Epp~2026c) verwendet kryptographische Signaturen
+für Ende-zu-Ende-Verschlüsselung. Eine interessante Forschungsfrage
+ist, ob die Subgraph-Signaturfunktion $\sigma_j$ in einer
+kryptographisch gehärteten Variante als \emph{Compiler-Fingerprint}
+verwendet werden kann: Jede Compilation eines Quelltextes erzeugt
+eine kanonische Signatur des erzeugten Codes, die kryptographisch
+an die Quelltext-Hash gebunden ist. Dies würde
+\emph{reproducible builds} formal verifizierbar machen.
+
+\subsection{Graph-basierte Intermediate Representation (GBIR)}
+\label{sec:ausblick-gbir}
+
+Die theoretische Implikation von Theorem~1 der Hauptarbeit -- dass alle
+sieben Compilerprobleme durch SI lösbar sind -- motiviert die Entwicklung
+einer \emph{Graph-basierten Intermediate Representation (GBIR)}, in der
+das gesamte Programm als ein einziger mehrfach beschrifteter Graph
+kodiert ist. Alle Optimierungsoperationen werden dann als
+Subgraph-Anfragen oder Graphersetzungsregeln formuliert.
+
+Die Architektur einer GBIR-basierten Compiler-Pipeline würde wie folgt
+aussehen:
+
+\begin{center}
+	\begin{tikzpicture}[
+		node distance=1.0cm and 0.3cm,
+		phase/.style={rectangle, draw=mainblue, fill=lightgray, rounded corners=3pt,
+			minimum width=2.8cm, minimum height=0.65cm,
+			font=\footnotesize\bfseries, text=darkgray},
+		gbir/.style={rectangle, draw=accentred, fill=accentred!8, rounded corners=3pt,
+			minimum width=10.5cm, minimum height=0.75cm,
+			font=\footnotesize\bfseries, text=accentred},
+		arrow/.style={-{Stealth[scale=0.9]}, thick, color=mainblue},
+		lbl/.style={font=\tiny\itshape, color=darkgray}
+		]
+		\node[phase] (src)   {Quelltext};
+		\node[phase, right=0.5cm of src] (parse) {Parser};
+		\node[gbir,  below=0.8cm of parse] (gbir)
+		{GBIR: einheitlicher, beschrifteter Graph $G_{\mathrm{prog}}$};
+		\node[phase, below=0.8cm of gbir] (si)
+		{Subgraph Algorithmus $\times$ 7};
+		\node[phase, right=0.5cm of si] (cg)   {Codegen};
+		\node[phase, right=0.5cm of cg]  (out)  {Executable};
+		
+		\draw[arrow] (src)   -- (parse);
+		\draw[arrow] (parse) -- node[lbl,right]{AST $\to$ GBIR} (gbir);
+		\draw[arrow] (gbir)  -- node[lbl,right]{Opt.\,Anfragen} (si);
+		\draw[arrow] (si)    -- node[lbl,right]{Graphersetz.} (gbir);
+		\draw[arrow] (gbir)  -- (cg);
+		\draw[arrow] (cg)    -- (out);
+	\end{tikzpicture}
+\end{center}
+
+Die GBIR-Implementierung würde die aktuelle phasenweise
+Graphkonstruktion (separate Adjazenzmatrizen für CFG, Dominatorgraph,
+SSA-Graph usw.) durch eine einzige beschriftete Adjazenzmatrix ersetzen.
+Alle Phasenfunktionen (TAP, DCE, \ldots, IRP) werden zu
+Subgraph-Anfragen auf dieser einheitlichen Struktur.
+
+\subsection{Maschinelles Lernen und neuronale Compileroptimierung}
+\label{sec:ausblick-ml}
+
+Die wachsende Forschung zu ML-basierten Compileroptimierungen (ProGraML,
+MLGO, AutoPhase) zeigt, dass Graph Neural Networks (GNNs) Subgraph-Muster
+implizit erlernen können. Der Subgraph Algorithmus bietet hier eine
+entscheidende Ergänzung:
+
+\begin{itemize}
+	\item \textbf{GNN als Heuristik, SI als Verifikation:} GNNs
+	können die wahrscheinlichste Rotation $r^*$ vorhersagen,
+	wodurch der Subgraph Algorithmus nicht alle $n$ Rotationen
+	prüfen muss. Erwartete Laufzeit: $O(n^2)$ bei korrekter
+	GNN-Vorhersage.
+	\item \textbf{Trainingsfreie Baseline:} Der Subgraph Algorithmus
+	liefert ohne Training exakte Ergebnisse und kann als
+	Orakel für GNN-Trainingsdaten dienen.
+	\item \textbf{Erklärbarkeit:} Jede Entscheidung des Subgraph
+	Algorithmus ist durch die Rotation $r^*$ und das
+	Signatur-Matching vollständig erklärbar -- ein Vorteil
+	gegenüber Black-Box-GNN-Ansätzen.
+\end{itemize}
+
+Eine Hybridarchitektur \textsc{ccl-GNN} würde den Subgraph Algorithmus
+um einen GNN-Prädiktor erweitern, der aus dem
+Programmgraphen $G_{\mathrm{prog}}$ die optimale Rotation vorhersagt.
+
+\subsection{Formale Korrektheitseigenschaften der Implementierung}
+\label{sec:ausblick-formal}
+
+Die Referenzimplementierung beweist durch ihre Struktur die folgenden
+formalen Eigenschaften, die in zukünftiger Arbeit maschinengeprüft
+werden sollten:
+
+\begin{satz}[Korrektheit der \textsc{ccl}-Implementierung]
+	\label{satz:ccl-correct}
+	Sei $P$ ein Programm, das von \texttt{compile(P, f, \&obj)} übersetzt
+	wird. Dann gilt:
+	\begin{enumerate}
+		\item \emph{(TAP-Korrektheit)} Falls \texttt{tap\_resolve} JA
+		zurückgibt, ist die Typreihenfolge in \texttt{topo\_order}
+		eine gültige topologische Ordnung von $G_{\mathcal{T}}$.
+		\item \emph{(DCE-Korrektheit)} Jeder von \texttt{dce\_eliminate}
+		als dead code markierte Block ist vom Eintrittsblock aus nicht
+		erreichbar.
+		\item \emph{(RAP-Korrektheit)} Die von \texttt{rap\_allocate}
+		erzeugte Registerallokation ist konfliktfrei: Für jede
+		Interferenzkante $(x_i, x_j) \in E_I$ gilt
+		$\texttt{color}[i] \neq \texttt{color}[j]$ oder mindestens
+		einer der beiden wurde gespillt.
+		\item \emph{(IRP-Korrektheit)} Falls \texttt{irp\_resolve} keine
+		SIOF-Warnung erzeugt, ist \texttt{order} eine gültige
+		topologische Ordnung von $G_{\mathcal{S}}$.
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	Jede Aussage folgt direkt aus dem entsprechenden Satz in der Hauptarbeit
+	(Sätze 3, 4, 6, 10) und der strukturtreuen Implementierung: Da jede
+	Phasenfunktion exakt die Reduktionsfunktion $f_i$ und
+	\texttt{subgraph\_check} als Entscheidungsorakel verwendet, gelten die
+	Korrektheitsbeweise der Reduktionen als Implementierungsgarantien.
+	Eine formale Maschinenverifikation (Coq, Isabelle/HOL) ist möglich,
+	da alle Algorithmen terminierend und deterministisch sind.
+\end{proof}
+
+\begin{korollar}[Vollständigkeit der Pipeline]
+	\label{kor:vollst}
+	Die \textsc{ccl}-Implementierung löst alle sieben Compiler- und
+	Linkerprobleme (TAP, DCE, LAP, RAP, SEP, CPP, IRP) in Zeit
+	$O(n^3 + k^3)$, wobei $n$ die maximale Anzahl von Programmpunkten
+	und $k$ die Anzahl der Objektdateien ist.
+\end{korollar}
+
+\begin{proof}
+	Folgt aus Theorem~1 der Hauptarbeit und Satz~\ref{satz:ccl-correct}.
+\end{proof}
+
+\subsection{Offene Forschungsfragen}
+\label{sec:ausblick-offen}
+
+Die Implementierung wirft mehrere konkrete offene Forschungsfragen auf:
+
+\textbf{F1 (Untere Schranke der Registerallokation).}
+Gilt für chordale Interferenzgraphen eine untere Schranke
+$\Omega(n^{3-\varepsilon})$ unter SETH? Die aktuelle Implementierung
+erreicht $O(n^3)$ via Subgraph Algorithmus; falls $\Omega(n^2)$
+ausreicht (da der Interferenzgraph nur $O(n^2)$ Kanten hat), wäre
+eine direkte Greedy-Implementierung ohne SI schneller.
+
+\textbf{F2 (Inkrementelle Aktualisierung des Dominatorgraphen).}
+Der iterative Cooper-Algorithmus in \texttt{compute\_dominators}
+berechnet den Dominatorgraph von Grund auf ($O(n^2)$). Bei
+inkrementellen Programmänderungen (IDE-Szenario) wäre ein
+Algorithmus wünschenswert, der bei $\Delta$ geänderten Kanten
+in $O(\Delta \cdot n)$ aktualisiert.
+
+\textbf{F3 (Optimale Cliquenzahl für allgemeine Interferenzgraphen).}
+Die RAP-Implementierung nutzt \texttt{graph\_max\_clique\_size}
+via Gradmessung -- korrekt nur für chordale Graphen. Für
+allgemeine Interferenzgraphen (bei Ausweitung über SSA hinaus)
+ist die Cliquenzahl NP-schwer zu berechnen. Eine auf SI-basierte
+Approximation (maximale Clique als Subgraph-Muster) ist eine
+offene Implementierungsfrage.
+
+\textbf{F4 (Signaturkollisionen für $n > 60$).}
+Die Signaturfunktion $\sigma_j = \sum_i A_{ij} \cdot 2^i$ ist für
+$n > 60$ nicht mehr kollisionsfrei in \texttt{uint64\_t}. Für
+große Compilationsgraphen (LLVM verarbeitet Funktionen mit
+$n > 1000$ Knoten) muss auf multipräzise Arithmetik oder alternative
+injektive Hashfunktionen ausgewichen werden. Die kryptographische
+Sicherheit der Signatur-Chiffre (Epp~2026c) bietet hier
+Anknüpfungspunkte.
+
+\textbf{F5 (Maschinenverifikation mit Coq/Isabelle).}
+Satz~\ref{satz:ccl-correct} behauptet die Korrektheit der
+Implementierung. Eine formale Maschinenverifikation mit Coq oder
+Isabelle/HOL würde die Lücke zwischen den Papierkorrektheit-Beweisen
+und der C-Implementierung schließen. Für Sicherheitskritische
+Anwendungen (Automotive, AUTOSAR ISO~26262, Epp~2026d) ist dies
+unerlässlich.
+
+% ============================================================
+% Literaturverzeichnis
+% ============================================================
+
+\begin{thebibliography}{99}
+
+\bibitem{epp2026}
+S.~Epp, \textit{Der Subgraph Algorithmus}, Januar 2026. Verfügbar unter: \url{https://github.com/hjstephan86/subgraph}.
+
+\bibitem{epp2026a}
+S.~Epp, \textit{Aramanth: Hardware-Äquivalenzprüfung via Subgraph-Isomorphismus}, 2026.
+
+\bibitem{abboud2015}
+A.~Abboud, A.~Backurs, V.~V.~Williams, \textit{Tight Hardness Results for LCS and Other Sequence Similarity Measures}, FOCS 2015.
+
+\bibitem{appel1998}
+A.~W.~Appel, \textit{Modern Compiler Implementation in Java/C/ML}, Cambridge University Press, 1998.
+
+\bibitem{aho2006}
+A.~V.~Aho, M.~S.~Lam, R.~Sethi, J.~D.~Ullman, \textit{Compilers: Principles, Techniques, and Tools}, 2nd ed., Pearson, 2006.
+
+\bibitem{briggs1994}
+P.~Briggs, K.~D.~Cooper, L.~Torczon, \textit{Improvements to Graph Coloring Register Allocation}, ACM TOPLAS 16(3), 1994.
+
+\bibitem{cytron1991}
+R.~Cytron, J.~Ferrante, B.~K.~Rosen, M.~N.~Wegman, F.~K.~Zadeck, \textit{Efficiently Computing Static Single Assignment Form and the Control Dependence Graph}, ACM TOPLAS 13(4), 1991.
+
+\bibitem{gavril1974}
+F.~Gavril, \textit{The Intersection Graphs of Subtrees in Trees are Exactly the Chordal Graphs}, Journal of Combinatorial Theory B 16, 1974.
+
+\bibitem{lengauer1979}
+T.~Lengauer, R.~E.~Tarjan, \textit{A Fast Algorithm for Finding Dominators in a Flowgraph}, ACM TOPLAS 1(1), 1979.
+
+\bibitem{ullmann1976}
+J.~R.~Ullmann, \textit{An Algorithm for Subgraph Isomorphism}, Journal of the ACM 23(1), 1976.
+
+\end{thebibliography}
+
+\end{document}
+

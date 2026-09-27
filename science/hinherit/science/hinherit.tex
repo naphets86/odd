@@ -1,0 +1,1260 @@
+﻿\documentclass[a4paper,12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[ngerman]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows, positioning}
+\usepackage{caption}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{csquotes}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{mdframed}
+\usepackage{amsmath}
+
+\setlist[itemize,1]{label=--}
+
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=blue!60!black,
+	urlcolor=blue!60!black,
+	citecolor=blue!60!black
+}
+
+\lstset{
+	language=Python,
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue}\bfseries,
+	commentstyle=\color{gray}\itshape,
+	stringstyle=\color{orange!80!black},
+	showstringspaces=false,
+	frame=single,
+	rulecolor=\color{gray!40},
+	backgroundcolor=\color{gray!5},
+	breaklines=true,
+	numbers=left,
+	numberstyle=\tiny\color{gray},
+	numbersep=8pt,
+	tabsize=4
+}
+
+% Inline-Hervorhebungsbox fuer Prinzipien
+\tcbuselibrary{skins, breakable}
+\newtcolorbox{prinzip}[1][]{
+	colback=blue!4!white,
+	colframe=blue!50!black,
+	fonttitle=\bfseries,
+	title=#1,
+	breakable
+}
+
+% -----------------------------------------------
+\title{
+	\vspace{-1cm}
+	\Large\textbf{Horizontale Abbildung der Vererbungshierarchie\\
+		auf Python-Module in Softwareprojekten}\\[0.5em]
+	\large Analysierbarkeit, Wartbarkeit und Kostenreduktion\\
+	durch strukturierte Modulorganisation und konsistente UML-Dokumentation
+}
+\author{Stephan Epp}
+\date{25. Februar 2026}
+% -----------------------------------------------
+
+\begin{document}
+	
+\maketitle
+\tableofcontents
+\newpage
+
+% ================================================
+\section{Einleitung}
+% ================================================
+
+Die Strukturierung von Softwareprojekten ist eine der zentralen Herausforderungen
+moderner Softwareentwicklung. In einer Branche, in der Softwaresysteme über
+Jahrzehnte gepflegt, erweitert und auf neue Plattformen portiert werden müssen,
+entscheidet die innere Ordnung eines Projekts maßgeblich über Entwicklungskosten,
+Teamproduktivität und die langfristige Überlebensfähigkeit einer Codebasis.
+
+Insbesondere bei objektorientierter Programmierung mit tiefen Vererbungshierarchien
+stellt sich die Frage, wie der Quellcode so organisiert werden kann, dass er für
+Entwicklerinnen und Entwickler intuitiv navigierbar und langfristig wartbar bleibt.
+Die objektorientierte Programmierung (OOP) ist seit den 1980er Jahren das dominante
+Paradigma in der industriellen Softwareentwicklung~\cite{booch1994}. Mit ihr einher
+geht die Notwendigkeit, Klassenhierarchien -- die conceptuellen Rückgrate
+objektorientierter Systeme -- auch in der physischen Dateistruktur des Projekts
+sichtbar zu machen.
+
+Für die Modellierung und Dokumentation von Softwarearchitekturen hat sich die
+\textbf{Unified Modeling Language (UML)} als internationaler Standard etabliert.
+Die UML wird von der \textit{Object Management Group} (OMG) spezifiziert und
+gepflegt~\cite{omg2017}. In ihrer aktuellen Fassung (UML 2.5.1) definiert sie unter
+anderem das Klassendiagramm als das zentrale Werkzeug zur Darstellung von Klassen,
+deren Attributen, Methoden und Beziehungen -- insbesondere der
+Vererbungsbeziehung~\cite{omg2017}. Das Klassendiagramm visualisiert Hierarchien
+vertikal: Basisklassen stehen oben, spezialisierte Klassen unten.
+
+Dieser Beitrag stellt ein Prinzip vor, das die \textbf{Vererbungshierarchie eines
+	Softwareprojekts horizontal auf Python-Module} abbildet: Jede Ebene der
+Klassenhierarchie -- wie sie im UML-Klassendiagramm sichtbar ist -- entspricht
+einem eigenen Python-Modul. Diese Konvention erhöht die
+\textit{Analysierbarkeit} und \textit{Wartbarkeit} des Codes erheblich, da ein
+Software-Engineer beim Lesen eines bestimmten Moduls sofort weiß, auf welcher
+Abstraktionsebene er sich befindet.
+
+Ergänzend wird das Prinzip eingeführt, das Werkzeug \textbf{Pyreverse}
+(Bestandteil von Pylint~\cite{pylint2024}) zu jedem Release-Zyklus einzusetzen,
+um ein aktuelles UML-Klassen- und Paketdiagramm automatisch aus dem Quellcode
+zu generieren. Damit wird sichergestellt, dass \textit{die Wahrheit immer im Code
+	steht} -- Dokumentation und Implementierung bleiben dauerhaft synchron.
+
+% ================================================
+\section{Vererbungshierarchie und Modulstruktur}
+% ================================================
+
+\subsection{Das UML-Klassendiagramm als Ausgangspunkt}
+
+Das UML-Klassendiagramm bildet die konzeptuelle Grundlage für die vorgeschlagene
+Modulstruktur. Es zeigt die Klassen eines Systems sowie deren Vererbungsbeziehungen
+in einer vertikalen Anordnung: Basisklassen stehen oben, spezialisierte Klassen
+weiter unten~\cite{omg2017}. Abbildung~\ref{fig:uml} illustriert diesen Aufbau
+exemplarisch.
+
+\begin{figure}[h]
+	\centering
+	\begin{tikzpicture}[
+		node distance=1.8cm,
+		class/.style={rectangle, draw=gray!70, fill=blue!8, rounded corners=3pt,
+			minimum width=3.2cm, minimum height=0.9cm, align=center,
+			font=\small\ttfamily},
+		arrow/.style={->, >=open triangle 60, thick, draw=gray!70}
+		]
+		
+		% Ebene 1 -- Basisklassen
+		\node[class, fill=green!12] (base) {\textbf{BaseAnimal}\\(Ebene 1)};
+		
+		% Ebene 2 -- Zwischenklassen
+		\node[class, fill=yellow!18, below left=of base, xshift=0.5cm]  (mammal) {\textbf{Mammal}\\(Ebene 2)};
+		\node[class, fill=yellow!18, below right=of base, xshift=-0.5cm] (bird)   {\textbf{Bird}\\(Ebene 2)};
+		
+		% Ebene 3 -- Konkrete Klassen (DU-Klassen)
+		\node[class, fill=orange!18, below left=of mammal,  xshift=0.8cm]  (dog) {\textbf{Dog}\\(Ebene 3)};
+		\node[class, fill=orange!18, below right=of mammal, xshift=-0.8cm] (cat) {\textbf{Cat}\\(Ebene 3)};
+		\node[class, fill=orange!18, below=of bird] (eagle) {\textbf{Eagle}\\(Ebene 3)};
+		
+		\draw[arrow] (mammal) -- (base);
+		\draw[arrow] (bird)   -- (base);
+		\draw[arrow] (dog)    -- (mammal);
+		\draw[arrow] (cat)    -- (mammal);
+		\draw[arrow] (eagle)  -- (bird);
+		
+	\end{tikzpicture}
+	\caption{Exemplarisches UML-Klassendiagramm mit drei Vererbungsebenen.
+		Pfeile kennzeichnen Vererbungsbeziehungen (Unterklasse $\to$ Oberklasse).}
+	\label{fig:uml}
+\end{figure}
+
+\subsection{Horizontale Abbildung auf Python-Module}
+
+Das Kernprinzip besteht darin, jeder Ebene des UML-Klassendiagramms ein dediziertes
+Python-Modul (bzw. eine Paketstruktur) zuzuordnen. Die Hierarchie wird dabei
+\textbf{horizontal} ausgedehnt -- d.\,h. die Ebenen liegen nebeneinander in der
+Modulstruktur, anstatt vertikal in einer Klassendatei verschachtelt zu sein.
+
+\begin{table}[h]
+	\centering
+	\caption{Abbildung von Vererbungsebenen auf Python-Module}
+	\label{tab:mapping}
+	\begin{tabular}{>{\bfseries}c p{4cm} p{6cm}}
+		\toprule
+		Ebene & Beschreibung & Python-Modul (Beispiel) \\
+		\midrule
+		1 & Basisklassen (abstrakt, allgemein) & \texttt{base\_classes.py} \\
+		2 & Intermediäre Klassen (Spezialisierung) & \texttt{intermediate\_classes.py} \\
+		3 & Konkrete Klassen (DU-Klassen, direkt verwendbar) & \texttt{concrete\_classes.py} \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+Ein Software-Engineer, der \texttt{intermediate\_classes.py} öffnet, weiß unmittelbar:
+\begin{itemize}
+	\item Er befindet sich auf \textbf{Ebene 2} der Vererbungshierarchie.
+	\item Die hier definierten Klassen erben von den Basisklassen aus Ebene 1.
+	\item Sie werden ihrerseits von konkreten Klassen (Ebene 3) beerbt.
+\end{itemize}
+
+\subsection{Vorgehen zur Umgestaltung}
+Das Vorgehen zur Umgestaltung: Erstelle ein neues Python Modul für jede Ebene der Vererbungshierarchie. Dazu wird nur Code zum Softwaresystem hinzugefügt und kein Code gelöscht. Die neuen Python Module enthalten dann alle neuen Klassen, die es aber im Projekt schon geben muss. Sonst würden sie nicht erstellt werden. Jetzt gilt es nur noch, die alten Python Klassen der Vererbungshierarchie, für die neue erstellt worden sind, zu entfernen. Diese einfache Umgestaltung erhält das ganze Verhalten des Systems und bildet gleichzeitig die Vererbungshierarchie horizontal ab.
+
+% ================================================
+\section{Implementierungsbeispiel in Python}
+% ================================================
+
+\subsection{Modul Ebene 1: Basisklassen}
+
+\begin{lstlisting}[caption={base\_classes.py -- Ebene 1 der Vererbungshierarchie},
+	label={lst:base}]
+	# base_classes.py
+	# Vererbungsebene: 1 (Basisklassen)
+	# Beschreibung: Abstrakte Grundklassen des Projekts
+	
+	from abc import ABC, abstractmethod
+	
+	class BaseAnimal(ABC):
+	"""Abstrakte Basisklasse fuer alle Tiere."""
+	
+		def __init__(self, name: str, age: int) -> None:
+			self.name = name
+			self.age = age
+	
+		@abstractmethod
+		def make_sound(self) -> str:
+		"""Gibt den typischen Laut des Tieres zurueck."""
+		...
+	
+		@abstractmethod
+		def move(self) -> str:
+		"""Beschreibt die Fortbewegungsart."""
+		...
+	
+		def describe(self) -> str:
+			return f"{self.name} ({type(self).__name__}), Alter: {self.age}"
+\end{lstlisting}
+
+\subsection{Modul Ebene 2: Intermediäre Klassen}
+
+\begin{lstlisting}[caption={intermediate\_classes.py -- Ebene 2 der Vererbungshierarchie},
+	label={lst:intermediate}]
+	# intermediate_classes.py
+	# Vererbungsebene: 2 (Intermediaere Klassen)
+	# Beschreibung: Spezialisierungen der Basisklassen
+	
+	from base_classes import BaseAnimal
+	
+	class Mammal(BaseAnimal):
+	"""Saeugetier -- erbt von BaseAnimal (Ebene 1)."""
+	
+		def __init__(self, name: str, age: int, fur_color: str) -> None:
+			super().__init__(name, age)
+			self.fur_color = fur_color
+		
+		def move(self) -> str:
+			return "laeuft auf vier oder zwei Beinen"
+		
+		def make_sound(self) -> str:
+			return "generisches Saeugetiergeraeusch"
+		
+		
+	class Bird(BaseAnimal):
+		"""Vogel -- erbt von BaseAnimal (Ebene 1)."""
+		
+		def __init__(self, name: str, age: int, wingspan_cm: float) -> None:
+			super().__init__(name, age)
+			self.wingspan_cm = wingspan_cm
+		
+		def move(self) -> str:
+			return "fliegt oder laeuft"
+		
+		def make_sound(self) -> str:
+			return "generisches Vogelgeraeusch"
+\end{lstlisting}
+
+\subsection{Modul Ebene 3: Konkrete Klassen (DU-Klassen)}
+
+\begin{lstlisting}[caption={concrete\_classes.py -- Ebene 3 der Vererbungshierarchie (DU-Klassen)},
+	label={lst:concrete}]
+	# concrete_classes.py
+	# Vererbungsebene: 3 (Konkrete Klassen / DU-Klassen)
+	# Beschreibung: Direkt verwendbare, vollstaendig implementierte Klassen
+	
+	from intermediate_classes import Mammal, Bird
+	
+	class Dog(Mammal):
+	"""Hund -- konkrete Implementierung (DU-Klasse)."""
+	
+		def make_sound(self) -> str:
+			return "Wuff!"
+	
+		def fetch(self, item: str) -> str:
+			return f"{self.name} bringt {item} zurueck."
+	
+	
+	class Cat(Mammal):
+	"""Katze -- konkrete Implementierung (DU-Klasse)."""
+	
+		def make_sound(self) -> str:
+			return "Miau!"
+	
+		def purr(self) -> str:
+			return f"{self.name} schnurrt."
+	
+	
+	class Eagle(Bird):
+	"""Adler -- konkrete Implementierung (DU-Klasse)."""
+	
+		def make_sound(self) -> str:
+			return "Kriii!"
+	
+		def dive(self) -> str:
+			return f"{self.name} stuerzt im Sturzflug herab."
+\end{lstlisting}
+
+% ================================================
+\section{Analysierbarkeit und Wartbarkeit}
+% ================================================
+
+\subsection{Analysierbarkeit}
+
+Die horizontale Abbildung der Vererbungshierarchie auf Python-Module verbessert
+die Analysierbarkeit einer Codebasis auf fundamentale und vielfältige Weise.
+Analysierbarkeit bedeutet dabei mehr als nur das Verstehen einzelner Codezeilen --
+sie umfasst die Fähigkeit, Abhängigkeiten zu erkennen, das Gesamtbild zu erfassen
+und gezielt in der richtigen Schicht des Systems zu navigieren.
+
+\paragraph{Sofortige Kontextorientierung.}
+Ein Entwickler, der ein Modul öffnet, entnimmt dem Dateinamen und dem Kopfkommentar
+unmittelbar, auf welcher Abstraktionsebene er sich befindet. Er muss keine
+komplexe Klassenhierarchie gedanklich rekonstruieren, sondern kann sich auf den
+Inhalt des aktuellen Moduls konzentrieren. Dies ist von entscheidender Bedeutung,
+da Menschen nach dem Konzept des \textit{Cognitive Load} (kognitive Last) nur eine
+begrenzte Kapazität für die gleichzeitige Verarbeitung von Informationen besitzen
+\cite{sweller1988}. Wenn der Kontext bereits durch den Modulnamen geliefert wird,
+steht die gesamte mentale Kapazität für die inhaltliche Analyse des Codes zur
+Verfügung.
+
+\paragraph{Klare Abhängigkeitsrichtung.}
+Da Module höherer Ebenen stets von Modulen niedrigerer Ebenen importieren (und
+nicht umgekehrt), ergibt sich ein azyklischer Abhängigkeitsgraph -- ein
+sogenannter \textit{Directed Acyclic Graph} (DAG). Dieser kann mit Werkzeugen
+wie \texttt{pydeps}~\cite{pydeps2024} oder \texttt{pipdeptree} visualisiert und
+automatisiert geprüft werden. Zirkuläre Importe -- eine häufige Ursache von
+schwer reproduzierbaren Laufzeitfehlern in Python -- werden durch diese Struktur
+strukturell ausgeschlossen. Der Analyzer kann daher nicht nur die aktuelle Ebene
+verstehen, sondern auch sofort einschätzen, welche Ebenen von einer Änderung
+betroffen sein könnten.
+
+\paragraph{Gezielte Codesuche und Navigation.}
+Soll eine abstrakte Methode analysiert werden? $\Rightarrow$ \texttt{base\_classes.py}.
+Soll eine Spezialisierung verstanden werden? $\Rightarrow$ \texttt{intermediate\_clas\newline ses.py}.
+Soll eine konkrete Nutzungsweise untersucht werden? $\Rightarrow$ \texttt{concrete\_classes.py}.
+Diese Zuordnung ist deterministisch und projektübergreifend konsistent. Entwickler,
+die von einem Projekt in ein anderes wechseln, das dieselbe Konvention verwendet,
+müssen die Orientierungsphase nicht neu durchlaufen. Es entsteht ein wiederverwendbares
+mentales Modell, das den Einstieg in jedes konforme Projekt erheblich beschleunigt.
+
+\paragraph{Verbesserte statische Codeanalyse.}
+Werkzeuge zur statischen Codeanalyse wie \texttt{mypy}~\cite{mypy2024},
+\texttt{pylint}~\cite{pylint2024} oder \texttt{flake8} können bei klar separierten
+Modulen präzisere und weniger rauschende Analysen liefern. Da jede Ebene nur
+Typen und Klassen der eigenen oder darunter liegenden Ebene referenziert, werden
+Typfehler und Abhängigkeitsverletzungen früher und an der richtigen Stelle gemeldet.
+
+\paragraph{Vereinfachte Code-Reviews.}
+Bei Pull Requests oder Merge Requests ist auf einen Blick erkennbar, welche
+Hierarchieebene(n) von einer Änderung betroffen sind. Reviewer können sich gezielt
+auf die veränderte Ebene konzentrieren, ohne das gesamte Klassenmodell im Kopf
+halten zu müssen. Dies reduziert den Review-Aufwand und erhöht gleichzeitig die
+Qualität der Reviews, da Reviewer weniger abgelenkt und mental belastet sind
+\cite{bird2011}.
+
+\paragraph{Reproduzierbare UML-Dokumentation.}
+Da jedes Modul exakt einer Hierarchieebene entspricht, lässt sich aus der
+Dateistruktur unmittelbar ein konsistentes UML-Klassendiagramm rekonstruieren.
+Die Dokumentation ist nicht nur ein Abbild des Designs, sondern kann automatisch
+aus dem Code generiert werden -- was Konsistenz garantiert und manuelle
+Dokumentationspflege entüberflüssigt (siehe Kapitel~\ref{sec:pyreverse}).
+
+\subsection{Wartbarkeit}
+
+Wartbarkeit ist nach der ISO/IEC-25010-Norm~\cite{iso25010} eine der Kerneigenschaften
+von Softwarequalität. Sie umfasst Modifizierbarkeit, Testbarkeit, Analysierbarkeit,
+Modularität und Wiederverwendbarkeit. Die horizontale Ebenenabbildung adressiert
+alle diese Teilaspekte direkt und nachweislich.
+
+\paragraph{Lokalisierte Änderungen und minimaler Änderungsaufwand.}
+Änderungen an Basisklassen betreffen ausschließlich \texttt{base\_classes.py}.
+Der Entwickler weiß, dass jede Modifikation dort Auswirkungen auf alle darüber
+liegenden Ebenen haben kann -- eine klar kommunizierte und beherrschbare Situation.
+Im Gegensatz dazu führt eine unstrukturierte Codebasis, in der alle Klassen
+einer Domäne in einer einzigen Datei gesammelt sind, dazu, dass selbst kleine
+Änderungen schwer lokalisierbare Nebeneffekte erzeugen können.
+
+Martin~\cite{martin2017} beschreibt das \textit{Single Responsibility Principle}
+(SRP) als eines der grundlegenden Prinzipien wartbaren Codes. Die Ebenenabbildung
+wendet dieses Prinzip auf Modulebene an: Jedes Modul hat genau eine Verantwortung
+-- nämlich die Klassen \textit{einer} Vererbungsebene zu definieren und zu
+kapseln.
+
+\paragraph{Unabhängige Testbarkeit und Test-Isolation.}
+Jedes Modul kann unabhängig und in isolierter Umgebung getestet werden. Unit-Tests
+für Ebene 1 müssen keine konkreten Klassen aus Ebene 3 kennen und sind daher
+robust gegenüber Änderungen in höheren Ebenen. Dies entspricht dem Prinzip
+\textit{Test Isolation}, das in modernen Testframeworks wie \texttt{pytest}
+\cite{pytest2024} oder \texttt{unittest.mock} als Best Practice gilt.
+
+Darüber hinaus ermöglicht die klare Trennung das gezielte Einsetzen von
+\textit{Test Doubles} (Mocks, Stubs, Fakes) auf Ebenengrenze: Tests für Ebene 2
+können die Ebene-1-Klassen durch einfache Mocks ersetzen, ohne komplexe
+Abhängigkeitsketten aufzulösen. Dies erhöht die Ausführungsgeschwindigkeit der
+Testsuite erheblich und senkt den Testpflegeaufwand~\cite{meszaros2007}.
+
+\paragraph{Erleichtertes Onboarding neuer Entwickler.}
+Neue Teammitglieder können die Codebasis \textit{schichtweise} erschließen: Sie
+beginnen mit Ebene 1, verstehen die Grundkonzepte und Abstraktionen, und arbeiten
+sich sukzessive zu den konkreten Klassen vor -- analog zum Lesen eines
+UML-Diagramms von oben nach unten. Studien zur Softwareentwicklung zeigen, dass
+das Verständnis einer neuen Codebasis im Durchschnitt 30 bis 50\,\% der
+Onboarding-Zeit in Anspruch nimmt~\cite{robillard2011}. Eine klare, antizipierbare
+Strukturkonvention kann diese Zeit signifikant reduzieren.
+
+\paragraph{Reduzierter kognitiver Aufwand (Cognitive Load).}
+Der Software-Engineer hält im Arbeitsgedächtnis stets nur den Kontext einer
+einzigen Hierarchieebene. Sweller~\cite{sweller1988} zeigt, dass die begrenzte
+Kapazität des Arbeitsgedächtnisses (\textit{Working Memory}) eine fundamentale
+Einschränkung menschlicher Problemlösungsfähigkeit darstellt. Ohne die
+Ebenenkonvention müssten Entwickler beim Lesen einer einzigen großen Datei
+gleichzeitig Basisklassen, Zwischenklassen und konkrete Klassen mental verwalten
+-- ein typischer Auslöser für Fehler und Missverständnisse.
+
+\paragraph{Erhöhte Wiederverwendbarkeit.}
+Da Basisklassen und intermediäre Klassen in separaten Modulen isoliert sind,
+können sie deutlich leichter in anderen Projekten wiederverwendet werden. Ein
+neues Projekt kann beispielsweise \texttt{base\_classes.py} direkt importieren
+und darauf aufbauend eine eigene Ebene 2 entwickeln, ohne den gesamten
+Klassenbaum des Ursprungsprojekts zu importieren. Diese Eigenschaft fördert
+die Entstehung robuster, kompositionsfähiger Bibliotheken.
+
+\paragraph{Langfristige Evolvierbarkeit.}
+Softwaresysteme sind selten statisch -- sie wachsen, verändern sich und
+werden an neue Anforderungen angepasst. Die Ebenenabbildung unterstützt diese
+Evolvierbarkeit~\cite{lehman1997}, indem neue Vererbungsebenen einfach durch
+Hinzufügen neuer Module eingeführt werden können, ohne bestehende Module zu
+modifizieren. Dies entspricht dem \textit{Open/Closed Principle}
+(OCP)~\cite{martin2017}: Module sind offen für Erweiterung (durch neue Ebenen),
+aber geschlossen für Modifikation.
+
+% ================================================
+\section{Kostenreduktion in Softwareprojekten}
+% ================================================
+
+\subsection{Wirtschaftliche Bedeutung der inneren Codequalität}
+
+Die Kosten von Softwareprojekten werden in der Praxis häufig unterschätzt.
+Studien zeigen, dass bis zu 80\,\% der Gesamtkosten eines Softwaresystems nicht
+in der Erstentwicklung, sondern in der \textit{Wartung und Weiterentwicklung}
+entstehen~\cite{pressman2014}. Jede Entscheidung, die die Wartbarkeit eines
+Systems verbessert, hat damit direkte und messbare wirtschaftliche Konsequenzen
+über den gesamten Lebenszyklus des Systems.
+
+\subsection{Reduktion von Fehlerbehebungskosten}
+
+Fehler, die früh im Entwicklungsprozess erkannt werden, sind um Größenordnungen
+günstiger zu beheben als solche, die erst in der Produktion auftreten. Das
+\textit{Boehm'sche Kostenkurvenmodell}~\cite{boehm1981} beziffert die Kosten
+eines in der Produktion entdeckten Fehlers auf das 50- bis 200-fache eines
+in der Designphase gefundenen Fehlers. Die Ebenenabbildung fördert frühes
+Fehlererkennen auf mehrere Weisen:
+
+\begin{itemize}[leftmargin=*]
+	\item Durch eindeutige Modulzuständigkeit sind Fehlerquellen schnell lokalisierbar.
+	\item Statische Analysetools liefern präzisere Meldungen, da der Scope je Modul
+	kleiner ist.
+	\item Unittests können gezielt auf einzelne Ebenen zugeschnitten werden, was die
+	Fehlerabdeckung erhöht.
+\end{itemize}
+
+\subsection{Reduktion von Onboarding-Kosten}
+
+In agilen und wachsenden Teams ist das Onboarding neuer Entwickler ein
+erheblicher Kostenfaktor. Der Aufwand, eine unbekannte Codebasis zu verstehen,
+kann mehrere Wochen bis Monate betragen. Robillard et al.~\cite{robillard2011}
+identifizieren das Fehlen klarer Strukturkonventionen als einen der häufigsten
+Hindernisse beim Einstieg in ein bestehendes Projekt. Die horizontale
+Ebenenabbildung reduziert diesen Aufwand, indem sie einem neuen Teammitglied
+sofort ein navigierbares mentales Modell der Codebasis liefert.
+
+Quantitativ lässt sich der Effekt abschätzen: Wenn das Onboarding eines
+erfahrenen Entwicklers im Durchschnitt vier Wochen dauert und durch eine
+konsequente Strukturkonvention um eine Woche verkürzt werden kann, entspricht
+dies bei einem Jahresgehalt von 80.000~Euro einer Einsparung von etwa
+\textbf{1.500 Euro pro neuem Teammitglied}. In einem Team, das jährlich fünf
+neue Entwickler aufnimmt, summiert sich dies auf 7.500~Euro pro Jahr -- allein
+durch eine Codestrukturkonvention ohne jede Technologieinvestition.
+
+\subsection{Reduktion von Code-Review- und Merge-Kosten}
+
+Code-Reviews sind in modernen Entwicklungsprozessen unverzichtbar, aber
+zeitintensiv. Bird et al.~\cite{bird2011} zeigen, dass der Review-Aufwand
+stark davon abhängt, wie gut ein Reviewer die betroffene Codestelle
+kontextualisieren kann. Ein Reviewer, der weiß, dass eine Änderung ausschließlich
+Ebene-2-Module betrifft, kann seinen Review auf intermediäre Klassen
+konzentrieren, ohne die gesamte Klassenhierarchie im Kopf halten zu müssen.
+Schätzungsweise kann diese Fokussierung den Review-Aufwand je Änderung um
+15--25\,\% reduzieren.
+
+\subsection{Reduktion von Regressionskosten}
+
+Regressionen -- also Fehler, die durch Änderungen an bestehendem Code in
+bisher funktionierenden Bereichen eingeführt werden -- sind eine der
+kostspieligsten Fehlerklassen~\cite{pressman2014}. Die Ebenenabbildung
+reduziert Regressionsrisiken strukturell:
+
+\begin{itemize}[leftmargin=*]
+	\item Änderungen in Ebene 3 können Ebene 1 und 2 nicht direkt beeinflussen
+	(da keine Rückwärtsimporte existieren).
+	\item Ebene-1-Änderungen sind durch die explizite Isolierung als
+	\textit{high-impact} erkennbar und erfordern bewusst breitere Tests.
+	\item Die Teststruktur spiegelt die Modulstruktur wider, was eine
+	systematische Regressionsprüfung je Ebene ermöglicht.
+\end{itemize}
+
+\subsection{Reduktion von Technologischen Schulden}
+
+\textit{Technical Debt} (Technische Schulden)~\cite{cunningham1992} entstehen,
+wenn kurzfristige Entwicklungsentscheidungen langfristige Wartungskosten
+erzeugen. Eine unstrukturierte Codebasis akkumuliert technische Schulden schnell,
+da Entwickler ohne klare Konventionen individuelle, schwer nachvollziehbare
+Lösungen implementieren. Die Ebenenabbildung wirkt dieser Tendenz entgegen,
+indem sie eine \textit{strukturelle Invariante} einführt, die auch unter
+Zeitdruck und wechselnden Teammitgliedern eingehalten werden kann.
+
+% ================================================
+\section{Pyreverse: Konsistente UML-Dokumentation}
+\label{sec:pyreverse}
+% ================================================
+
+\subsection{Das Prinzip: Die Wahrheit steht im Code}
+
+Eine der größten Gefahren in der Softwareentwicklung ist die Divergenz zwischen
+Dokumentation und Implementierung. Architekturdiagramme, die einmalig zu Beginn
+eines Projekts erstellt und danach nie mehr aktualisiert werden, verleiten
+Entwickler zu falschen Annahmen und können schwerwiegende Designfehler
+verursachen~\cite{kruchten1995}.
+
+\textit{Die Wahrheit steht immer im Code. UML-Diagramme sind keine eigenständigen
+Artefakte, die gepflegt werden müssen -- sie sind \textbf{abgeleitete Sichten auf den Code}. Jedes Diagramm, das nicht automatisch aus dem aktuellen
+Quellcode erzeugt wird, ist ein potenzielles Sicherheitsrisiko für die
+Architekturintegrität des Projekts.}
+
+Dieses Prinzip lässt sich mit \textbf{Pyreverse} konsequent umsetzen. Pyreverse
+ist ein Werkzeug, das automatisch UML-Klassen- und Paketdiagramme aus
+Python-Quellcode generiert~\cite{pyreverse2024}. Es ist standardmäßig Bestandteil
+von Pylint~\cite{pylint2024} und kann ohne zusätzliche Installation genutzt werden.
+
+\subsection{Installation und Voraussetzungen}
+
+Pyreverse wird zusammen mit Pylint installiert:
+
+\begin{lstlisting}[language=bash, caption={Installation von Pylint und Pyreverse},
+	label={lst:install}]
+	# Installation via pip
+	pip install pylint
+	
+	# Pruefe, ob pyreverse verfuegbar ist
+	pyreverse --version
+\end{lstlisting}
+
+Für die Ausgabe als \texttt{.png}, \texttt{.pdf} oder \texttt{.svg} wird
+Graphviz benötigt~\cite{graphviz2024}:
+
+\begin{lstlisting}[language=bash, caption={Installation von Graphviz},
+	label={lst:graphviz}]
+	# Debian/Ubuntu
+	sudo apt-get install graphviz
+	
+	# macOS (Homebrew)
+	brew install graphviz
+	
+	# Windows (Chocolatey)
+	choco install graphviz
+\end{lstlisting}
+
+\subsection{Einsatz von Pyreverse}
+
+\paragraph{Basisaufruf.}
+Der grundlegende Aufruf von Pyreverse erzeugt ein UML-Klassendiagramm und ein
+Paketdiagramm für ein gegebenes Python-Paket:
+
+\begin{lstlisting}[language=bash, caption={Grundlegender Pyreverse-Aufruf},
+	label={lst:pyreverse_basic}]
+	# Erzeuge Klassen- und Paketdiagramm fuer das Paket 'my_project'
+	pyreverse -o png -p MyProject my_project/
+	
+	# Ausgabe:
+	#   classes_MyProject.png  -- UML-Klassendiagramm
+	#   packages_MyProject.png -- UML-Paketdiagramm
+\end{lstlisting}
+
+\paragraph{Erweiterte Optionen.}
+
+\begin{lstlisting}[language=bash, caption={Erweiterte Pyreverse-Optionen},
+	label={lst:pyreverse_advanced}]
+	# Nur Klassen bestimmter Module einbeziehen
+	pyreverse -o svg -p MyProject \
+	my_project/base_classes.py \
+	my_project/intermediate_classes.py \
+	my_project/concrete_classes.py
+	
+	# Alle Attribute und Methoden anzeigen
+	pyreverse -o png -p MyProject -a all -m y my_project/
+	
+	# Ausgabe als PDF fuer Dokumentation
+	pyreverse -o pdf -p MyProject my_project/
+	
+	# Nur oeffentliche Attribute (kein Leerzeichen-Prefix)
+	pyreverse -o png -p MyProject --filter-mode PUB_ONLY my_project/
+\end{lstlisting}
+
+\subsection{Integration in den Release-Prozess}
+
+Das entscheidende Prinzip ist, Pyreverse \textbf{nicht als einmaligen Schritt,
+sondern als festen Bestandteil des Release-Zyklus} zu verankern. Damit wird
+sichergestellt, dass bei jedem Release ein aktuelles und korrekt aus dem Code
+abgeleitetes UML-Diagramm vorliegt.
+
+Listing \ref{lst:makefile} zeigt die Makefile Integration.
+\begin{lstlisting}[language=bash, caption={Makefile mit Pyreverse-Ziel},
+	label={lst:makefile}]
+	# Makefile
+	
+	.PHONY: uml release
+	
+	uml:
+	@echo "Erzeuge UML-Diagramme aus aktuellem Quellcode..."
+	pyreverse -o png -p $(PROJECT_NAME) $(SRC_DIR)/
+	@echo "UML-Diagramme aktualisiert: classes_$(PROJECT_NAME).png"
+	
+	lint:
+	pylint $(SRC_DIR)/
+	
+	test:
+	pytest tests/
+	
+	release: lint test uml
+	@echo "Release-Artefakte erstellt (inkl. aktuellem UML-Diagramm)"
+\end{lstlisting}
+
+Listing \ref{lst:github_actions} zeigt die CI/CD-Pipeline-Integration (GitHub Actions).
+\begin{lstlisting}[language=bash, caption={GitHub Actions Workflow mit Pyreverse},
+	label={lst:github_actions}]
+	# .github/workflows/release.yml
+	name: Release
+	
+	on:
+	push:
+	tags:
+	- 'v*'
+	
+	jobs:
+	build-and-document:
+	runs-on: ubuntu-latest
+	steps:
+	- uses: actions/checkout@v3
+	
+	- name: Python einrichten
+	uses: actions/setup-python@v4
+	with:
+	python-version: '3.11'
+	
+	- name: Abhaengigkeiten installieren
+	run: |
+	pip install pylint
+	sudo apt-get install -y graphviz
+	
+	- name: Lint
+	run: pylint src/
+	
+	- name: Tests
+	run: pytest tests/
+	
+	- name: UML-Diagramme erzeugen
+	run: |
+	pyreverse -o png -p MyProject src/
+	pyreverse -o svg -p MyProject src/
+	
+	- name: UML-Diagramme als Artefakte hochladen
+	uses: actions/upload-artifact@v3
+	with:
+	name: uml-diagrams
+	path: |
+	classes_MyProject.png
+	packages_MyProject.png
+	classes_MyProject.svg
+	packages_MyProject.svg
+\end{lstlisting}
+
+Für Projekte, die noch strenger vorgehen möchten, kann Pyreverse als
+Pre-commit Hook eingebunden werden, sodass bei jedem Commit automatisch
+geprüft wird, ob sich die UML-Diagramme verändert haben:
+
+\begin{lstlisting}[language=bash, caption={Pre-commit Hook fuer Pyreverse},
+	label={lst:precommit}]
+	#!/bin/bash
+	# .git/hooks/pre-commit
+	
+	echo "Aktualisiere UML-Diagramme..."
+	pyreverse -o png -p MyProject src/
+	
+	# Diagramme zum Commit hinzufuegen, falls veraendert
+	git add classes_MyProject.png packages_MyProject.png
+	
+	echo "UML-Diagramme aktualisiert und zum Commit hinzugefuegt."
+\end{lstlisting}
+
+\subsection{Synergie mit der Ebenenabbildung}
+
+Die Kombination aus horizontaler Ebenenabbildung und automatischer
+Pyreverse-Generie\-rung entfaltet eine besondere Synergie: Da jedes Python-Modul
+genau einer Vererbungsebene entspricht, bildet das von Pyreverse erzeugte
+Paketdiagramm automatisch die Modulstruktur und damit indirekt die
+Vererbungshierarchie ab. Das Klassendiagramm zeigt die Vererbungsbeziehungen
+zwischen den Klassen aller Module. Zusammen ergeben beide Diagramme ein
+vollständiges, stets aktuelles Bild der Systemarchitektur -- ohne manuellen
+Dokumentationsaufwand.
+
+Zu jedem Release sind folgende UML-Artefakte verpflichtend aus dem aktuellen
+Quellcode zu generieren und im Versionsverwaltungssystem zu committen:
+\begin{enumerate}
+	\item \texttt{classes\_<Projektname>.png} -- Aktuelles UML-Klassendiagramm
+	\item \texttt{packages\_<Projektname>.png} -- Aktuelles UML-Paketdiagramm
+\end{enumerate}
+Diese Artefakte sind die einzige autoritative Darstellung der aktuellen
+Architektur. Manuell erstellte Diagramme gelten als informativ, nicht als
+verbindlich.
+
+% ================================================
+\section{Abgrenzung zu verwandten Konzepten}
+% ================================================
+
+Das vorgestellte Prinzip ist bewusst einfach gehalten und ergänzt bestehende
+Architekturkonzepte, ohne mit ihnen zu konkurrieren:
+
+\begin{itemize}[leftmargin=*]
+	\item \textbf{Schichtenarchitektur (Layered Architecture):} Dort werden
+	Schichten nach \textit{technischer Funktion} (Präsentation, Logik,
+	Datenzugriff) unterschieden~\cite{fowler2002}. Die Ebenenabbildung
+	hier richtet sich nach der \textit{Vererbungstiefe} im Domänenmodell.
+	Beide Prinzipien sind orthogonal und können kombiniert werden.
+	
+	\item \textbf{Package by Feature:} Strukturiert Code nach fachlichen
+	Features. Die Ebenenabbildung ist komplementär und kann innerhalb
+	eines Feature-Pakets angewandt werden.
+	
+	\item \textbf{Hexagonale Architektur / Ports and Adapters:} Fokussiert auf
+	Abhängigkeitsumkehr an Systemgrenzen~\cite{cockburn2005}. Die
+	Ebenenabbildung betrifft die interne Strukturierung der Domänenklassen.
+	
+	\item \textbf{Domain-Driven Design (DDD):} In DDD~\cite{evans2003} werden
+	Bounded Contexts und Aggregates als Strukturierungsprinzipien eingesetzt.
+	Die horizontale Ebenenabbildung kann innerhalb eines Bounded Context
+	auf die Klassenmodelle angewandt werden.
+\end{itemize}
+
+% ================================================
+\section{Praktische Hinweise und Grenzen}
+% ================================================
+
+\subsection{Wann das Prinzip besonders geeignet ist}
+
+Das Prinzip entfaltet seinen größten Nutzen, wenn:
+\begin{itemize}[leftmargin=*]
+	\item die Vererbungshierarchie \textbf{drei oder mehr Ebenen} umfasst,
+	\item das Team aus \textbf{mehreren Entwicklern} besteht, die parallel an
+	verschiedenen Ebenen arbeiten,
+	\item das Projekt \textbf{langfristig gepflegt} werden soll und
+	Onboarding-Kosten relevant sind,
+	\item eine \textbf{automatische Dokumentation} der Architektur angestrebt wird.
+\end{itemize}
+
+\subsection{Grenzen des Prinzips}
+
+\begin{itemize}[leftmargin=*]
+	\item Bei sehr \textbf{flachen Hierarchien} (nur eine Ebene) ist der Mehrwert
+	gering; eine einzelne Datei genügt.
+	\item Klassen, die \textbf{mehrfach erben} (Mehrfachvererbung), lassen sich
+	nicht immer eindeutig einer Ebene zuordnen. Hier empfiehlt sich eine
+	explizite Dokumentation der Zuordnungsentscheidung.
+	\item Das Prinzip ersetzt \textbf{keine vollständige Architekturdokumentation},
+	sondern ist eine ergänzende Konvention auf Modulebene.
+	\item \textbf{Pyreverse} stößt bei sehr großen Projekten (>500 Klassen) an
+	visuelle Grenzen -- hier empfiehlt sich eine Aufteilung in
+	Teilpakete-Diagramme.
+\end{itemize}
+
+% ================================================
+\section{Ausblick: Konsequenzen für alle Bereiche der Softwareentwicklung}
+\label{sec:ausblick}
+% ================================================
+
+Die horizontale Abbildung der Vererbungshierarchie auf Python-Module ist kein
+isoliertes technisches Detail -- sie ist ein Strukturprinzip mit weitreichenden
+Konsequenzen für nahezu jeden Bereich moderner Softwareentwicklung. Im Folgenden
+werden diese Konsequenzen systematisch und ausführlich beleuchtet.
+
+\subsection{Auswirkungen auf den Software-Entwicklungsprozess}
+
+\paragraph{Agile Entwicklung und Sprintplanung.}
+In agilen Entwicklungsmethoden wie Scrum oder Kanban~\cite{sutherland2014} ist
+die Schätzung von Story Points und die Aufteilung von Aufgaben auf Teammitglieder
+ein zentraler Bestandteil des Prozesses. Die Ebenenabbildung liefert hierfür
+eine natürliche Granularität: Aufgaben können gezielt einer bestimmten
+Hierarchieebene zugeordnet werden. Ein Developer, der an Ebene-2-Klassen
+arbeitet, konkurriert nicht mit einem anderen, der Ebene-3-Implementierungen
+entwickelt -- Merge-Konflikte werden strukturell minimiert.
+
+\paragraph{Trunk-Based Development und Feature Branches.}
+In modernen CI/CD-Workflows \cite{humble2010}, insbesondere beim
+\textit{Trunk-Based Development}, werden Änderungen häufig und in kleinen
+Einheiten in den Hauptzweig integriert. Die Ebenenstruktur fördert diese Praxis,
+da Änderungen je Ebene atomar und weitgehend unabhängig voneinander sind. Feature
+Branches bleiben kurzlebig, da die Wahrscheinlichkeit von Cross-Ebenen-Konflikten
+gering ist.
+
+\paragraph{Definition of Done.}
+Teams, die das Prinzip einsetzen, können ihre \textit{Definition of Done} um
+einen klaren Punkt erweitern: \enquote{UML-Diagramme mittels Pyreverse aktualisiert
+	und committet.} Damit wird die Architekturkonformität zu einem expliziten
+Qualitätsmerkmal jedes Inkrements -- nicht zu einem gelegentlichen Audit.
+
+\subsection{Auswirkungen auf Software-Architektur und Design}
+
+\paragraph{Erzwungene Designklarheit.}
+Die Notwendigkeit, jede Klasse einer bestimmten Hierarchieebene zuzuordnen,
+erzwingt eine explizite Auseinandersetzung mit dem Klassendesign bereits in der
+Entwurfsphase. Entwickler können Klassen nicht mehr \textit{irgendwo}
+hinzufügen -- sie müssen bewusst entscheiden, ob es sich um eine Basis-,
+intermediäre oder konkrete Klasse handelt. Diese Disziplin führt zu saubereren
+Designs und verhindert das schleichende Entstehen von \textit{God Classes}
+\cite{riel1996} -- Klassen, die zu viel Verantwortung übernehmen.
+
+\paragraph{Förderung von SOLID-Prinzipien.}
+Das Strukturprinzip fördert mehrere der SOLID-Prinzipien~\cite{martin2017}
+gleichzeitig: Das \textit{Single Responsibility Principle} wird auf Modulebene
+angewendet, das \textit{Open/Closed Principle} wird durch die Erweiterbarkeit
+über neue Ebenenmodule gestärkt, und das \textit{Liskov Substitution Principle}
+wird durch die explizite Trennung der Ebenen natürlich unterstützt.
+
+\paragraph{Schnittstellen- und API-Design.}
+Ebene-1-Module definieren die stabilen Schnittstellen des Systems. Da diese
+Module von allen höheren Ebenen abhängen, werden Schnittstellenänderungen als
+hochimpaktiv erkannt und erfordern bewusste Entscheidungen. Dies fördert ein
+stabiles, rückwärtskompatibles API-Design und erleichtert die Einführung von
+\textit{Semantic Versioning}~\cite{semver2024}.
+
+\subsection{Auswirkungen auf Testing und Qualitätssicherung}
+
+\paragraph{Testpyramide und Testschichten.}
+Das Konzept der \textit{Testpyramide}~\cite{fowler2012} empfiehlt, möglichst
+viele Unit-Tests auf der Basis und wenige, aber umfassende Integrationstests
+an der Spitze zu haben. Die Ebenenabbildung korrespondiert direkt mit dieser
+Pyramide: Ebene-1-Tests sind reine Unit-Tests ohne externe Abhängigkeiten,
+Ebene-2-Tests können Ebene-1-Klassen mocken, und Ebene-3-Tests können die
+vollständige Klassenhierarchie integrieren. Jede Ebene hat ihre natürliche
+Entsprechung in der Testpyramide.
+
+\paragraph{Mutationstests und Abdeckungsanalyse.}
+Werkzeuge wie \texttt{mutmut}~\cite{mutmut2024} oder \texttt{pytest-\newline cov}
+ermöglichen eine ebenenweise Analyse der Testabdeckung und Mutationsstärke.
+Teams können explizite Abdeckungsziele je Ebene definieren (z.\,B. 100\,\%
+für Ebene 1, da dort die stabilsten Abstraktionen liegen) und diese in der
+CI/CD-Pipeline durchsetzen.
+
+\paragraph{Property-Based Testing.}
+Frameworks wie \texttt{Hypothesis}~\cite{hypothesis2024} für
+\textit{Property-Based Testing} profitieren besonders von der Ebenenstruktur,
+da abstrakte Eigenschaften (wie Invarianten der Basisklassen) auf Ebene 1
+definiert und durch alle Unterklassen hindurch getestet werden können. Dies
+erhöht die Robustheit des Tests enorm, da alle konkreten Implementierungen
+automatisch auf Einhaltung der Basisinvarianten geprüft werden.
+
+\subsection{Auswirkungen auf Dokumentation und Wissensmanagement}
+
+\paragraph{Lebende Dokumentation.}
+Die Kombination aus Ebenenstruktur und automatischer Pyreverse-Generierung
+realisiert das Konzept der \textit{Living Documentation}~\cite{martraire2019}:
+Dokumentation, die nicht manuell gepflegt wird, sondern automatisch aus dem
+Code entsteht und daher immer aktuell ist. Dies reduziert den Dokumentationsaufwand
+auf null -- und erhöht gleichzeitig die Zuverlässigkeit der Dokumentation.
+
+\paragraph{Architekturentscheidungsaufzeichnungen (ADRs).}
+Architectural Decision Records (ADRs)~\cite{nygard2011} sind eine anerkannte
+Methode, um Architekturentscheidungen zu dokumentieren. Das Einführen der
+Ebenenabbildungskonvention ist selbst eine solche Entscheidung und sollte als ADR
+im Repository festgehalten werden. Dies schafft Nachvollziehbarkeit für zukünftige
+Entwickler und verhindert, dass die Konvention versehentlich aufgegeben wird.
+
+\paragraph{Onboarding-Dokumentation.}
+Die Ebenenstruktur ermöglicht eine systematische und skalierbare
+Onboarding-Dokumentation: Anstatt die gesamte Codebasis zu beschreiben, kann
+die Dokumentation schichtweise aufgebaut werden. Neue Entwickler erhalten zunächst
+eine Einführung in die Basisklassen (Ebene 1), dann in die intermediären Klassen,
+und schließlich in die konkreten Klassen. Dieses progressive Lernmodell
+entspricht modernen Erkenntnissen der Lernpsychologie~\cite{vygotsky1978}.
+
+\subsection{Auswirkungen auf DevOps und CI/CD}
+
+\paragraph{Automatisierte Qualitätstore.}
+In modernen DevOps-Pipelines werden Qualitätstests als \textit{Quality Gates}
+formuliert: Builds, die bestimmte Qualitätsschwellen nicht erfüllen, werden
+automatisch abgelehnt~\cite{humble2010}. Die Ebenenabbildung ermöglicht granulare
+Quality Gates je Ebene, z.\,B.:
+\begin{itemize}[leftmargin=*]
+	\item Testabdeckung Ebene 1: $\geq$ 95\,\%
+	\item Testabdeckung Ebene 2: $\geq$ 85\,\%
+	\item Pylint-Score je Modul: $\geq$ 9.0/10
+	\item Pyreverse muss erfolgreich abschließen (keine unklassifizierbaren Abhängigkeiten)
+\end{itemize}
+
+\paragraph{Release-Automation und Changelogs.}
+Da jede Ebene ein eigenes Modul ist, können automatisierte Changelogs
+(z.\,B. mit \texttt{git-changelog} oder Conventional Commits~\cite{convcommits2024})
+die betroffene Ebene explizit benennen. Ein Changelog-Eintrag wie
+\textit{"\texttt{feat(level-2)}: Neue Spezialisierung für Säugetiere"} ist
+für alle Stakeholder sofort verständlich.
+
+\paragraph{Containerisierung und Microservices.}
+In Architekturen, die auf Microservices oder Containerisierung setzen~\cite{newman2015},
+kann die Ebenenstruktur auf Servicegrenzen übertragen werden: Basisklassen-Bibliotheken
+werden als eigenständige Container-Images oder Python-Pakete veröffentlicht und
+versioniert. Intermediäre und konkrete Klassen können diese Pakete als Abhängigkeiten
+einbinden. Dies fördert die Wiederverwendbarkeit über Servicegrenzen hinweg.
+
+\subsection{Auswirkungen auf Team- und Organisationsstrukturen}
+
+\paragraph{Conway's Law und Teamorganisation.}
+Conway's Law~\cite{conway1968} besagt, dass Softwaresysteme die
+Kommunikationsstrukturen ihrer Entwicklungsorganisationen widerspiegeln.
+Umgekehrt beeinflusst die Codestruktur, wie Teams organisiert werden können.
+Die Ebenenabbildung ermöglicht spezialisierte Teams (oder Rollen innerhalb
+eines Teams): Ein \textit{Core-Team} pflegt die stabilen Basisklassen (Ebene 1),
+während Feature-Teams die konkreten Implementierungen (Ebene 3) entwickeln --
+mit klarer Ownership und minimalen Koordinationskosten.
+
+\paragraph{Open-Source-Kollaboration.}
+In Open-Source-Projekten ist eine klare Modulstruktur entscheidend für den
+Erfolg externer Beiträge~\cite{raymond1999}. Externe Contributer, die nur
+Ebene-3-Klassen (konkrete Implementierungen) beitragen möchten, müssen die
+Basisklassen nur lesen, nicht verstehen. Die Einstiegshürde sinkt, die
+Qualität externer Beiträge steigt.
+
+\paragraph{Outsourcing und verteilte Teams.}
+Bei Outsourcing-Projekten oder verteilten internationalen Teams ist klare
+Codekommunikation ein kritischer Erfolgsfaktor. Die universelle Sprache der
+UML-Hierarchieebenen -- unterstützt durch den OMG-Standard~\cite{omg2017} --
+überbrückt sprachliche und kulturelle Barrieren. Ein Entwickler in Indien,
+der weiß, dass er an Ebene-2-Klassen arbeitet, versteht die Rolle seiner
+Arbeit im Gesamtsystem ohne ausführliche schriftliche Erklärungen.
+
+\subsection{Auswirkungen auf KI-gestützte Softwareentwicklung}
+
+\paragraph{LLM-gestützte Codegenerierung.}
+Die zunehmende Nutzung von Large Language Models (LLMs) wie GitHub Copilot oder
+Claude~\cite{chen2021} in der Softwareentwicklung eröffnet neue Möglichkeiten --
+aber auch neue Risiken. LLMs generieren Code, der syntaktisch korrekt sein kann,
+aber architektonisch inkonsistent ist. Eine klare Ebenenstruktur mit
+expliziten Modulkommentaren liefert LLMs den notwendigen Kontext, um
+Codegenerierung architekturkonform durchzuführen. Ein Prompt wie
+\enquote{Füge eine neue Klasse auf Ebene 2 ein, die von BaseAnimal erbt} ist
+für ein LLM wesentlich präziser auswertbar als \enquote{Füge eine neue Klasse
+	in das Projekt ein}.
+
+\paragraph{Automatisierte Architekturprüfung.}
+In Zukunft könnten KI-basierte Werkzeuge die Ebenenkonformität einer Codebasis
+automatisch prüfen und Verletzungen -- wie eine konkrete Klasse in einem
+Basismodul -- als Architektursmells markieren~\cite{tamburri2019}. Die horizontale
+Ebenenabbildung liefert die formale Grundlage für solche Prüfungen.
+
+\paragraph{Automatische Dokumentationsgenerierung.}
+Kombiniert mit modernen LLMs kann Pyreverse als Grundlage für die automatische
+Generierung narrativer Architekturbeschreibungen dienen: Das LLM erhält das
+Pyreverse-Klassendiagramm als Eingabe und generiert eine natürlichsprachliche
+Beschreibung der Architektur -- die dann ebenfalls zum Release automatisch
+aktualisiert wird. Dies realisiert eine vollständig automatisierte,
+stets aktuelle Architekturdokumentation.
+
+\subsection{Langfristige Perspektive: Nachhaltige Softwareentwicklung}
+
+Die Softwareindustrie diskutiert zunehmend das Konzept der \textit{nachhaltigen
+	Softwareentwicklung}~\cite{naumann2011} -- also Softwareentwicklung, die nicht
+nur kurzfristig produktiv ist, sondern auch langfristig wartbar, erweiterbar und
+ökonomisch tragfähig bleibt. Die horizontale Ebenenabbildung ist ein Beitrag
+zu dieser Nachhaltigkeit:
+
+\begin{itemize}[leftmargin=*]
+	\item Sie reduziert die \textbf{kognitive Schuld} -- die mentale Belastung,
+	die durch unstrukturierten Code langfristig akkumuliert wird.
+	\item Sie verhindert das \textbf{vorzeitige Altern} von Codebasen, indem
+	strukturelle Klarheit auch bei wachsender Codegröße erhalten bleibt.
+	\item Sie senkt den \textbf{Energieverbrauch} der Entwicklung: Weniger Zeit
+	für Orientierung, Review und Fehlerbehebung bedeutet weniger
+	Entwicklerstunden pro Feature -- und damit einen kleineren
+	ökologischen Fußabdruck des Entwicklungsprozesses.
+	\item Sie fördert \textbf{Wissenstransfer} zwischen Generationen von
+	Entwicklern: Systeme, die nach klaren Konventionen strukturiert sind,
+	können auch nach einem vollständigen Teamwechsel weiterentwickelt werden.
+\end{itemize}
+
+% ================================================
+\section{Fazit}
+% ================================================
+
+Die horizontale Abbildung der Vererbungshierarchie auf Python-Module ist eine
+einfache, aber tiefgreifend wirkungsvolle Konvention. Sie übersetzt die grafische
+Intuition des UML-Klassendiagramms -- wie es von der OMG standardisiert
+ist~\cite{omg2017} -- direkt in die Dateistruktur des Projekts: Wer ein Modul
+öffnet, weiß sofort, auf welcher Ebene der Abstraktion er sich befindet.
+
+Die Vorteile reichen weit über technische Details hinaus: sofortige
+Kontextorientierung, klare Abhängigkeitsrichtungen, lokalisierte Änderungen,
+erleichtertes Onboarding, reduzierte Fehlerkosten, minimierte Regressionsrisiken
+und die strukturelle Verhinderung technischer Schulden -- all diese Wirkungen
+entfalten sich aus einer einzigen, leicht einzuführenden Konvention.
+
+Ergänzt durch den konsequenten Einsatz von Pyreverse~\cite{pyreverse2024} zu
+jedem Release entsteht ein vollständiger Kreislauf: Der Code definiert die
+Wahrheit, die Struktur macht diese Wahrheit navigierbar, und die automatisch
+generierten UML-Diagramme machen sie sichtbar und kommunizierbar. Dokumentation
+wird nicht mehr gepflegt -- sie entsteht.
+
+Insbesondere in einer Ära, in der KI-gestützte Entwicklungswerkzeuge zunehmend
+Einzug halten~\cite{chen2021}, liefert eine klar strukturierte Codebasis mit
+konsistenter UML-Dokumentation den präzisen Kontext, den sowohl menschliche
+als auch maschinelle Entwickler benötigen, um korrekt und architekturkonform
+zu arbeiten.
+
+\vspace{1em}
+\noindent Die Einführung des Prinzips erfordert keine Änderung der Sprache,
+des Frameworks oder des Build-Systems -- es genügt, eine gemeinsame Konvention
+zu vereinbaren, im Projektleitfaden zu dokumentieren und durch einen automatisierten
+Release-Schritt mit Pyreverse zu verankern.
+
+% ================================================
+\newpage
+\section*{Literaturverzeichnis}
+\addcontentsline{toc}{section}{Literaturverzeichnis}
+% ================================================
+
+\begin{thebibliography}{99}
+	
+	\bibitem{omg2017}
+	Object Management Group (OMG):
+	\textit{OMG Unified Modeling Language (OMG UML), Version 2.5.1}.
+	OMG Document Number: formal/2017-12-05.
+	Needham, MA: Object Management Group, 2017.
+	\url{https://www.omg.org/spec/UML/2.5.1}
+	
+	\bibitem{booch1994}
+	Grady Booch:
+	\textit{Object-Oriented Analysis and Design with Applications}, 2.~Aufl.
+	Redwood City, CA: Benjamin/Cummings, 1994.
+	
+	\bibitem{martin2017}
+	Robert C. Martin:
+	\textit{Clean Architecture: A Craftsman's Guide to Software Structure and Design}.
+	Upper Saddle River, NJ: Prentice Hall, 2017.
+	
+	\bibitem{fowler2002}
+	Martin Fowler:
+	\textit{Patterns of Enterprise Application Architecture}.
+	Boston, MA: Addison-Wesley, 2002.
+	
+	\bibitem{pressman2014}
+	Roger S. Pressman, Bruce R. Maxim:
+	\textit{Software Engineering: A Practitioner's Approach}, 8.~Aufl.
+	New York, NY: McGraw-Hill Education, 2014.
+	
+	\bibitem{boehm1981}
+	Barry W. Boehm:
+	\textit{Software Engineering Economics}.
+	Englewood Cliffs, NJ: Prentice-Hall, 1981.
+	
+	\bibitem{sweller1988}
+	John Sweller:
+	\enquote{Cognitive Load During Problem Solving: Effects on Learning}.
+	In: \textit{Cognitive Science}, 12 (2), S.~257--285, 1988.
+	
+	\bibitem{robillard2011}
+	Martin P. Robillard, Robert DeLine:
+	\enquote{A Field Study of API Learning Obstacles}.
+	In: \textit{Empirical Software Engineering}, 16 (6), S.~703--732, 2011.
+	
+	\bibitem{bird2011}
+	Christian Bird et al.:
+	\enquote{Don't Touch My Code! Examining the Effects of Ownership on Software Quality}.
+	In: \textit{Proceedings of ESEC/FSE 2011}, S.~4--14. New York, NY: ACM, 2011.
+	
+	\bibitem{cunningham1992}
+	Ward Cunningham:
+	\enquote{The WyCash Portfolio Management System}.
+	In: \textit{OOPSLA '92 Experience Report}. New York, NY: ACM, 1992.
+	
+	\bibitem{iso25010}
+	ISO/IEC:
+	\textit{ISO/IEC 25010:2011 -- Systems and Software Engineering -- Systems and
+		Software Quality Requirements and Evaluation (SQuaRE) -- System and Software
+		Quality Models}.
+	Geneva: International Organization for Standardization, 2011.
+	
+	\bibitem{meszaros2007}
+	Gerard Meszaros:
+	\textit{xUnit Test Patterns: Refactoring Test Code}.
+	Upper Saddle River, NJ: Addison-Wesley, 2007.
+	
+	\bibitem{lehman1997}
+	Meir M. Lehman, Juan F. Ramil:
+	\enquote{Laws of Software Evolution Revisited}.
+	In: \textit{Proceedings of EWSPT '96}, Lecture Notes in Computer Science,
+	Vol.~1149. Berlin: Springer, 1997.
+	
+	\bibitem{kruchten1995}
+	Philippe Kruchten:
+	\enquote{The 4+1 View Model of Architecture}.
+	In: \textit{IEEE Software}, 12 (6), S.~42--50, 1995.
+	
+	\bibitem{cockburn2005}
+	Alistair Cockburn:
+	\textit{Hexagonal Architecture (Ports and Adapters)}.
+	Online verfügbar: \url{https://alistair.cockburn.us/hexagonal-architecture/}, 2005.
+	
+	\bibitem{evans2003}
+	Eric Evans:
+	\textit{Domain-Driven Design: Tackling Complexity in the Heart of Software}.
+	Boston, MA: Addison-Wesley, 2003.
+	
+	\bibitem{fowler2012}
+	Martin Fowler:
+	\enquote{TestPyramid}.
+	Online verfügbar: \url{https://martinfowler.com/bliki/TestPyramid.html}, 2012.
+	
+	\bibitem{humble2010}
+	Jez Humble, David Farley:
+	\textit{Continuous Delivery: Reliable Software Releases through Build, Test,
+		and Deployment Automation}.
+	Upper Saddle River, NJ: Addison-Wesley, 2010.
+	
+	\bibitem{sutherland2014}
+	Jeff Sutherland:
+	\textit{Scrum: The Art of Doing Twice the Work in Half the Time}.
+	New York, NY: Crown Business, 2014.
+	
+	\bibitem{newman2015}
+	Sam Newman:
+	\textit{Building Microservices: Designing Fine-Grained Systems}.
+	Sebastopol, CA: O'Reilly Media, 2015.
+	
+	\bibitem{conway1968}
+	Melvin E. Conway:
+	\enquote{How Do Committees Invent?}
+	In: \textit{Datamation}, 14 (4), S.~28--31, 1968.
+	
+	\bibitem{raymond1999}
+	Eric S. Raymond:
+	\textit{The Cathedral and the Bazaar: Musings on Linux and Open Source by an
+		Accidental Revolutionary}.
+	Sebastopol, CA: O'Reilly Media, 1999.
+	
+	\bibitem{riel1996}
+	Arthur J. Riel:
+	\textit{Object-Oriented Design Heuristics}.
+	Boston, MA: Addison-Wesley, 1996.
+	
+	\bibitem{martraire2019}
+	Cyrille Martraire:
+	\textit{Living Documentation: Continuous Knowledge Sharing by Design}.
+	Boston, MA: Addison-Wesley, 2019.
+	
+	\bibitem{nygard2011}
+	Michael T. Nygard:
+	\enquote{Documenting Architecture Decisions}.
+	Online verfügbar: \url{https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions},
+	2011.
+	
+	\bibitem{vygotsky1978}
+	Lev S. Vygotsky:
+	\textit{Mind in Society: The Development of Higher Psychological Processes}.
+	Cambridge, MA: Harvard University Press, 1978.
+	
+	\bibitem{chen2021}
+	Mark Chen et al.:
+	\enquote{Evaluating Large Language Models Trained on Code (Codex)}.
+	In: \textit{arXiv preprint}, arXiv:2107.03374, 2021.
+	
+	\bibitem{tamburri2019}
+	Damian A. Tamburri et al.:
+	\enquote{Exploring Architectural Smells in Historical Evolution of Open Source
+		Software: A Case-Study}.
+	In: \textit{Software: Practice and Experience}, 49 (7), S.~1171--1192, 2019.
+	
+	\bibitem{naumann2011}
+	Stefan Naumann et al.:
+	\enquote{The GREENSOFT Model: A Reference Model for Green and Sustainable Software
+		and Its Engineering}.
+	In: \textit{Sustainable Computing: Informatics and Systems}, 1 (4), S.~294--304, 2011.
+	
+	\bibitem{pylint2024}
+	Pylint Development Team:
+	\textit{Pylint -- Static Code Analysis for Python}.
+	Online verfügbar: \url{https://pylint.readthedocs.io/}, 2024.
+	
+	\bibitem{pyreverse2024}
+	Pylint Development Team:
+	\textit{Pyreverse: UML Diagrams for Python Code}.
+	Online verfügbar: \url{https://pylint.readthedocs.io/en/latest/pyreverse.html}, 2024.
+	
+	\bibitem{graphviz2024}
+	John Ellson et al.:
+	\textit{Graphviz -- Graph Visualization Software}.
+	Online verfügbar: \url{https://graphviz.org/}, 2024.
+	
+	\bibitem{pydeps2024}
+	Bjorn Pettersen:
+	\textit{pydeps -- Python Module Dependency Visualization}.
+	Online verfügbar: \url{https://pydeps.readthedocs.io/}, 2024.
+	
+	\bibitem{mypy2024}
+	Mypy Development Team:
+	\textit{mypy -- Optional Static Typing for Python}.
+	Online verfügbar: \url{https://mypy.readthedocs.io/}, 2024.
+	
+	\bibitem{pytest2024}
+	pytest Development Team:
+	\textit{pytest -- A Mature Full-Featured Python Testing Framework}.
+	Online verfügbar: \url{https://docs.pytest.org/}, 2024.
+	
+	\bibitem{hypothesis2024}
+	David MacIver et al.:
+	\textit{Hypothesis -- Property-Based Testing for Python}.
+	Online verfügbar: \url{https://hypothesis.readthedocs.io/}, 2024.
+	
+	\bibitem{mutmut2024}
+	Anders Hovmöller:
+	\textit{mutmut -- Mutation Testing for Python}.
+	Online verfügbar: \url{https://mutmut.readthedocs.io/}, 2024.
+	
+	\bibitem{semver2024}
+	Tom Preston-Werner:
+	\textit{Semantic Versioning 2.0.0}.
+	Online verfügbar: \url{https://semver.org/}, 2024.
+	
+	\bibitem{convcommits2024}
+	Conventional Commits:
+	\textit{A Specification for Adding Human and Machine Readable Meaning to
+		Commit Messages}.
+	Online verfügbar: \url{https://www.conventionalcommits.org/}, 2024.
+	
+\end{thebibliography}
+	
+\end{document}
+

@@ -1,0 +1,86 @@
+version: "3.9"
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    container_name: chatme_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-chatme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatme_secret}
+      POSTGRES_DB:       ${POSTGRES_DB:-chatme}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatme}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatme_redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chatme_backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL:  postgresql+asyncpg://${POSTGRES_USER:-chatme}:${POSTGRES_PASSWORD:-chatme_secret}@db:5432/${POSTGRES_DB:-chatme}
+      REDIS_URL:     redis://redis:6379
+      SECRET_KEY:    ${SECRET_KEY:-change_me_in_production_please}
+      ALGORITHM:     HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 1440
+      CORS_ORIGINS:  ${CORS_ORIGINS:-*}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./frontend:/frontend:ro
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  coturn:
+    image: coturn/coturn:latest
+    container_name: chatme_coturn
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      DETECT_EXTERNAL_IP: "yes"
+    command: >
+      -n
+      --log-file=stdout
+      --lt-cred-mech
+      --fingerprint
+      --no-multicast-peers
+      --no-cli
+      --realm=${TURN_REALM:-chatme.local}
+      --user=${TURN_USER:-chatme}:${TURN_PASSWORD:-turnpassword}
+      --min-port=49160
+      --max-port=49200
+
+volumes:
+  pg_data:
+  redis_data:

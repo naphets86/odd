@@ -1,0 +1,276 @@
+﻿% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Der Intermediate Query Tree (IQT)}
+\label{sec:iqt}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+\subsection{Überblick und Architektur}
+\label{subsec:iqt_uebersicht}
+
+Das Herzstück des UQTL-Standards ist der \textbf{Intermediate Query Tree
+(IQT)}: eine sprachunabhängige Baumstruktur, die jeden Query-Ausdruck aus
+Python, Java und C\# einheitlich repräsentiert. Der IQT fungiert als
+\emph{Pivot-Sprache} in der Übersetzungspipeline.
+
+\begin{sidewaysfigure}
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=4pt, minimum width=2.8cm,
+    minimum height=0.8cm, align=center, font=\small},
+  source/.style={box, fill=blue!15},
+  iqt/.style={box, fill=orange!25, minimum width=3.5cm, minimum height=1cm,
+    font=\small\bfseries},
+  target/.style={box, fill=green!20},
+  arr/.style={-Stealth, thick},
+  dbl/.style={Stealth-Stealth, thick, dashed},
+]
+  % Quellsprachen
+  \node[source] (py)   at (0,4)   {Python\\SQLAlchemy};
+  \node[source] (java) at (0,2)   {Java\\Streams / JPA};
+  \node[source] (cs)   at (0,0)   {C\# / LINQ};
+
+  % Parser
+  \node[box, fill=yellow!20] (pp) at (3.5,4) {Python\\Parser};
+  \node[box, fill=yellow!20] (jp) at (3.5,2) {Java\\Parser};
+  \node[box, fill=yellow!20] (cp) at (3.5,0) {C\#\\Parser};
+
+  % IQT
+  \node[iqt] (iqt) at (7,2) {IQT\\Intermediate\\Query Tree};
+
+  % Normalisierung
+  \node[box, fill=purple!15] (norm) at (10.5,2) {IQT\\Normalisierer};
+
+  % SQL-Generatoren
+  \node[target] (ansi)  at (14,4)   {ANSI SQL:2016};
+  \node[target] (pg)    at (14,2.7) {PostgreSQL};
+  \node[target] (mysql) at (14,1.4) {MySQL 8};
+  \node[target] (ms)    at (14,0.1) {MSSQL / Oracle};
+
+  % Pfeile
+  \draw[arr] (py)   -- (pp);
+  \draw[arr] (java) -- (jp);
+  \draw[arr] (cs)   -- (cp);
+  \draw[arr] (pp)   -- (iqt);
+  \draw[arr] (jp)   -- (iqt);
+  \draw[arr] (cp)   -- (iqt);
+  \draw[arr] (iqt)  -- (norm);
+  \draw[arr] (norm) -- (ansi);
+  \draw[arr] (norm) -- (pg);
+  \draw[arr] (norm) -- (mysql);
+  \draw[arr] (norm) -- (ms);
+
+  % Beschriftung
+  \node[font=\tiny, text=gray] at (1.7,4.3)  {AST-Extraktion};
+  \node[font=\tiny, text=gray] at (1.7,2.3)  {AST-Extraktion};
+  \node[font=\tiny, text=gray] at (1.7,0.3)  {AST-Extraktion};
+  \node[font=\tiny, text=gray] at (5.2,3)    {IQT-Aufbau};
+  \node[font=\tiny, text=gray] at (8.7,2.3)  {Normalisierung};
+  \node[font=\tiny, text=gray] at (12.2,3)   {Codegen};
+\end{tikzpicture}
+\caption{UQTL-Übersetzungspipeline: von Quellsprachen über IQT zum SQL-Zieldialekt}
+\label{fig:pipeline}
+\end{sidewaysfigure}
+
+\subsection{IQT-Knotentypen}
+\label{subsec:iqt_knoten}
+
+Der IQT ist ein gerichteter azyklischer Baum (DAG) aus typisierten Knoten.
+Jeder Knoten entspricht einem relationalen oder logischen Operator.
+
+\begin{definition}[IQT-Knotentypen]
+\label{def:iqt_knoten}
+Die Menge der zulässigen IQT-Knotentypen $\mathcal{N}$ ist definiert als:
+\begin{align*}
+\mathcal{N} = \{
+  &\mathtt{SCAN},\; \mathtt{FILTER},\; \mathtt{PROJECT},\; \\
+  &\mathtt{JOIN},\; \mathtt{GROUP\_AGG},\; \mathtt{SORT},\; \\
+  &\mathtt{LIMIT},\; \mathtt{WINDOW},\; \mathtt{SUBQUERY},\; \\
+  &\mathtt{SET\_OP},\; \mathtt{WITH}\;\}
+\end{align*}
+\end{definition}
+
+\subsubsection{Knoten-Spezifikation im Detail}
+
+\textbf{SCAN-Knoten}
+Der \texttt{SCAN}-Knoten repräsentiert den Basistabellenzugriff:
+
+\begin{lstlisting}[style=sqlstyle, caption={IQT-Pseudonotation: SCAN},
+  label=lst:iqt_scan]
+SCAN {
+  table    : QualifiedName   -- Schema + Tabellenname
+  alias    : Identifier?     -- optionaler Alias
+  hint     : IndexHint?      -- optionaler Index-Hint (Erweiterung)
+}
+\end{lstlisting}
+
+\textbf{FILTER-Knoten}
+\begin{lstlisting}[style=sqlstyle, caption={IQT-Pseudonotation: FILTER},
+  label=lst:iqt_filter]
+FILTER {
+  source   : IQTNode         -- Eingaberelation
+  predicate: Expr            -- boolescher Ausdruck
+  position : {WHERE | HAVING}
+}
+
+Expr ::=
+  | CompareExpr { left: Expr, op: {EQ|NEQ|LT|GT|LTE|GTE}, right: Expr }
+  | LogicExpr   { op: {AND|OR|NOT}, operands: Expr+ }
+  | InExpr      { value: Expr, list: Expr+ | SubQuery }
+  | BetweenExpr { value: Expr, lo: Expr, hi: Expr }
+  | LikeExpr    { value: Expr, pattern: StringLiteral, escape: Char? }
+  | NullExpr    { value: Expr, negated: Bool }
+  | ExistsExpr  { subquery: SubQuery, negated: Bool }
+  | Literal     { type: DataType, value: Any }
+  | ColumnRef   { table: Identifier?, column: Identifier }
+  | FuncCall    { name: QualifiedName, args: Expr*, distinct: Bool }
+\end{lstlisting}
+
+\textbf{PROJECT-Knoten}
+\begin{lstlisting}[style=sqlstyle, caption={IQT-Pseudonotation: PROJECT},
+  label=lst:iqt_project]
+PROJECT {
+  source    : IQTNode
+  columns   : ProjectionItem+
+  distinct  : Bool
+}
+
+ProjectionItem ::=
+  | Star       {}
+  | Expression { expr: Expr, alias: Identifier? }
+\end{lstlisting}
+
+\textbf{JOIN-Knoten}
+\begin{lstlisting}[style=sqlstyle, caption={IQT-Pseudonotation: JOIN},
+  label=lst:iqt_join]
+JOIN {
+  left      : IQTNode
+  right     : IQTNode
+  type      : {INNER | LEFT_OUTER | RIGHT_OUTER | FULL_OUTER | CROSS}
+  condition : JoinCondition
+}
+
+JoinCondition ::=
+  | OnCondition    { predicate: Expr }
+  | UsingCondition { columns: Identifier+ }
+  | Natural        {}
+\end{lstlisting}
+
+\textbf{GROUP\_AGG-Knoten}
+\begin{lstlisting}[style=sqlstyle, caption={IQT-Pseudonotation: GROUP\_AGG},
+  label=lst:iqt_group]
+GROUP_AGG {
+  source     : IQTNode
+  groupBy    : Expr*           -- leer = Gesamt-Aggregation
+  aggregates : AggItem+
+  having     : Expr?
+}
+
+AggItem ::= {
+  func  : {COUNT|SUM|AVG|MIN|MAX|STDDEV|VAR|STRING_AGG|...}
+  arg   : Expr          -- COUNT(*) => StarExpr
+  distinct: Bool
+  alias : Identifier?
+}
+\end{lstlisting}
+
+\textbf{SORT-Knoten}
+\begin{lstlisting}[style=sqlstyle, caption={IQT-Pseudonotation: SORT},
+  label=lst:iqt_sort]
+SORT {
+  source  : IQTNode
+  items   : SortItem+
+}
+
+SortItem ::= {
+  expr      : Expr
+  direction : {ASC | DESC}
+  nulls     : {NULLS_FIRST | NULLS_LAST | DEFAULT}
+}
+\end{lstlisting}
+
+\textbf{LIMIT-Knoten}
+\begin{lstlisting}[style=sqlstyle, caption={IQT-Pseudonotation: LIMIT},
+  label=lst:iqt_limit]
+LIMIT {
+  source : IQTNode
+  count  : Expr | Null    -- NULL = kein Limit
+  offset : Expr | Null    -- NULL = kein Offset
+}
+\end{lstlisting}
+
+\textbf{WINDOW-Knoten}
+\begin{lstlisting}[style=sqlstyle, caption={IQT-Pseudonotation: WINDOW},
+  label=lst:iqt_window]
+WINDOW {
+  source       : IQTNode
+  definitions  : WindowDef+
+}
+
+WindowDef ::= {
+  alias        : Identifier
+  partitionBy  : Expr*
+  orderBy      : SortItem*
+  frame        : WindowFrame?
+  func         : WindowFunc
+  resultAlias  : Identifier
+}
+
+WindowFrame ::= {
+  unit  : {ROWS | RANGE}
+  start : FrameBound
+  end   : FrameBound
+}
+
+FrameBound ::=
+  | UNBOUNDED_PRECEDING | CURRENT_ROW | UNBOUNDED_FOLLOWING
+  | Preceding { n: Expr } | Following { n: Expr }
+\end{lstlisting}
+
+\subsection{Normalisierungsregeln des IQT}
+\label{subsec:iqt_norm}
+
+Um die eindeutige SQL-Ausgabe zu garantieren, werden IQT-Bäume vor der
+SQL-Generierung normalisiert. Die Normalisierung umfasst folgende Schritte:
+
+\begin{regel}[Prädikat-Normalisierung]
+\label{regel:pred_norm}
+Zusammengesetzte \texttt{AND}-Prädikate werden in einer kanonischen
+Reihenfolge sortiert (lexikografisch nach Spaltenname, dann Operator):
+\[
+  p_1 \wedge p_2 \wedge \ldots \wedge p_n \;\rightarrow\;
+  p_{\sigma(1)} \wedge p_{\sigma(2)} \wedge \ldots \wedge p_{\sigma(n)}
+\]
+mit $\sigma$ als lexikografischer Permutation.
+\end{regel}
+
+\begin{regel}[Alias-Normalisierung]
+\label{regel:alias_norm}
+Generierte Tabellenaliase folgen dem Schema \texttt{t1, t2, \ldots} in
+der Reihenfolge des Auftretens im Baum (Pre-Order-Traversal).
+\end{regel}
+
+\begin{regel}[Boolean-Vereinfachung]
+\label{regel:bool_simp}
+Redundante boolesche Ausdrücke werden eliminiert:
+\begin{align*}
+  p \wedge \mathtt{TRUE} &\;\rightarrow\; p \\
+  p \vee \mathtt{FALSE}  &\;\rightarrow\; p \\
+  \neg\neg p             &\;\rightarrow\; p \\
+  p \wedge p             &\;\rightarrow\; p
+\end{align*}
+\end{regel}
+
+\begin{regel}[SELECT-Reihenfolge]
+\label{regel:select_order}
+Explizit genannte Projekti\-ons\-spalten werden in der Reihenfolge ihrer
+Deklaration ausgegeben. \texttt{SELECT *} wird nur bei echten Stern-Projektionen
+verwendet; implizite Stern-Projektionen werden beibehalten.
+\end{regel}
+
+\begin{regel}[JOIN-Kanonisierung]
+\label{regel:join_canon}
+Mehrfach-Joins werden left-assoziativ normiert.
+\texttt{CROSS JOIN} ohne \texttt{ON}-Klausel wird nur verwendet, wenn
+explizit kein Prädikat vorliegt; sonst wird \texttt{INNER JOIN ... ON}
+bevorzugt.
+\end{regel}
+

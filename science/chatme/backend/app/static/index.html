@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ChatMe</title>
+<style>
+  /* ── Reset & Base ──────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --surface2: #22263a;
+    --border:   #2d3148;
+    --accent:   #2563eb;
+    --accent2:  #7c3aed;
+    --danger:   #dc2626;
+    --success:  #16a34a;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --bubble-me:#2563eb;
+    --bubble-them:#22263a;
+    --radius:   12px;
+  }
+  html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); overflow: hidden; }
+
+  /* ── Auth Screen ───────────────────────────────────────────── */
+  #authScreen {
+    display: flex; align-items: center; justify-content: center;
+    height: 100vh; background: var(--bg);
+  }
+  .auth-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 40px; width: 400px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  .auth-card h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 6px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .auth-card p  { color: var(--muted); margin-bottom: 28px; font-size: .9rem; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px;
+    background: var(--bg); border-radius: 8px; padding: 4px; }
+  .tab-btn { flex: 1; padding: 8px; border: none; border-radius: 6px;
+    background: transparent; color: var(--muted); cursor: pointer;
+    font-size: .9rem; transition: all .2s; }
+  .tab-btn.active { background: var(--accent); color: #fff; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: .8rem; color: var(--muted);
+    margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+  .form-group input { width: 100%; padding: 10px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+    font-size: .95rem; outline: none; transition: border-color .2s; }
+  .form-group input:focus { border-color: var(--accent); }
+  .btn-primary { width: 100%; padding: 12px; background: var(--accent); color: #fff;
+    border: none; border-radius: 8px; font-size: 1rem; font-weight: 600;
+    cursor: pointer; transition: background .2s; }
+  .btn-primary:hover { background: #1d4ed8; }
+  #authError { color: #f87171; font-size: .85rem; margin-top: 12px; text-align: center; }
+
+  /* ── App Layout ────────────────────────────────────────────── */
+  #app { display: none; height: 100vh; flex-direction: row; }
+  #app.visible { display: flex; }
+
+  /* Sidebar */
+  #sidebar {
+    width: 300px; min-width: 300px; background: var(--surface);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  }
+  .sidebar-header {
+    padding: 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sidebar-header h2 { flex: 1; font-size: 1.1rem; font-weight: 700; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: .85rem; color: #fff; flex-shrink: 0; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%;
+    background: var(--muted); display: inline-block; margin-right: 4px; }
+  .status-dot.online { background: var(--success); }
+
+  .add-contact-bar { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; }
+  .add-contact-bar input { flex: 1; padding: 8px 12px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+    font-size: .85rem; outline: none; }
+  .add-contact-bar input:focus { border-color: var(--accent); }
+  .btn-icon { padding: 8px 12px; background: var(--accent); color: #fff;
+    border: none; border-radius: 8px; cursor: pointer; font-size: .8rem;
+    white-space: nowrap; }
+
+  #contactList { flex: 1; overflow-y: auto; }
+  .contact-item {
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    cursor: pointer; transition: background .15s; border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .contact-item:hover { background: var(--surface2); }
+  .contact-item.active { background: var(--surface2); border-left: 3px solid var(--accent); }
+  .contact-info { flex: 1; min-width: 0; }
+  .contact-name { font-weight: 600; font-size: .9rem; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .contact-preview { font-size: .78rem; color: var(--muted); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .unread-badge { background: var(--accent); color: #fff; border-radius: 10px;
+    padding: 2px 7px; font-size: .7rem; font-weight: 700; }
+  #sidebarBottom { padding: 14px 16px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; }
+  #myName { flex: 1; font-size: .85rem; font-weight: 600; }
+  #myStatus { font-size: .75rem; color: var(--muted); }
+  .btn-logout { padding: 6px 12px; background: transparent;
+    border: 1px solid var(--border); border-radius: 6px; color: var(--muted);
+    cursor: pointer; font-size: .8rem; }
+  .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* Chat Area */
+  #chatArea { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #chatHeader {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    background: var(--surface); display: flex; align-items: center; gap: 12px;
+  }
+  #chatHeader h3 { flex: 1; font-size: 1rem; font-weight: 700; }
+  #chatPeerStatus { font-size: .8rem; color: var(--muted); }
+  .btn-call { padding: 8px 16px; border: none; border-radius: 8px;
+    cursor: pointer; font-size: .85rem; font-weight: 600; display: flex;
+    align-items: center; gap: 6px; transition: all .2s; }
+  .btn-call.audio { background: var(--success); color: #fff; }
+  .btn-call.audio:hover { background: #15803d; }
+  .btn-call.video { background: var(--accent2); color: #fff; }
+  .btn-call.video:hover { background: #6d28d9; }
+
+  #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex;
+    flex-direction: column; gap: 8px; }
+  .msg-row { display: flex; }
+  .msg-row.me { justify-content: flex-end; }
+  .msg-row.them { justify-content: flex-start; }
+  .bubble { max-width: 68%; padding: 10px 14px; border-radius: 16px;
+    font-size: .9rem; line-height: 1.5; word-break: break-word; position: relative; }
+  .bubble.me { background: var(--bubble-me); color: #fff;
+    border-bottom-right-radius: 4px; }
+  .bubble.them { background: var(--bubble-them); color: var(--text);
+    border-bottom-left-radius: 4px; }
+  .bubble .meta { font-size: .7rem; margin-top: 4px; opacity: .65;
+    display: flex; gap: 8px; justify-content: flex-end; }
+  .bubble .edited-tag { font-style: italic; }
+  .bubble:hover .msg-actions { display: flex; }
+  .msg-actions { display: none; position: absolute; top: -28px; right: 0;
+    gap: 4px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px 4px; }
+  .msg-actions button { background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: .75rem; padding: 2px 4px; border-radius: 4px; }
+  .msg-actions button:hover { color: var(--text); background: var(--surface2); }
+  .typing-indicator { color: var(--muted); font-size: .8rem; padding: 4px 0;
+    font-style: italic; }
+
+  #inputBar { padding: 16px 20px; border-top: 1px solid var(--border);
+    background: var(--surface); display: flex; gap: 10px; align-items: flex-end; }
+  #msgInput { flex: 1; padding: 10px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+    font-size: .95rem; outline: none; resize: none; min-height: 42px;
+    max-height: 120px; font-family: inherit; transition: border-color .2s; }
+  #msgInput:focus { border-color: var(--accent); }
+  #sendBtn { padding: 10px 20px; background: var(--accent); color: #fff;
+    border: none; border-radius: 10px; cursor: pointer; font-size: .95rem;
+    font-weight: 600; transition: background .2s; }
+  #sendBtn:hover { background: #1d4ed8; }
+
+  /* No-chat placeholder */
+  #noChat { flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; color: var(--muted); gap: 12px; }
+  #noChat svg { opacity: .2; }
+  #noChat p { font-size: 1rem; }
+
+  /* ── Call Overlay ──────────────────────────────────────────── */
+  #callOverlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  #callOverlay.active { display: flex; }
+  .call-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 36px 48px; text-align: center;
+    min-width: 320px; box-shadow: 0 30px 80px rgba(0,0,0,.6);
+  }
+  .call-card .call-avatar { width: 80px; height: 80px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; font-weight: 700; color: #fff; margin: 0 auto 16px; }
+  .call-card h3 { font-size: 1.3rem; margin-bottom: 6px; }
+  .call-card p  { color: var(--muted); margin-bottom: 28px; }
+  .call-buttons { display: flex; gap: 16px; justify-content: center; }
+  .call-btn { width: 56px; height: 56px; border-radius: 50%; border: none;
+    cursor: pointer; font-size: 1.4rem; display: flex; align-items: center;
+    justify-content: center; transition: transform .15s; }
+  .call-btn:hover { transform: scale(1.1); }
+  .call-btn.accept { background: var(--success); color: #fff; }
+  .call-btn.reject { background: var(--danger); color: #fff; }
+  .call-btn.hangup { background: var(--danger); color: #fff; }
+  .call-btn.mute   { background: var(--surface2); color: var(--text); }
+  #callDuration { font-size: 1.1rem; font-weight: 600; color: var(--success);
+    margin-bottom: 20px; letter-spacing: .05em; }
+  #remoteVideo, #localVideo {
+    border-radius: 12px; background: #000; display: none;
+  }
+  #remoteVideo { width: 480px; max-width: 90vw; height: 270px;
+    margin: 0 auto 16px; }
+  #localVideo  { width: 120px; height: 68px; position: absolute;
+    bottom: 16px; right: 16px; border: 2px solid var(--border); z-index: 2; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* WS indicator */
+  #wsStatus { width: 8px; height: 8px; border-radius: 50%;
+    background: var(--danger); flex-shrink: 0; }
+  #wsStatus.connected { background: var(--success); }
+</style>
+</head>
+<body>
+
+<!-- ── AUTH ────────────────────────────────────────────────────── -->
+<div id="authScreen">
+  <div class="auth-card">
+    <h1>ChatMe</h1>
+    <p>Ende-zu-Ende-verschlüsselter Messenger</p>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('login')">Anmelden</button>
+      <button class="tab-btn"        onclick="switchTab('register')">Registrieren</button>
+    </div>
+
+    <!-- Login -->
+    <div id="loginForm">
+      <div class="form-group">
+        <label>Benutzername</label>
+        <input type="text" id="loginUser" placeholder="max_mustermann" autocomplete="username"/>
+      </div>
+      <div class="form-group">
+        <label>Passwort</label>
+        <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"/>
+      </div>
+      <button class="btn-primary" onclick="doLogin()">Anmelden</button>
+    </div>
+
+    <!-- Register -->
+    <div id="registerForm" style="display:none">
+      <div class="form-group">
+        <label>Benutzername</label>
+        <input type="text" id="regUser" placeholder="max_mustermann"/>
+      </div>
+      <div class="form-group">
+        <label>Anzeigename</label>
+        <input type="text" id="regName" placeholder="Max Mustermann"/>
+      </div>
+      <div class="form-group">
+        <label>E-Mail</label>
+        <input type="email" id="regEmail" placeholder="max@example.com"/>
+      </div>
+      <div class="form-group">
+        <label>Passwort</label>
+        <input type="password" id="regPass" placeholder="Mindestens 6 Zeichen"/>
+      </div>
+      <button class="btn-primary" onclick="doRegister()">Registrieren</button>
+    </div>
+
+    <div id="authError"></div>
+  </div>
+</div>
+
+<!-- ── APP ─────────────────────────────────────────────────────── -->
+<div id="app">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <div id="myAvatar" class="avatar">M</div>
+      <div style="flex:1">
+        <div id="myName">Ich</div>
+        <div style="font-size:.75rem;color:var(--muted)">online</div>
+      </div>
+      <div id="wsStatus" title="WebSocket-Status"></div>
+    </div>
+    <div class="add-contact-bar">
+      <input type="text" id="addContactInput" placeholder="Benutzername suchen…"
+             onkeydown="if(event.key==='Enter') addContact()"/>
+      <button class="btn-icon" onclick="addContact()">+ Kontakt</button>
+    </div>
+    <div id="contactList"></div>
+    <div id="sidebarBottom">
+      <button class="btn-logout" onclick="logout()">Abmelden</button>
+    </div>
+  </div>
+
+  <!-- Chat Area -->
+  <div id="chatArea">
+    <div id="noChat">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <p>Wähle einen Kontakt, um zu chatten</p>
+    </div>
+    <div id="chatMain" style="display:none;flex-direction:column;height:100%;flex:1">
+      <div id="chatHeader">
+        <div id="chatAvatar" class="avatar">X</div>
+        <div style="flex:1">
+          <h3 id="chatName">Kontakt</h3>
+          <div id="chatPeerStatus">offline</div>
+        </div>
+        <button class="btn-call audio" onclick="startCall(false)">📞 Anruf</button>
+        <button class="btn-call video" onclick="startCall(true)"  style="margin-left:6px">📹 Video</button>
+      </div>
+      <div id="messages"></div>
+      <div id="typingHint" class="typing-indicator" style="padding:0 20px 4px"></div>
+      <div id="inputBar">
+        <textarea id="msgInput" rows="1" placeholder="Nachricht eingeben…"
+                  onkeydown="handleInputKey(event)"
+                  oninput="handleTyping()"></textarea>
+        <button id="sendBtn" onclick="sendMessage()">Senden</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CALL OVERLAY ─────────────────────────────────────────────── -->
+<div id="callOverlay">
+  <div class="call-card" style="position:relative">
+    <video id="remoteVideo" autoplay playsinline></video>
+    <video id="localVideo"  autoplay playsinline muted></video>
+
+    <div id="callAvatarWrap" class="call-avatar" style="background:#2563eb">📞</div>
+    <h3 id="callName">Anruf</h3>
+    <p  id="callSubtitle">Warte…</p>
+    <div id="callDuration" style="display:none">00:00</div>
+
+    <div class="call-buttons" id="callButtons">
+      <!-- filled dynamically -->
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   SIGNATUR-CHIFFRE  (leichtgewichtige Demo-Implementierung)
+   In Produktion: vollständige SC-Bibliothek einbinden.
+   ═══════════════════════════════════════════════════════════════ */
+const SC = (() => {
+  // Simple XOR-based cipher as placeholder for the full Signatur-Chiffre
+  // Replace with the real SC library for production use.
+  function _keyStream(a, b, p, n, len) {
+    const ks = [];
+    let x = BigInt(a), y = BigInt(b), mod = BigInt(p);
+    for (let i = 0; i < len; i++) {
+      x = (x * y) % mod;
+      ks.push(Number(x % 256n));
+    }
+    return ks;
+  }
+  return {
+    encryptMessage(text, key) {
+      if (!key || !key.sc_key_a) return JSON.stringify({ plain: text });
+      const bytes = [...new TextEncoder().encode(text)];
+      const ks    = _keyStream(key.sc_key_a, key.sc_key_b, key.sc_key_p, key.sc_key_n, bytes.length);
+      const enc   = bytes.map((b, i) => b ^ ks[i]);
+      return JSON.stringify({ len: bytes.length, blocks: enc });
+    },
+    decryptMessage(cipher, key) {
+      try {
+        const obj = JSON.parse(cipher);
+        if (obj.plain !== undefined) return obj.plain;
+        if (!key || !key.sc_key_a) return '🔒 (kein Schlüssel)';
+        const ks  = _keyStream(key.sc_key_a, key.sc_key_b, key.sc_key_p, key.sc_key_n, obj.len);
+        const dec = obj.blocks.map((b, i) => b ^ ks[i]);
+        return new TextDecoder().decode(new Uint8Array(dec));
+      } catch { return '🔒 (Entschlüsselung fehlgeschlagen)'; }
+    },
+  };
+})();
+
+/* ═══════════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════════ */
+const API   = '';           // same-origin; change if backend differs
+let token   = localStorage.getItem('cm_token') || '';
+let me      = null;         // UserOut
+let ws      = null;
+let wsReady = false;
+
+let contacts    = [];       // ContactOut[]
+let activePeer  = null;     // contact object currently in view
+let messages    = {};       // peer_id → [{id, sender_id, text, created_at, edited_at, is_read, tmp_id}]
+let unread      = {};       // peer_id → count
+let peerStatus  = {};       // peer_id → bool
+
+let typingTimer = null;
+let editingMsgId = null;
+
+// WebRTC
+let pc          = null;
+let localStream = null;
+let callId      = null;
+let callPeer    = null;     // peer user id
+let callIsVideo = false;
+let callActive  = false;
+let callTimer   = null;
+let callSecs    = 0;
+
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  // TURN: add your TURN server here for production
+];
+
+/* ═══════════════════════════════════════════════════════════════
+   BOOT
+   ═══════════════════════════════════════════════════════════════ */
+(async () => {
+  if (token) {
+    const ok = await fetchMe();
+    if (ok) { showApp(); return; }
+  }
+  showAuth();
+})();
+
+/* ═══════════════════════════════════════════════════════════════
+   AUTH
+   ═══════════════════════════════════════════════════════════════ */
+function switchTab(tab) {
+  document.getElementById('loginForm').style.display    = tab === 'login'    ? '' : 'none';
+  document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
+  document.querySelectorAll('.tab-btn').forEach((b, i) =>
+    b.classList.toggle('active', (i === 0) === (tab === 'login')));
+  document.getElementById('authError').textContent = '';
+}
+
+async function doLogin() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const res = await fetch(`${API}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) { authErr((await res.json()).detail || 'Fehler'); return; }
+  const data = await res.json();
+  token = data.access_token;
+  localStorage.setItem('cm_token', token);
+  await fetchMe();
+  showApp();
+}
+
+async function doRegister() {
+  const username     = document.getElementById('regUser').value.trim();
+  const display_name = document.getElementById('regName').value.trim();
+  const email        = document.getElementById('regEmail').value.trim();
+  const password     = document.getElementById('regPass').value;
+  const res = await fetch(`${API}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, display_name, email, password }),
+  });
+  if (!res.ok) { authErr((await res.json()).detail || 'Fehler'); return; }
+  // Auto-login
+  document.getElementById('loginUser').value = username;
+  document.getElementById('loginPass').value = password;
+  switchTab('login');
+  await doLogin();
+}
+
+function authErr(msg) { document.getElementById('authError').textContent = msg; }
+
+async function fetchMe() {
+  const res = await fetch(`${API}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) { token = ''; localStorage.removeItem('cm_token'); return false; }
+  me = await res.json();
+  return true;
+}
+
+function logout() {
+  token = ''; localStorage.removeItem('cm_token');
+  if (ws) ws.close();
+  location.reload();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   APP INIT
+   ═══════════════════════════════════════════════════════════════ */
+async function showApp() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+
+  // Fill user info
+  const av = document.getElementById('myAvatar');
+  av.textContent = (me.display_name || '?')[0].toUpperCase();
+  av.style.background = me.avatar_color || '#2563eb';
+  document.getElementById('myName').textContent = me.display_name;
+
+  await loadContacts();
+  connectWS();
+}
+
+async function loadContacts() {
+  const res = await apiFetch('/api/contacts');
+  contacts  = res || [];
+  renderContactList();
+}
+
+function renderContactList() {
+  const list = document.getElementById('contactList');
+  list.innerHTML = '';
+  contacts.forEach(c => {
+    const u   = c.contact_user;
+    const online = peerStatus[u.id] ?? u.is_online;
+    const unr  = unread[u.id] || 0;
+    const msgs = messages[u.id] || [];
+    const last = msgs.length ? msgs[msgs.length-1] : null;
+    const preview = last ? SC.decryptMessage(last.ciphertext, c) : '';
+
+    const item = document.createElement('div');
+    item.className = 'contact-item' + (activePeer?.contact_user.id === u.id ? ' active' : '');
+    item.dataset.uid = u.id;
+    item.innerHTML = `
+      <div class="avatar" style="background:${u.avatar_color}">${u.display_name[0].toUpperCase()}</div>
+      <div class="contact-info">
+        <div class="contact-name">
+          <span class="status-dot ${online ? 'online' : ''}"></span>${u.display_name}
+        </div>
+        <div class="contact-preview">${esc(preview.slice(0,50))}</div>
+      </div>
+      ${unr ? `<div class="unread-badge">${unr}</div>` : ''}
+    `;
+    item.onclick = () => openChat(c);
+    list.appendChild(item);
+  });
+}
+
+async function addContact() {
+  const input = document.getElementById('addContactInput');
+  const username = input.value.trim();
+  if (!username) return;
+  const res = await apiFetch('/api/contacts', 'POST', { username });
+  if (res) {
+    input.value = '';
+    contacts.push(res);
+    renderContactList();
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CHAT
+   ═══════════════════════════════════════════════════════════════ */
+async function openChat(contact) {
+  activePeer = contact;
+  unread[contact.contact_user.id] = 0;
+
+  // Show chat panel
+  document.getElementById('noChat').style.display   = 'none';
+  const main = document.getElementById('chatMain');
+  main.style.display = 'flex';
+
+  const u = contact.contact_user;
+  const av = document.getElementById('chatAvatar');
+  av.textContent  = u.display_name[0].toUpperCase();
+  av.style.background = u.avatar_color;
+  document.getElementById('chatName').textContent = u.display_name;
+  updatePeerStatusLabel(u.id);
+
+  renderContactList();
+
+  // Load history if not cached
+  if (!messages[u.id]) {
+    const hist = await apiFetch(`/api/messages/history/${u.id}`);
+    messages[u.id] = hist || [];
+  }
+  renderMessages();
+  scrollBottom();
+}
+
+function updatePeerStatusLabel(uid) {
+  const online = peerStatus[uid] ?? contacts.find(c => c.contact_user.id === uid)?.contact_user.is_online;
+  document.getElementById('chatPeerStatus').textContent = online ? '🟢 online' : '⚫ offline';
+}
+
+function renderMessages() {
+  if (!activePeer) return;
+  const uid  = activePeer.contact_user.id;
+  const msgs = messages[uid] || [];
+  const div  = document.getElementById('messages');
+  div.innerHTML = '';
+
+  msgs.forEach(m => {
+    if (m.is_deleted) return;
+    const mine = m.sender_id === me.id;
+    const text = SC.decryptMessage(m.ciphertext, activePeer);
+    const row  = document.createElement('div');
+    row.className = `msg-row ${mine ? 'me' : 'them'}`;
+    row.dataset.mid = m.id || m.tmp_id;
+
+    const time = new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    const editedTag = m.edited_at ? `<span class="edited-tag">bearbeitet</span>` : '';
+    const readMark  = mine ? (m.is_read ? ' ✓✓' : ' ✓') : '';
+
+    row.innerHTML = `
+      <div class="bubble ${mine ? 'me' : 'them'}">
+        ${mine ? `<div class="msg-actions">
+          <button onclick="startEdit('${m.id}', event)">✏</button>
+          <button onclick="deleteMsg('${m.id}', event)">🗑</button>
+        </div>` : ''}
+        <span class="msg-text">${esc(text)}</span>
+        <div class="meta">${editedTag}<span>${time}${readMark}</span></div>
+      </div>`;
+    div.appendChild(row);
+
+    // Mark as read
+    if (!mine && !m.is_read && m.id && ws && wsReady) {
+      wsSend({ type: 'read', payload: { message_id: m.id, sender_id: m.sender_id } });
+      m.is_read = true;
+    }
+  });
+}
+
+function scrollBottom() {
+  const d = document.getElementById('messages');
+  d.scrollTop = d.scrollHeight;
+}
+
+function handleInputKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+let typingTimeout = null;
+function handleTyping() {
+  if (!activePeer || !wsReady) return;
+  if (!typingTimeout) {
+    wsSend({ type: 'typing', payload: { recipient_id: activePeer.contact_user.id } });
+  }
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => { typingTimeout = null; }, 2000);
+}
+
+async function sendMessage() {
+  const input = document.getElementById('msgInput');
+  const text  = input.value.trim();
+  if (!text || !activePeer) return;
+
+  if (editingMsgId) {
+    // Edit mode
+    const cipher = SC.encryptMessage(text, activePeer);
+    wsSend({ type: 'message_edit', payload: { message_id: editingMsgId, ciphertext: cipher } });
+    editingMsgId = null;
+    input.value = '';
+    input.placeholder = 'Nachricht eingeben…';
+    return;
+  }
+
+  const uid    = activePeer.contact_user.id;
+  const cipher = SC.encryptMessage(text, activePeer);
+  const tmp_id = 'tmp_' + Date.now();
+  const now    = new Date().toISOString();
+
+  // Optimistic add
+  const msgObj = {
+    tmp_id, id: null, sender_id: me.id, recipient_id: uid,
+    ciphertext: cipher, created_at: now, edited_at: null,
+    is_read: false, is_deleted: false,
+  };
+  (messages[uid] = messages[uid] || []).push(msgObj);
+  renderMessages();
+  scrollBottom();
+  input.value = '';
+
+  wsSend({ type: 'message', payload: { recipient_id: uid, ciphertext: cipher, tmp_id } });
+}
+
+function startEdit(msgId, e) {
+  e.stopPropagation();
+  if (!activePeer) return;
+  const uid = activePeer.contact_user.id;
+  const msg = (messages[uid] || []).find(m => m.id === msgId);
+  if (!msg) return;
+  const text = SC.decryptMessage(msg.ciphertext, activePeer);
+  const input = document.getElementById('msgInput');
+  input.value = text;
+  input.focus();
+  editingMsgId = msgId;
+  input.placeholder = '✏ Bearbeitung…';
+}
+
+function deleteMsg(msgId, e) {
+  e.stopPropagation();
+  wsSend({ type: 'message_delete', payload: { message_id: msgId } });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WEBSOCKET
+   ═══════════════════════════════════════════════════════════════ */
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    wsReady = false;
+    wsSend({ type: 'auth', payload: { token } });
+    document.getElementById('wsStatus').className = 'connected';
+  };
+
+  ws.onclose = () => {
+    wsReady = false;
+    document.getElementById('wsStatus').className = '';
+    setTimeout(connectWS, 3000); // Reconnect
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = e => {
+    let ev;
+    try { ev = JSON.parse(e.data); } catch { return; }
+    handleWsEvent(ev.type, ev.payload || {});
+  };
+}
+
+function wsSend(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+function handleWsEvent(type, p) {
+  switch (type) {
+
+    case 'authenticated':
+      wsReady = true;
+      break;
+
+    case 'error':
+      console.warn('WS error:', p.message);
+      break;
+
+    case 'message_new': {
+      const uid = p.sender_id === me.id ? p.recipient_id : p.sender_id;
+      if (!messages[uid]) messages[uid] = [];
+      // Replace optimistic message if tmp_id matches
+      if (p.tmp_id) {
+        const idx = messages[uid].findIndex(m => m.tmp_id === p.tmp_id);
+        if (idx >= 0) { messages[uid][idx] = p; break; }
+      }
+      messages[uid].push(p);
+      if (activePeer?.contact_user.id === uid) {
+        renderMessages(); scrollBottom();
+      } else {
+        unread[uid] = (unread[uid] || 0) + 1;
+      }
+      renderContactList();
+      break;
+    }
+
+    case 'message_edited': {
+      for (const uid in messages) {
+        const m = messages[uid].find(x => x.id === p.message_id);
+        if (m) { m.ciphertext = p.ciphertext; m.edited_at = p.edited_at; break; }
+      }
+      if (activePeer) { renderMessages(); }
+      break;
+    }
+
+    case 'message_deleted': {
+      for (const uid in messages) {
+        const m = messages[uid].find(x => x.id === p.message_id);
+        if (m) { m.is_deleted = true; break; }
+      }
+      if (activePeer) { renderMessages(); }
+      break;
+    }
+
+    case 'typing': {
+      if (activePeer?.contact_user.id === p.sender_id) {
+        const el = document.getElementById('typingHint');
+        el.textContent = activePeer.contact_user.display_name + ' schreibt…';
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(() => el.textContent = '', 2500);
+      }
+      break;
+    }
+
+    case 'read': {
+      for (const uid in messages) {
+        const m = messages[uid].find(x => x.id === p.message_id);
+        if (m) { m.is_read = true; }
+      }
+      if (activePeer) renderMessages();
+      break;
+    }
+
+    case 'user_status': {
+      peerStatus[p.user_id] = p.is_online;
+      if (activePeer?.contact_user.id === p.user_id) updatePeerStatusLabel(p.user_id);
+      renderContactList();
+      break;
+    }
+
+    // ── WebRTC Signaling ──────────────────────────────────────
+    case 'call_incoming':
+      handleIncomingCall(p);
+      break;
+
+    case 'call_answer':
+      handleCallAnswer(p);
+      break;
+
+    case 'call_ice':
+      handleCallIce(p);
+      break;
+
+    case 'call_rejected':
+      showCallStatus('Abgelehnt', true);
+      endCall(false);
+      break;
+
+    case 'call_hangup':
+      showCallStatus('Anruf beendet', true);
+      endCall(false);
+      break;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WEBRTC – OUTGOING CALL
+   ═══════════════════════════════════════════════════════════════ */
+async function startCall(withVideo) {
+  if (!activePeer || callActive) return;
+  callIsVideo = withVideo;
+  callPeer    = activePeer.contact_user.id;
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true, video: withVideo,
+    });
+  } catch(err) {
+    alert('Kein Zugriff auf Mikrofon/Kamera: ' + err.message);
+    return;
+  }
+
+  pc = createPeerConnection();
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  if (withVideo) {
+    const lv = document.getElementById('localVideo');
+    lv.srcObject = localStream; lv.style.display = 'block';
+  }
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  wsSend({ type: 'call_offer', payload: {
+    callee_id: callPeer, sdp: offer.sdp,
+  }});
+
+  showCallOverlay('Ausgehend…', activePeer.contact_user.display_name,
+    activePeer.contact_user.avatar_color, 'calling');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WEBRTC – INCOMING CALL
+   ═══════════════════════════════════════════════════════════════ */
+async function handleIncomingCall(p) {
+  callId   = p.call_id;
+  callPeer = p.caller_id;
+
+  // Find contact name/color
+  const c = contacts.find(x => x.contact_user.id === p.caller_id);
+  const callerName  = c?.contact_user.display_name || p.caller_name;
+  const callerColor = c?.contact_user.avatar_color  || '#2563eb';
+
+  // Store offer sdp for later
+  pc = createPeerConnection();
+
+  // We need the remote description before adding ICE candidates
+  await pc.setRemoteDescription({ type: 'offer', sdp: p.sdp });
+
+  showCallOverlay('Eingehender Anruf', callerName, callerColor, 'incoming');
+}
+
+async function acceptCall() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true, video: callIsVideo,
+    });
+  } catch(err) {
+    alert('Kein Zugriff auf Mikrofon/Kamera: ' + err.message);
+    rejectCall(); return;
+  }
+
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  if (callIsVideo) {
+    const lv = document.getElementById('localVideo');
+    lv.srcObject = localStream; lv.style.display = 'block';
+  }
+
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  wsSend({ type: 'call_answer', payload: {
+    caller_id: callPeer, call_id: callId, sdp: answer.sdp,
+  }});
+
+  startCallTimer();
+  showCallOverlay('Verbunden', document.getElementById('callName').textContent,
+    null, 'active');
+}
+
+function rejectCall() {
+  wsSend({ type: 'call_reject', payload: { caller_id: callPeer, call_id: callId } });
+  endCall(false);
+}
+
+function hangupCall() {
+  wsSend({ type: 'call_hangup', payload: { peer_id: callPeer, call_id: callId } });
+  endCall(true);
+}
+
+async function handleCallAnswer(p) {
+  callId = p.call_id;
+  await pc.setRemoteDescription({ type: 'answer', sdp: p.sdp });
+  startCallTimer();
+  showCallOverlay('Verbunden', document.getElementById('callName').textContent,
+    null, 'active');
+}
+
+function handleCallIce(p) {
+  if (pc && p.candidate) {
+    pc.addIceCandidate(p.candidate).catch(console.warn);
+  }
+}
+
+function createPeerConnection() {
+  const peer = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+  peer.onicecandidate = e => {
+    if (e.candidate && callPeer) {
+      wsSend({ type: 'call_ice', payload: {
+        peer_id: callPeer, call_id: callId, candidate: e.candidate,
+      }});
+    }
+  };
+
+  peer.ontrack = e => {
+    const rv = document.getElementById('remoteVideo');
+    rv.srcObject = e.streams[0];
+    rv.style.display = 'block';
+    callIsVideo = true;
+  };
+
+  peer.onconnectionstatechange = () => {
+    if (['failed','disconnected','closed'].includes(peer.connectionState)) {
+      endCall(false);
+    }
+  };
+
+  return peer;
+}
+
+function endCall(sendHangup) {
+  clearInterval(callTimer); callTimer = null; callSecs = 0;
+  callActive = false;
+  if (pc) { pc.close(); pc = null; }
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  const rv = document.getElementById('remoteVideo');
+  const lv = document.getElementById('localVideo');
+  rv.srcObject = null; rv.style.display = 'none';
+  lv.srcObject = null; lv.style.display = 'none';
+  document.getElementById('callOverlay').classList.remove('active');
+  document.getElementById('callDuration').style.display = 'none';
+  callId = null; callPeer = null;
+}
+
+function startCallTimer() {
+  callActive = true;
+  callSecs   = 0;
+  const dur  = document.getElementById('callDuration');
+  dur.style.display = '';
+  callTimer  = setInterval(() => {
+    callSecs++;
+    const m = String(Math.floor(callSecs/60)).padStart(2,'0');
+    const s = String(callSecs % 60).padStart(2,'0');
+    dur.textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+let muted = false;
+function toggleMute() {
+  muted = !muted;
+  if (localStream) {
+    localStream.getAudioTracks().forEach(t => t.enabled = !muted);
+  }
+  document.getElementById('muteBtn').textContent = muted ? '🔇' : '🎤';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CALL OVERLAY UI
+   ═══════════════════════════════════════════════════════════════ */
+function showCallOverlay(subtitle, name, color, mode) {
+  document.getElementById('callOverlay').classList.add('active');
+  document.getElementById('callName').textContent    = name;
+  document.getElementById('callSubtitle').textContent = subtitle;
+  if (color) document.getElementById('callAvatarWrap').style.background = color;
+  document.getElementById('callAvatarWrap').textContent =
+    mode === 'active' ? '📞' : (mode === 'incoming' ? '📲' : '📞');
+
+  const btns = document.getElementById('callButtons');
+  if (mode === 'incoming') {
+    btns.innerHTML = `
+      <button class="call-btn accept" onclick="acceptCall()" title="Annehmen">✅</button>
+      <button class="call-btn reject" onclick="rejectCall()" title="Ablehnen">❌</button>`;
+  } else if (mode === 'active') {
+    btns.innerHTML = `
+      <button class="call-btn mute"   id="muteBtn" onclick="toggleMute()" title="Stumm">🎤</button>
+      <button class="call-btn hangup" onclick="hangupCall()" title="Auflegen">📵</button>`;
+  } else {
+    // calling
+    btns.innerHTML = `
+      <button class="call-btn hangup" onclick="hangupCall()" title="Abbrechen">📵</button>`;
+  }
+}
+
+function showCallStatus(msg, autoClose) {
+  document.getElementById('callSubtitle').textContent = msg;
+  if (autoClose) setTimeout(() => endCall(false), 2000);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════════════════════════ */
+function showAuth() { document.getElementById('authScreen').style.display = 'flex'; }
+
+async function apiFetch(path, method = 'GET', body = null) {
+  const opts = {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + path, opts);
+  if (res.status === 204) return null;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert(err.detail || `Fehler ${res.status}`);
+    return null;
+  }
+  return res.json();
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>

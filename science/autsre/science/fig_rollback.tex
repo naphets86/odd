@@ -1,0 +1,89 @@
+﻿%% fig_rollback.tex
+%% Rollback-Sequenz bei fehlgeschlagenem Update des Bremsen-SGs
+\begin{tikzpicture}[
+  lifeline/.style={draw=autosargray, thick},
+  actor/.style={
+    draw=autosarblue, fill=autosarblue!15,
+    rounded corners=3pt, minimum width=2.6cm, minimum height=0.65cm,
+    align=center, font=\small\bfseries
+  },
+  actorPSG/.style={
+    draw=red!60, fill=red!10,
+    rounded corners=3pt, minimum width=2.6cm, minimum height=0.65cm,
+    align=center, font=\small\bfseries
+  },
+  msgarr/.style={-{Stealth[length=4pt]}, thick},
+  retarr/.style={-{Stealth[length=4pt]}, thick, dashed},
+  errarr/.style={-{Stealth[length=4pt]}, thick, red!70},
+  okarr/.style={-{Stealth[length=4pt]}, thick, autosargreen!80},
+  notebox/.style={
+    draw=red!40, fill=red!8,
+    rounded corners=2pt, font=\tiny, text centered
+  },
+  okbox/.style={
+    draw=autosargreen!50, fill=lightgreen!40,
+    rounded corners=2pt, font=\tiny, text centered
+  }
+]
+
+%% Koepfe (x: 0 / 4.0 / 8.5)
+\node[actor]    (hBE)     at (0,    0) {Backend};
+\node[actor]    (hZSG)    at (4.0,  0) {ZSG};
+\node[actorPSG] (hBremse) at (8.5,  0)
+  {Bremsen-SG\\{\tiny (ASIL-D)}};
+
+%% Lebenslinien
+\foreach \x in {0, 4.0, 8.5} {
+  \draw[lifeline] (\x, -0.35) -- (\x, -13.0);
+}
+
+%% Normaler Update-Versuch (schlaegt fehl)
+\node[notebox, minimum width=8.8cm] at (4.25,-0.9)
+  {Normaler Update-Versuch -- schl\"{a}gt fehl};
+
+\draw[msgarr] (4.0,-1.5) -- (8.5,-1.5)
+  node[midway, above, font=\tiny] {OTA\_CMD: PREPARE\_UPDATE};
+\draw[retarr] (8.5,-2.2) -- (4.0,-2.2)
+  node[midway, above, font=\tiny] {STATUS: READY};
+\draw[msgarr] (4.0,-3.0) -- (8.5,-3.0)
+  node[midway, above, font=\tiny] {UDS 0x34/0x36: Delta-Paket};
+\draw[errarr] (8.5,-4.0) -- (4.0,-4.0)
+  node[midway, above, font=\tiny, text=red!70]
+    {\textbf{STATUS: INSTALL\_FAILED} (CRC mismatch)};
+
+%% Fehlerbehandlung
+\node[notebox, minimum width=8.8cm] at (4.25,-4.8)
+  {Rollback-Ausl\"{o}sung durch ZSG};
+
+\draw[errarr] (4.0,-5.4) -- (0,-5.4)
+  node[midway, above, font=\tiny, text=red!70]
+    {DTC: 0x4210 INSTALL\_FAIL\_BCU};
+\draw[msgarr] (4.0,-6.2) -- (8.5,-6.2)
+  node[midway, above, font=\tiny] {OTA\_CMD: ROLLBACK\_INIT};
+\draw[retarr] (8.5,-7.0) -- (4.0,-7.0)
+  node[midway, above, font=\tiny] {STATUS: ROLLBACK\_READY};
+\draw[msgarr] (4.0,-7.8) -- (8.5,-7.8)
+  node[midway, above, font=\tiny]
+    {UDS 0x34/0x36: Backup-Firmware (v4.1.8)};
+\draw[msgarr] (4.0,-8.6) -- (8.5,-8.6)
+  node[midway, above, font=\tiny] {UDS 0x37: RequestTransferExit};
+\draw[retarr] (8.5,-9.4) -- (4.0,-9.4)
+  node[midway, above, font=\tiny]
+    {STATUS: ROLLBACK\_ACTIVE -- POST l\"{a}uft};
+
+%% Rollback erfolgreich
+\node[okbox, minimum width=8.8cm] at (4.25,-10.2)
+  {Rollback erfolgreich -- Fahrzeug wieder betriebsbereit};
+
+\draw[okarr] (8.5,-10.8) -- (4.0,-10.8)
+  node[midway, above, font=\tiny, text=autosargreen!80]
+    {\textbf{STATUS: ROLLBACK\_OK} (v4.1.8 aktiv)};
+\draw[okarr] (4.0,-11.6) -- (0,-11.6)
+  node[midway, above, font=\tiny, text=autosargreen!80]
+    {Rollback-Bericht: BCU rollback\_ok};
+\draw[retarr] (0,-12.4) -- (4.0,-12.4)
+  node[midway, above, font=\tiny]
+    {ACK: Retry-Bundle eingeplant};
+
+\end{tikzpicture}
+

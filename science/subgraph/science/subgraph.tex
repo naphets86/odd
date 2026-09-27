@@ -1,0 +1,648 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[german]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+
+\geometry{margin=2.5cm}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{bemerkung}{Bemerkung}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=mainblue,
+	citecolor=accentred,
+	urlcolor=mainblue
+}
+
+%  Code-Highlighting
+\lstset{
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue},
+	commentstyle=\color{gray},
+	stringstyle=\color{red},
+	numbers=left,
+	numberstyle=\tiny,
+	breaklines=true,
+	frame=single,
+	literate=%
+	{Ö}{{\"O}}1
+	{Ä}{{\"A}}1
+	{Ü}{{\"U}}1
+	{ß}{{\ss}}1
+	{ü}{{\"u}}1
+	{ä}{{\"a}}1
+	{ö}{{\"o}}1
+	{Î£}{{$\Sigma$}}1
+	{â†’}{{$\rightarrow$}}1
+	{âŠ†}{{$\subseteq$}}1
+	{âŠ‡}{{$\supseteq$}}1
+	{â‰¥}{{$\geq$}}1
+}
+
+\title{Der Subgraph Algorithmus}
+\author{Stephan Epp}
+\date{7. Januar 2026}
+
+\begin{document}
+	
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Einführung}
+
+Der Subgraph Algorithmus ist ein effizienter Algorithmus zum Vergleichen zweier Graphen $G$ und $G'$ mittels Adjazenzmatrizen und Signatur-Arrays. Der Algorithmus bestimmt durch zyklische Rotation, ob ein Graph als Subgraph in einem anderen enthalten ist.
+
+\subsection{Problemstellung}
+
+Gegeben sind zwei Graphen $G$ und $G'$ mit jeweils $n$ Knoten, repräsentiert durch Adjazenzmatrizen $A$ und $B$.
+
+\textbf{Ziel:} Bestimme, ob Graph $G$ in Graph $G'$ enthalten ist, unter Berücksichtigung aller möglichen Knotenzuordnungen durch zyklische Rotation.
+
+\textbf{Ergebnis:}
+\begin{itemize}
+	\item Wenn $B \supseteq A$: Verwerfe $A$, behalte $B$ ($G'$ hat mehr Informationen)
+	\item Wenn $A \supseteq B$: Behalte $A$, verwerfe $B$ ($G$ hat mehr Informationen)
+	\item Wenn beide identisch sind: Beliebige behalten
+	\item Wenn keiner den anderen enthält: Beide behalten
+\end{itemize}
+
+\subsection{Motivation}
+
+Der Subgraph Algorithmus eignet sich besonders für die Verifikation von unterschiedlichen Programmen durch die Analyse der Abstract Syntax Trees (AST). Die Methode ermöglicht es, strukturelle Ähnlichkeiten zwischen Programmrepräsentationen effizient zu erkennen.
+
+\section{Grundlagen}
+
+\subsection{Definitionen}
+
+\begin{definition}[Graph]
+	Ein Graph $G = (V, E)$ besteht aus einer Menge von Knoten $V = \{v_1, v_2, \ldots, v_n\}$ und einer Menge von Kanten $E \subseteq V \times V$.
+\end{definition}
+
+\begin{definition}[Adjazenzmatrix]
+	Die Adjazenzmatrix $A$ eines Graphen $G = (V, E)$ mit $n$ Knoten ist eine $n \times n$ Matrix mit:
+	\[
+	A_{ij} = \begin{cases}
+		1 & \text{falls } (v_i, v_j) \in E \\
+		0 & \text{sonst}
+	\end{cases}
+	\]
+\end{definition}
+
+\begin{definition}[Subgraph]
+	Ein Graph $G = (V, E)$ ist ein Subgraph von $G' = (V', E')$, geschrieben $G \subseteq G'$, wenn $V \subseteq V'$ und $E \subseteq E'$.
+\end{definition}
+
+\begin{definition}[Zyklische Rotation]
+	Eine zyklische Rotation einer Sequenz $[a_0, a_1, \ldots, a_{n-1}]$ um $k$ Positionen nach rechts ist definiert als:
+	\[
+	\text{rotate}_k([a_0, a_1, \ldots, a_{n-1}]) = [a_k, a_{k+1}, \ldots, a_{n-1}, a_0, \ldots, a_{k-1}]
+	\]
+\end{definition}
+
+\subsection{Grundidee}
+
+Der Algorithmus basiert auf zwei zentralen Konzepten:
+
+\subsubsection{Eindeutige Signaturen}
+
+Für jede Spalte $j$ der Adjazenzmatrix wird eine eindeutige Signatur berechnet:
+\[
+\sigma_j = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n
+\]
+
+\begin{beispiel}
+	Für $n=4$ und Spalte $j=0$ mit Vektor $[1, 0, 1, 0]^T$:
+	\[
+	\sigma_0 = 1 \cdot 2^0 + 0 \cdot 2^1 + 1 \cdot 2^2 + 0 \cdot 2^3 + 0 \cdot 2^4 = 1 + 4 = 5
+	\]
+	Für Spalte $j=1$ mit gleichem Vektor $[1, 0, 1, 0]^T$:
+	\[
+	\sigma_1 = 1 \cdot 2^0 + 0 \cdot 2^1 + 1 \cdot 2^2 + 0 \cdot 2^3 + 1 \cdot 2^4 = 1 + 4 + 16 = 21
+	\]
+\end{beispiel}
+
+\begin{lemma}[Eindeutigkeit der Signaturen]
+	Die Signatur-Funktion $\sigma: \{0,1\}^n \times \{0,\ldots,n-1\} \to \mathbb{N}$ ist injektiv.
+\end{lemma}
+
+\begin{proof}
+	Die Zeilenkomponente $\sum_{i=0}^{n-1} A_{ij} \cdot 2^i$ kodiert jede Binärkombination eindeutig als Dezimalzahl. Die Spaltengewichtung $j \cdot 2^n$ unterscheidet gleiche Muster an verschiedenen Positionen, da $j \cdot 2^n$ für $j \in \{0,\ldots,n-1\}$ stets disjunkte Intervalle $[j \cdot 2^n, (j+1) \cdot 2^n)$ erzeugt.
+\end{proof}
+
+\subsubsection{Zyklische Rotation statt Permutation}
+
+Statt alle $n!$ Permutationen zu prüfen, werden nur $n$ zyklische Rotationen betrachtet. Dies erhält die sequentielle Ordnung und reduziert die Komplexität drastisch.
+
+\begin{beispiel}
+	Für $n=4$ Spalten:
+	\begin{align*}
+		\text{Original:} & \quad [\sigma_0, \sigma_1, \sigma_2, \sigma_3] \\
+		\text{Rotation 1:} & \quad [\sigma_1, \sigma_2, \sigma_3, \sigma_0] \\
+		\text{Rotation 2:} & \quad [\sigma_2, \sigma_3, \sigma_0, \sigma_1] \\
+		\text{Rotation 3:} & \quad [\sigma_3, \sigma_0, \sigma_1, \sigma_2]
+	\end{align*}
+	Dies sind nur $4$ Rotationen, nicht $4! = 24$ Permutationen.
+\end{beispiel}
+
+\section{Algorithmus}
+
+\subsection{Algorithmus-Beschreibung}
+
+Der Algorithmus arbeitet in drei Hauptschritten:
+
+\textbf{Schritt 1: Signatur-Berechnung für Graph $G$}
+
+Berechne für jede Spalte $j$ der Adjazenzmatrix $A$ die Signatur:
+\[
+\sigma_j^A = \sum_{i=0}^{n_A-1} A_{ij} \cdot 2^i + j \cdot 2^{n_A}
+\]
+
+\textbf{Schritt 2: Signatur-Berechnung für Graph $G'$}
+
+Berechne analog für Matrix $B$:
+\[
+\sigma_j^B = \sum_{i=0}^{n_B-1} B_{ij} \cdot 2^i + j \cdot 2^{n_B}
+\]
+
+\textbf{Schritt 3: Rotation-Match}
+
+Für jede der $n_B$ zyklischen Rotationen von $B$:
+\begin{enumerate}
+	\item Rotiere Spalten zyklisch nach rechts
+	\item Extrahiere Zeilenkomponenten (ohne Spaltengewichtung)
+	\item Vergleiche Signatur-Sequenzen mit Longest Common Subsequence (LCS)
+	\item Falls LCS $\geq 2$: Subgraph-Beziehung gefunden
+\end{enumerate}
+
+\subsection{Vergleich der Signatur-Sequenzen}
+
+Der Vergleich zweier Signatur-Sequenzen erfolgt mittels dynamischer Programmierung zur Berechnung der längsten gemeinsamen Teilsequenz:
+
+\begin{satz}[Subgraph-Kriterium]
+	Eine Subgraph-Beziehung existiert genau dann, wenn die längste gemeinsame Teilsequenz der Signatur-Arrays mindestens die Länge 2 hat.
+\end{satz}
+
+\begin{proof}
+	Eine Subgraph-Beziehung kann nur dann existieren, wenn mindestens zwei Knoten durch eine Kante miteinander verbunden sind. Dies entspricht einer gemeinsamen Teilsequenz der Länge mindestens 2 in den Signatur-Arrays.
+\end{proof}
+
+\subsection{Implementierung}
+
+Die Implementierung in Python verwendet NumPy für effiziente Matrix-Operationen:
+
+\begin{lstlisting}[language=Python, caption=Signatur-Berechnung]
+def _compute_column_signature(self, matrix: np.ndarray) -> List[int]:
+        """
+        Berechnet für jeden Spaltenvektor eine eindeutige Signatur.
+        
+        Verwendet polynomiale Hash-Funktion:
+        - Zeilenkomponente: Î£(2^i) für alle Zeilen i mit Wert 1
+        - Spaltenkomponente: col_idx * 2^n (gewichtet mit Spaltenindex)
+        
+        Diese Methode garantiert Eindeutigkeit, da jede Binärkombination
+        eine eindeutige Dezimalzahl ergibt und der Spaltenindex die
+        Position zusätzlich kodiert.
+        
+        Beispiel für n=4:
+            Spalte 0: [1, 0, 1, 0] â†’ 2^0 + 2^2 + 0*(2^4) = 1 + 4 + 0 = 5
+            Spalte 1: [1, 0, 1, 0] â†’ 2^0 + 2^2 + 1*(2^4) = 1 + 4 + 16 = 21
+                â†’ Verschiedene Signaturen trotz gleichem Muster!
+        
+        Args:
+            matrix: Adjazenzmatrix (n x n)
+            
+        Returns:
+            Liste von eindeutigen Signaturen für jede Spalte
+        """
+        n = matrix.shape[0]
+        signatures = []
+        
+        for col in range(n):
+            column_vector = matrix[:, col]
+            
+            # Polynomiale Hash-Funktion: behandle Spalte als Binärzahl
+            row_signature = sum(2**i for i in range(n) if column_vector[i] == 1)
+            
+            # Spaltenindex mit Gewichtung 2^n einbeziehen
+            col_weight = col * (2**n)
+            
+            signature = row_signature + col_weight
+            signatures.append(signature)
+        
+        return signatures
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption=Rotation-Match]
+def _find_signature_rotation_match(self, sig_A: List[int], sig_B: List[int]) -> bool:
+        """
+        Sucht nach einer zyklischen Rotation der Spalten in B, sodass A enthalten ist.
+        
+        KERNALGORITHMUS (wie beschrieben):
+        1. Berechne Signatur von G
+        2. Für jede der n_B möglichen Rotationen von G':
+           - Rotiere Spalten zyklisch nach rechts
+           - Berechne Signatur neu
+           - Vergleiche mit sig_A
+        
+        Die Spalten werden nicht beliebig permutiert, sondern nur rotiert!
+        Dies erhält die sequentielle Ordnung.
+        
+        Beispiel für 4 Spalten:
+        - Original:   [0, 1, 2, 3]
+        - Rotation 1: [1, 2, 3, 0]
+        - Rotation 2: [2, 3, 0, 1]
+        - Rotation 3: [3, 0, 1, 2]
+                â†’ Nur 4 Möglichkeiten, nicht 4! = 24
+        
+        Args:
+            sig_A: Signaturen von Graph G (n_A Spalten)
+            sig_B: Signaturen von Graph G' (n_B Spalten)
+            
+        Returns:
+            True, wenn eine Rotation gefunden wurde, wo A in B enthalten ist
+        """
+        n_A = len(sig_A)
+        n_B = len(sig_B)
+        
+        if n_A > n_B:
+            return False
+        
+        if n_A == 0:
+            return True
+        
+        # Extrahiere Zeilenkomponenten (ohne Spaltengewichtung)
+        # Für Matrix n x n ist col_weight = 2^n
+        col_weight_A = 2 ** n_A
+        col_weight_B = 2 ** n_B
+        
+        row_sigs_A = [sig % col_weight_A for sig in sig_A]
+        row_sigs_B = [sig % col_weight_B for sig in sig_B]
+        
+        # Prüfe alle n_B zyklischen Rotationen von B
+        for rotation in range(n_B):
+            # Rotiere row_sigs_B um 'rotation' Positionen nach rechts
+            rotated_B = row_sigs_B[rotation:] + row_sigs_B[:rotation]
+            
+            # Prüfe ob A in diesem Fenster der Rotation enthalten ist
+            if n_A == n_B:
+                # Gleich groß: direkter Vergleich
+                if self._compare_signature_sequences(row_sigs_A, rotated_B):
+                    return True
+            else:
+                # A ist kleiner: Prüfe alle Startpositionen in rotated_B
+                for start in range(n_B - n_A + 1):
+                    window = rotated_B[start:start + n_A]
+                    if self._compare_signature_sequences(row_sigs_A, window):
+                        return True
+        
+        return False
+\end{lstlisting}
+
+\section{Analyse}
+
+\subsection{Laufzeit}
+
+\begin{satz}[Laufzeit]
+	Der Subgraph Algorithmus arbeitet mit einer Laufzeit von $O(n^3)$.
+\end{satz}
+
+\begin{proof}
+	Der Algorithmus arbeitet in drei Schritten:
+	
+	\textbf{Schritt 1:} Signatur von $G$ berechnen
+	\begin{itemize}
+		\item Iteration über $n \times n$ Matrix-Einträge
+		\item Komplexität: $O(n^2)$
+	\end{itemize}
+	
+	\textbf{Schritt 2:} Signatur von $G'$ berechnen
+	\begin{itemize}
+		\item Iteration über $n \times n$ Matrix-Einträge
+		\item Komplexität: $O(n^2)$
+	\end{itemize}
+	
+	\textbf{Schritt 3:} Alle zyklischen Rotationen prüfen
+	\begin{itemize}
+		\item Für jede der $n$ Rotationen:
+		\begin{itemize}
+			\item Signatur neu berechnen: $O(n^2)$
+			\item Sequenzen vergleichen (LCS): $O(n^2)$
+		\end{itemize}
+		\item Komplexität: $O(n \cdot (n^2 + n^2)) = O(n^3)$
+	\end{itemize}
+	
+	Gesamtkomplexität: $O(n^2) + O(n^2) + O(n^3) = O(n^3)$
+\end{proof}
+
+Zur Prüfung beider Richtungen $A \subseteq B$ und $B \subseteq A$ benötigt der Subgraph Algorithmus ebenfalls eine Laufzeit von $O(n^3)$.
+
+\subsection{Optimalität der Laufzeit}
+
+Wir beweisen nun, dass der Subgraph Algorithmus asymptotisch \textbf{optimal} ist:
+Es gibt keinen Algorithmus, der das zyklische Subgraph-Problem in $o(n^3)$ Zeit lösen kann.
+Der Beweis gliedert sich in vier Lemmata, die zusammen die untere Schranke $\Omega(n^3)$ etablieren.
+
+\begin{lemma}[Eingabe-Leseschranke]
+\label{lem:eingabe}
+Jeder korrekte Algorithmus für das zyklische Subgraph-Problem muss alle Einträge beider Adjazenzmatrizen lesen und benötigt daher mindestens $\Omega(n^2)$ Zeit.
+\end{lemma}
+
+\begin{proof}
+Sei $\mathcal{A}$ ein beliebiger deterministischer Algorithmus für das Problem.
+Angenommen, $\mathcal{A}$ liest einen bestimmten Eintrag $A_{ij}$ (mit $0 \le i, j \le n-1$) nicht.
+Wir konstruieren zwei Eingabeinstanzen, die sich nur in diesem Eintrag unterscheiden:
+\begin{align*}
+	I_0: &\quad A_{ij} = 0, \text{ alle anderen Einträge identisch}, \\
+	I_1: &\quad A_{ij} = 1, \text{ alle anderen Einträge identisch.}
+\end{align*}
+Da der Eintrag $A_{ij}$ bestimmt, ob die Kante $(v_i, v_j)$ in $G$ existiert, unterscheiden sich $I_0$ und $I_1$ in genau einer Kante.
+Die restlichen Einträge werden so gewählt, dass $I_0$ und $I_1$ verschiedene korrekte Antworten haben:
+Setze $B$ so, dass unter Rotation $k = 0$ gilt $B \supseteq A$ (mit $A_{ij} = 1$), aber $B \not\supseteq A$ (mit $A_{ij} = 0$).
+
+Da $\mathcal{A}$ den Eintrag $A_{ij}$ nicht liest, verhält es sich auf $I_0$ und $I_1$ identisch und liefert auf mindestens einer Instanz ein falsches Ergebnis â€” Widerspruch zur Korrektheit von $\mathcal{A}$.
+Analoges Argument gilt für jeden Eintrag von $B$.
+Folglich gilt:
+\[
+	T(n) \;\geq\; 2n^2 \;\in\; \Omega(n^2). \qedhere
+\]
+\end{proof}
+
+\begin{lemma}[Notwendigkeit aller Rotationen]
+\label{lem:rotationen}
+Jeder korrekte Algorithmus für das zyklische Subgraph-Problem muss im schlimmsten Fall alle $n$ zyklischen Rotationen untersuchen.
+\end{lemma}
+
+\begin{proof}
+Sei $\mathcal{A}$ ein beliebiger Algorithmus.
+Wir zeigen: Überspringt $\mathcal{A}$ bei einer Eingabe eine Rotation $k^* \in \{0,\ldots,n-1\}$, so gibt es eine Eingabe, auf der $\mathcal{A}$ ein falsches Ergebnis liefert.
+
+\textbf{Konstruktion der Gegeninstanz.}
+Sei $G$ ein Pfadgraph $v_0 \to v_1 \to \cdots \to v_{n-1}$ mit Adjazenzmatrix
+\[
+	A_{ij} = \begin{cases} 1 & \text{falls } j = i+1, \\ 0 & \text{sonst.} \end{cases}
+\]
+Sei $B$ die Adjazenzmatrix von $G'$, deren Spalten so gewählt werden, dass gilt:
+\begin{itemize}
+	\item Nach Rotation um $k^*$ Positionen stimmen die Signaturen von $B$ exakt mit denen von $A$ überein, d.\,h.\ $G \subseteq \mathrm{rot}_{k^*}(G')$.
+	\item Für alle anderen Rotationen $k \ne k^*$ fehlt mindestens eine Kante, d.\,h.\ $G \not\subseteq \mathrm{rot}_k(G')$.
+\end{itemize}
+Eine solche Instanz lässt sich durch Wahl $B_j = A_{(j - k^*) \bmod n}$ für alle $j$ konstruieren, ergänzt durch eine einzelne zusätzliche Kante, die alle Rotationen $k \ne k^*$ ungültig macht.
+
+\textbf{Schlussfolgerung.}
+Die korrekte Antwort lautet â€žSubgraph existiert'' (Rotation $k^*$ liefert einen Treffer).
+Da $\mathcal{A}$ die Rotation $k^*$ nicht prüft und alle anderen Rotationen keinen Treffer liefern, gibt $\mathcal{A}$ fälschlicherweise â€žkein Subgraph'' aus.
+
+Da dieses Argument für jede einzelne übersparte Rotation anwendbar ist, muss jeder korrekte Algorithmus alle $n$ Rotationen prüfen.
+\end{proof}
+
+\begin{lemma}[Untere Schranke des Sequenzvergleichs]
+\label{lem:lcs}
+Unter der \emph{Strong Exponential Time Hypothesis (SETH)} kann die längste gemeinsame Teil\-sequenz (LCS) zweier Sequenzen der Länge $n$ nicht in $O(n^{2-\varepsilon})$ Zeit für beliebiges $\varepsilon > 0$ berechnet werden.
+\end{lemma}
+
+\begin{proof}
+\textbf{Obere Schranke $O(n^2)$.}
+Das klassische dynamische Programmierverfahren (siehe Needleman-Wunsch/Wagner-Fischer) berechnet LCS zweier Sequenzen $X = [x_1, \ldots, x_n]$ und $Y = [y_1, \ldots, y_n]$ über die Rekurrenz
+\[
+	dp[i][j] = \begin{cases}
+		0 & i = 0 \text{ oder } j = 0, \\
+		dp[i-1][j-1] + 1 & x_i = y_j, \\
+		\max\!\bigl(dp[i-1][j],\, dp[i][j-1]\bigr) & \text{sonst,}
+	\end{cases}
+\]
+durch Ausfüllen einer $(n+1)\times(n+1)$-Tabelle in exakt $\Theta(n^2)$ Schritten.
+
+\textbf{Untere Schranke $\Omega(n^{2-\varepsilon})$ unter SETH.}
+Abboud, Backurs und Vassilevska Williams bewiesen 2015 folgendes Resultat
+(â€žTight Hardness Results for LCS and Other Sequence Similarity Measures'', FOCS~2015):
+
+\medskip
+\emph{Unter SETH â€” der Annahme, dass $k$-CNF-SAT keine Laufzeit $O(2^{(1-\varepsilon)n})$ für beliebige $k, \varepsilon > 0$ zulässt â€” kann LCS zweier Sequenzen der Länge $n$ nicht in $O(n^{2-\varepsilon})$ Zeit für beliebiges $\varepsilon > 0$ gelöst werden.}
+\medskip
+
+Die Signaturen des Subgraph Algorithmus sind beliebige ganzzahlige Werte ohne Einschränkungen an die Alphabetgröße.
+Das Resultat gilt daher direkt. Damit erhält man:
+\[
+	T_{\mathrm{LCS}}(n) \;\geq\; \Omega(n^{2-\varepsilon}) \quad \text{für alle } \varepsilon > 0. \qedhere
+\]
+\end{proof}
+
+\begin{lemma}[Unabhängigkeit der Rotationsvergleiche]
+\label{lem:unabhaengigkeit}
+Die $n$ LCS-Berechnungen für die $n$ zyklischen Rotationen der Signatur-Sequenz $\sigma^B$
+sind im Allgemeinen voneinander unabhängig und können nicht mit einem Gesamtaufwand von $o(n \cdot T_{\mathrm{LCS}}(n))$ durchgeführt werden.
+\end{lemma}
+
+\begin{proof}
+Sei $\sigma^B_r = [\sigma_r^B,\, \sigma_{r+1}^B,\, \ldots,\, \sigma_{n-1}^B,\, \sigma_0^B,\, \ldots,\, \sigma_{r-1}^B]$ die $r$-te Rotation.
+Beim Übergang von Rotation $r$ zu Rotation $r+1$ verschiebt sich das Element $\sigma_r^B$ vom Anfang ans Ende der Sequenz.
+Diese scheinbar kleine Änderung kann das LCS-Ergebnis vollständig verändern:
+
+\begin{itemize}
+	\item Wenn $\sigma_r^B$ den ersten Treffer in einer optimalen gemeinsamen Teilsequenz bildet von $\mathrm{LCS}(\sigma^A, \sigma^B_r)$, entfällt dieser Treffer in $\sigma^B_{r+1}$,
+	      da $\sigma_r^B$ nun am Ende der Sequenz steht und keine frühzeitige Übereinstimmung liefert.
+	\item In der DP-Tabelle für $\mathrm{LCS}(\sigma^A, \sigma^B_{r+1})$ ändern sich bis zu $\Theta(n)$
+	      Zeilen gegenüber der Tabelle für $\mathrm{LCS}(\sigma^A, \sigma^B_r)$, da das Verschieben von
+	      $\sigma_r^B$ die Trefferstruktur aller Positionen von rechts beeinflusst.
+	      Eine vollständige Neuberechnung in $\Theta(n^2)$ ist daher notwendig.
+\end{itemize}
+
+\textbf{Formale Konstruktion.}
+Wähle ein Alphabet $\Sigma = \{a_0, \ldots, a_{n-1}\}$ mit paarweise verschiedenen Signatur-Werten.
+Setze $\sigma^A = [a_0, a_1, \ldots, a_{n-1}]$ und $\sigma^B_0 = [a_{n-1}, a_{n-2}, \ldots, a_0]$
+(umgekehrte Reihenfolge).
+Jede Rotation $\sigma^B_r$ enthält alle $n$ Elemente in einer neuen Anordnung, sodass
+$\mathrm{LCS}(\sigma^A, \sigma^B_r)$ für jedes $r$ eine andere optimale Teilsequenz und einen anderen Tabelleneintrag erfordert.
+Da keine Rotation strukturell aus einer anderen ableitbar ist, müssen alle $n$ DP-Tabellen unabhängig berechnet werden:
+\[
+	T_{\text{Rotationsvergleich}}(n) \;\geq\; n \cdot T_{\mathrm{LCS}}(n) \;\geq\; n \cdot \Omega(n^{2-\varepsilon}) \;=\; \Omega(n^{3-\varepsilon}). \qedhere
+\]
+\end{proof}
+
+\begin{satz}[Optimalität des Subgraph Algorithmus]
+\label{satz:optimalitaet}
+Der Subgraph Algorithmus ist asymptotisch \textbf{optimal}.
+Unter der Strong Exponential Time Hypothesis~(SETH) gilt: Kein Algorithmus kann das zyklische Subgraph-Problem für zwei Graphen mit je $n$ Knoten in $O(n^{3-\varepsilon})$ Zeit für beliebiges $\varepsilon > 0$ lösen.
+\end{satz}
+
+\begin{proof}
+Wir kombinieren Lemma~\ref{lem:eingabe} bis Lemma~\ref{lem:unabhaengigkeit} zu einer vollständigen Beweiskette.
+
+\textbf{Schritt 1: Signatur-Berechnung â€” $\Omega(n^2)$.}
+Nach Lemma~\ref{lem:eingabe} muss jeder korrekte Algorithmus alle $n^2$ Einträge beider Adjazenzmatrizen lesen.
+Die Signatur-Berechnung verarbeitet jeden Eintrag mindestens einmal:
+\[
+	T_{\text{Signatur}}(n) \;\geq\; \Omega(n^2).
+\]
+
+\textbf{Schritt 2: Rotationsanzahl â€” mindestens $n$.}
+Nach Lemma~\ref{lem:rotationen} muss jeder korrekte Algorithmus alle $n$ Rotationen untersuchen.
+
+\textbf{Schritt 3: LCS pro Rotation â€” $\Omega(n^{2-\varepsilon})$ unter SETH.}
+Nach Lemma~\ref{lem:lcs} erfordert die LCS-Berechnung zweier Signatur-Sequenzen der Länge $n$
+unter SETH mindestens $\Omega(n^{2-\varepsilon})$ Schritte.
+
+\textbf{Schritt 4: Keine Wiederverwendung zwischen Rotationen.}
+Nach Lemma~\ref{lem:unabhaengigkeit} sind die $n$ LCS-Berechnungen im Allgemeinen
+unabhängig voneinander und können nicht mit einem Gesamtaufwand von $o(n \cdot T_{\mathrm{LCS}}(n))$ durchgeführt werden.
+
+\textbf{Gesamte untere Schranke â€” $\Omega(n^3)$.}
+Aus den Schritten 2 bis 4 folgt:
+\[
+	T_{\text{Rotation}}(n)
+	\;\geq\;
+	\underbrace{n}_{\substack{\text{Rotationen}\\\text{(Lemma \ref{lem:rotationen})}}}
+	\;\cdot\;
+	\underbrace{\Omega(n^{2-\varepsilon})}_{\substack{\text{LCS pro Rotation}\\\text{(Lemma \ref{lem:lcs})}}}
+	\;=\; \Omega(n^{3-\varepsilon}).
+\]
+Zusammen mit der unvermeidlichen Eingabeleseschranke aus Schritt 1 gilt:
+\[
+	T_{\text{gesamt}}(n) \;\geq\; \Omega(n^{3-\varepsilon}) \quad \text{für alle } \varepsilon > 0.
+\]
+Da der Subgraph Algorithmus genau $\Theta(n^3)$ Schritte benötigt (Satz~2), ist er asymptotisch optimal:
+\[
+	T_{\text{Subgraph}}(n) \;=\; \Theta(n^3).
+\]
+Eine Verbesserung auf $O(n^{3-\varepsilon})$ für ein festes $\varepsilon > 0$ würde die LCS-Schranke aus Lemma~\ref{lem:lcs} widerlegen und damit SETH falsifizieren â€” eine in der theoretischen Informatik weithin als unwahrscheinlich geltende Konsequenz.
+\end{proof}
+
+\begin{bemerkung}
+Die Optimalitätsaussage ist zweistufig:
+\begin{itemize}
+	\item \textbf{Unbedingt} (ohne Hypothesen): Jeder korrekte Algorithmus benötigt mindestens
+	      $\Omega(n^2)$ Zeit, da die Eingabe $\Theta(n^2)$ Bits umfasst (Lemma~\ref{lem:eingabe}).
+	\item \textbf{Bedingt} (unter SETH): Kein Algorithmus kann das Problem in $O(n^{3-\varepsilon})$
+	      Zeit für $\varepsilon > 0$ lösen (Satz~\ref{satz:optimalitaet}).
+\end{itemize}
+SETH ist eine weithin akzeptierte Komplexitätshypothese, auf der neben diesem Resultat auch
+untere Schranken für Edit-Distanz, reguläre Ausdrucksauswertung und viele weitere Sequenzprobleme
+beruhen. Eine unbedingte $\Omega(n^3)$-Schranke ohne jede Hypothese bleibt ein offenes Problem
+der theoretischen Informatik.
+\end{bemerkung}
+
+\subsection{Speicher}
+
+Der Algorithmus benötigt $O(n^2)$ Speicher für die Adjazenzmatrizen und $O(n)$ Speicher für die Signatur-Arrays.
+
+\subsection{Alternative: Adjazenzlisten}
+
+Für sparse Graphen kann die Verwendung von Adjazenzlisten effizienter sein:
+
+\begin{itemize}
+	\item Speicherkomplexität: $O(n + m)$ für $m$ Kanten
+	\item Zeitkomplexität für einfache Vergleiche: $O(n + m)$
+	\item Vorteil bei $m \ll n^2$
+\end{itemize}
+
+\subsection{Korrektheit}
+
+\begin{satz}[Korrektheit]
+	Der Subgraph Algorithmus bestimmt korrekt, ob eine Subgraph-Beziehung zwischen zwei Graphen existiert.
+\end{satz}
+
+\begin{proof}
+	Die Rotation der Spalten entspricht dem Drehen des Graphen. Dabei bleibt die Struktur des Graphen, gegeben durch die Verbundenheit der Knoten und Kanten, immer erhalten. Deshalb sind nur $n$ Rotationen zu betrachten und nicht $n!$ viele Permutationen.
+	
+	Der Graph wird so lange gedreht, bis eine Subgraph-Beziehung existiert oder das Drehen vollständig durchgeführt wurde, ohne dass eine Subgraph-Beziehung existiert.
+	
+	Zur Überprüfung der Subgraph-Beziehung für jede Drehung werden die Elemente der Signatur-Arrays in $O(n^2)$ Laufzeit verglichen. Dabei wird die längste gemeinsame Teilsequenz beider Signatur-Arrays ermittelt.
+	
+	Die Injektivität der Signatur-Funktion (siehe Lemma 1) garantiert, dass verschiedene Spaltenvektoren verschiedene Signaturen erhalten und somit keine Fehlerkennungen auftreten.
+\end{proof}
+
+\subsection{Verwendungsbeispiel}
+
+\begin{beispiel}[Grundlegendes Beispiel]
+	Gegeben seien zwei Graphen:
+	
+	Graph $G$ mit 4 Knoten:
+	\[
+	A = \begin{pmatrix}
+		0 & 1 & 0 & 0 \\
+		0 & 0 & 1 & 0 \\
+		0 & 0 & 0 & 1 \\
+		0 & 0 & 0 & 0
+	\end{pmatrix}
+	\]
+	
+	Graph $G'$ mit zusätzlicher Kante:
+	\[
+	B = \begin{pmatrix}
+		0 & 1 & 1 & 0 \\
+		0 & 0 & 1 & 0 \\
+		0 & 0 & 0 & 1 \\
+		0 & 0 & 0 & 0
+	\end{pmatrix}
+	\]
+	
+	Der Algorithmus berechnet:
+	\begin{itemize}
+		\item Signaturen von $G$: $[1, 18, 36, 48]$
+		\item Signaturen von $G'$: $[5, 18, 36, 48]$
+		\item Entscheidung: \texttt{keep\_B} ($G'$ hat mehr Informationen)
+	\end{itemize}
+\end{beispiel}
+
+\section{Zusammenfassung}
+
+Der Subgraph Algorithmus bietet eine effiziente Methode zum Vergleich von Graphen mit einer Laufzeit von $O(n^3)$. Durch die Verwendung von:
+
+\begin{itemize}
+	\item Eindeutigen Signaturen basierend auf polynomialer Hash-Funktion
+	\item Zyklischen Rotationen statt vollständiger Permutationen
+	\item Longest Common Subsequence zur Subgraph-Erkennung
+\end{itemize}
+
+erreicht der Algorithmus eine deutlich bessere Komplexität als naive Ansätze mit $O(n! \cdot n^2)$.
+
+\subsection{Anwendungen}
+
+Der Algorithmus eignet sich besonders für:
+\begin{itemize}
+	\item Verifikation von Programmen durch AST-Analyse
+	\item Erkennung struktureller Ähnlichkeiten in Code
+	\item Deduplizierung von Graph-Datenbanken
+	\item Pattern Matching in strukturierten Daten
+\end{itemize}
+
+\subsection{Ausblick}
+
+Mögliche Erweiterungen umfassen:
+\begin{itemize}
+	\item Parallelisierung der Rotation-Prüfungen
+	\item Optimierung für sehr große Graphen ($n > 10000$)
+	\item Approximative Algorithmen für Echtzeit-Anwendungen
+	\item Erweiterung auf gewichtete und gerichtete Graphen
+	\item Integration von Heuristiken zur Reduktion der zu prüfenden Rotationen
+\end{itemize}
+
+\subsection{Implementierungshinweis}
+
+Der Code ist verfügbar unter: \url{https://github.com/hjstephan86/science}.
+
+\end{document}

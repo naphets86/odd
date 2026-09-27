@@ -1,0 +1,211 @@
+﻿% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Theoretische Grundlagen}
+\label{sec:grundlagen}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+\subsection{Relationale Algebra und SQL}
+\label{subsec:rel_algebra}
+
+Die theoretische Basis für die Query-Übersetzung bildet die \emph{relationale
+Algebra} nach Codd \cite{codd1970relational}. Alle im UQTL-Standard behandelten
+Query-Operatoren lassen sich auf eine endliche Menge algebraischer
+Grundoperationen zurückführen.
+
+\begin{definition}[Relationale Grundoperationen]
+\label{def:rel_ops}
+Gegeben seien Relationen $R$, $S$ über einem Schema $\mathcal{R}$.
+Die relationalen Grundoperationen sind:
+\begin{align*}
+  \sigma_p(R) &\quad \text{Selektion (Filterung) mit Prädikat } p \\
+  \pi_A(R)    &\quad \text{Projektion auf Attributmenge } A \subseteq \mathcal{R} \\
+  R \times S  &\quad \text{Kartesisches Produkt} \\
+  R \cup S    &\quad \text{Vereinigung} \\
+  R - S       &\quad \text{Differenz} \\
+  R \bowtie_p S &\quad \text{Join mit Prädikat } p \\
+  \gamma_{A,F}(R) &\quad \text{Gruppierung nach } A \text{ mit Aggregatfunktionen } F
+\end{align*}
+\end{definition}
+
+SQL ist eine deklarative Anfragesprache, die über diese algebraischen
+Grundoperationen hinausgeht und um Fensterfunktionen, rekursive Abfragen
+(CTE), Mengenoperationen sowie datenbankspezifische Erweiterungen ergänzt wird.
+ANSI SQL:2016 \cite{ansi_sql_2016} bildet die Ziel-Spezifikation des UQTL-Standards.
+
+\subsection{Query-Abstraktion in modernen Programmiersprachen}
+\label{subsec:query_abstraktion}
+
+Alle drei im UQTL-Standard behandelten Sprachen implementieren das Konzept der
+\emph{Query Comprehension} oder \emph{monadischen Query-Komposition}:
+
+\subsubsection{Python -- SQLAlchemy Core \& ORM}
+
+Python verfügt über keine native Query-Syntax in der Sprache selbst.
+Der De-facto-Standard für relationale Abfragen ist \textbf{SQLAlchemy},
+dessen \emph{Core}-Schicht einen Expression Language API bereitstellt.
+Abfragen werden als verkettete Methodenaufrufe oder als ORM-Ausdrücke
+formuliert \cite{sqlalchemy_docs}:
+
+\begin{lstlisting}[style=pythonstyle, caption={Python SQLAlchemy -- Query-Stilarten},
+  label=lst:py_styles]
+# Stil 1: SQLAlchemy ORM (Session.query -- Legacy)
+users = session.query(User)\
+    .filter(User.active == True)\
+    .order_by(User.name)\
+    .all()
+
+# Stil 2: SQLAlchemy 2.0 Select-Style (modern)
+stmt = select(User)\
+    .where(User.active == True)\
+    .order_by(User.name)
+users = session.execute(stmt).scalars().all()
+
+# Stil 3: Pandas / pandasql (fuer Datenpipelines)
+import pandasql as ps
+users = ps.sqldf("SELECT * FROM users WHERE active=1 ORDER BY name")
+\end{lstlisting}
+
+\subsubsection{Java -- Stream API und JPA Criteria API}
+
+Java bietet seit Version 8 die \textbf{Stream API} für funktionale
+Datenverarbeitung auf Collections \cite{java_stream_docs}. Für
+Datenbankabfragen wird die \textbf{JPA Criteria API} oder Frameworks
+wie \textbf{QueryDSL} verwendet:
+
+\begin{lstlisting}[style=javastyle, caption={Java -- Query-Stilarten},
+  label=lst:java_styles]
+// Stil 1: Stream API (In-Memory-Verarbeitung)
+List<User> users = allUsers.stream()
+    .filter(u -> u.isActive())
+    .sorted(Comparator.comparing(User::getName))
+    .collect(Collectors.toList());
+
+// Stil 2: JPA Criteria API (Datenbankabfrage)
+CriteriaBuilder cb = em.getCriteriaBuilder();
+CriteriaQuery<User> cq = cb.createQuery(User.class);
+Root<User> root = cq.from(User.class);
+cq.select(root)
+  .where(cb.isTrue(root.get("active")))
+  .orderBy(cb.asc(root.get("name")));
+
+// Stil 3: QueryDSL (typsicher, fliessend)
+List<User> users = new JPAQuery<>(em)
+    .select(QUser.user)
+    .from(QUser.user)
+    .where(QUser.user.active.isTrue())
+    .orderBy(QUser.user.name.asc())
+    .fetch();
+\end{lstlisting}
+
+\subsubsection{C\# -- LINQ (Language Integrated Query)}
+
+C\# bietet mit \textbf{LINQ} eine nativ in die Sprache integrierte
+Query-Syntax, die vom Compiler direkt in Methodenaufrufe übersetzt wird.
+Entity Framework Core implementiert den \texttt{IQueryable<T>}-Provider
+für SQL-Generierung \cite{ef_core_docs,linq_docs}:
+
+\begin{lstlisting}[style=csharpstyle, caption={C\# LINQ -- Query-Stilarten},
+  label=lst:cs_styles]
+// Stil 1: LINQ Query Syntax (deklarativ, SQL-aehnlich)
+var users = from u in context.Users
+            where u.Active == true
+            orderby u.Name
+            select u;
+
+// Stil 2: LINQ Method Syntax (fliessend, Lambda)
+var users = context.Users
+    .Where(u => u.Active == true)
+    .OrderBy(u => u.Name)
+    .ToList();
+
+// Stil 3: LINQ mit anonymen Typen (Projektion)
+var result = context.Users
+    .Where(u => u.Active)
+    .Select(u => new { u.Id, u.Name, u.Email });
+\end{lstlisting}
+
+\subsection{Bestehende Ansätze und deren Limitierungen}
+\label{subsec:bestehend}
+
+Tabelle~\ref{tab:bestehend} fasst bestehende Ansätze zur Query-Abstraktion
+und deren Grenzen zusammen.
+
+\begin{table}[H]
+\centering
+\caption{Bestehende Query-Abstraktionsansätze und ihre Limitierungen}
+\label{tab:bestehend}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Ansatz} & \textbf{Merkmale} & \textbf{Limitierungen} \\
+\midrule
+Hibernate (Java)
+  & Mächtiges ORM, HQL, Criteria API
+  & Nur Java; erzeugt oft ineffiziente SQL; kein sprachübergreifender Standard \\
+\hline
+Entity Framework (C\#)
+  & LINQ-Integration, Migrations
+  & Nur .NET; SQL-Ausgabe variiert je nach EF-Version \\
+\hline
+SQLAlchemy (Python)
+  & Flexibel, Core + ORM
+  & Nur Python; verschiedene API-Generationen; inkonsistente SQL-Ausgabe \\
+\hline
+JOOQ (Java)
+  & Typsicherer SQL-Builder
+  & Nur Java; erfordert Code-Generierung; kommerziell für Enterprise \\
+\hline
+Exposed (Kotlin)
+  & Kotlin DSL für SQL
+  & Nur JVM/Kotlin; junges Ökosystem \\
+\hline
+Prisma (Node.js)
+  & Typsicherer ORM für TypeScript
+  & Nur Node.js/TypeScript; anderes Ökosystem \\
+\hline
+GraphQL-to-SQL
+  & Graphenabfragen über SQL
+  & Anderes Paradigma; nicht auf Standard-CRUD ausgerichtet \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{warningbox}
+\textbf{Kritische Feststellung:}
+Kein bestehender Ansatz garantiert sprachübergreifende SQL-Äquivalenz.
+Die Lücke liegt nicht in der fehlenden Implementierung, sondern im Fehlen
+eines formalen Standards, der Äquivalenzanforderungen und
+Normalisierungsregeln verbindlich definiert.
+\end{warningbox}
+
+\subsection{Formale Grundbegriffe}
+\label{subsec:formale_grundbegriffe}
+
+\begin{definition}[Query-Ausdruck]
+\label{def:query_expr}
+Ein \emph{Query-Ausdruck} $Q$ ist ein Term einer Operatoralgebra $\mathcal{A}$
+über einer Datenbankschema-Instanz $\sigma$. Die \emph{Semantik} von $Q$ ist
+die Relation $\llbracket Q \rrbracket_\sigma$, die durch Auswertung von $Q$
+in $\sigma$ entsteht.
+\end{definition}
+
+\begin{definition}[Semantische Äquivalenz]
+\label{def:sem_aequiv}
+Zwei Query-Ausdrücke $Q_1$ und $Q_2$ heißen \emph{semantisch äquivalent},
+geschrieben $Q_1 \equiv Q_2$, wenn für alle Datenbankinstanzen $\sigma$ gilt:
+\[
+  \llbracket Q_1 \rrbracket_\sigma = \llbracket Q_2 \rrbracket_\sigma
+\]
+\end{definition}
+
+\begin{definition}[UQTL-Konformität]
+\label{def:konformitaet}
+Ein Übersetzungssystem $T$ heißt \emph{UQTL-konform}, wenn für alle
+äquivalenten Quellanfragen $Q_{py} \equiv Q_{java} \equiv Q_{cs}$ gilt:
+\[
+  T(Q_{py}) = T(Q_{java}) = T(Q_{cs}) = S^*
+\]
+wobei $S^*$ das normalisierte SQL-Statement im UQTL-Normalformat ist.
+\end{definition}
+
+Diese Definitionen bilden das formale Fundament des gesamten Standards.
+

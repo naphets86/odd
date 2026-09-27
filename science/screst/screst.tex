@@ -1,0 +1,2449 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[german]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+
+\geometry{margin=2.5cm}
+
+% ---------- Überlaufschutz ----------
+\sloppy
+\emergencystretch=3em
+\setlength{\tolerance}{2000}
+\setlength{\hbadness}{10000}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{bemerkung}{Bemerkung}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=mainblue,
+	citecolor=accentred,
+	urlcolor=mainblue
+}
+
+%  Code-Highlighting
+\lstset{
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue},
+	commentstyle=\color{gray},
+	stringstyle=\color{red},
+	numbers=left,
+	numberstyle=\tiny,
+	breaklines=true,
+	breakatwhitespace=false,
+	frame=single,
+	columns=fullflexible,
+	literate=%
+	{Ö}{{\"O}}1
+	{Ä}{{\"A}}1
+	{Ü}{{\"U}}1
+	{ß}{{\ss}}1
+	{ü}{{\"u}}1
+	{ä}{{\"a}}1
+	{ö}{{\"o}}1
+	{Î£}{{$\Sigma$}}1
+	{Ïƒ}{{$\sigma$}}1
+	{Î´}{{$\delta$}}1
+	{â†’}{{$\rightarrow$}}1
+	{âŠ†}{{$\subseteq$}}1
+	{âŠ‡}{{$\supseteq$}}1
+	{â‰¥}{{$\geq$}}1
+}
+
+\title{Sequenzgebundene REST-Schnittstellen (SC-REST):\\
+Ein formales Erweiterungsmuster für die Abbildung\\
+von Geschäftsprozessen auf REST-APIs}
+\author{Stephan Epp}
+\date{15. Juni 2026}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Einführung}
+
+REST (\emph{Representational State Transfer}) ist nach Fielding~\cite{fielding2000} ein
+Architekturstil, dessen zentrales Prinzip die \emph{Zustandslosigkeit} (\emph{Statelessness})
+zwischen aufeinanderfolgenden Anfragen ist: Jede Anfrage muss alle zu ihrer Bearbeitung
+notwendigen Informationen enthalten, der Server hält keinen Sitzungszustand zwischen
+Requests vor~\cite{rfc7231}. Dieses Prinzip ist wesentlich für Skalierbarkeit, Cachebarkeit
+und die unabhängige Entwicklung von Client und Server.
+
+In der praktischen Anwendung treten jedoch häufig \emph{Geschäftsprozesse} auf, die aus
+fachlicher Sicht eine \emph{verbindliche Reihenfolge} von API-Aufrufen erfordern: Ein
+Warenkorb muss erstellt werden, bevor Artikel hinzugefügt werden können; eine Zahlung kann
+erst nach Abschluss des Checkout-Vorgangs ausgelöst werden; eine Bestellung kann erst
+bestätigt werden, nachdem die Zahlung autorisiert wurde. Die klassische REST-Architektur
+trifft hierzu keine normative Aussage: Ein zustandsloser Server kann grundsätzlich nicht
+unterscheiden, ob eine Anfrage â€žzur falschen Zeitâ€œ eintrifft, sofern die Anfrage selbst
+syntaktisch und semantisch valide ist.
+
+\subsection{Problemstellung}
+
+Gegeben sei ein Geschäftsprozess, der durch eine Menge von API-Operationen
+$\Sigma = \{\sigma_1, \ldots, \sigma_m\}$ (HTTP-Methode und Ressourcenpfad) realisiert wird.
+Für eine konkrete \emph{Prozessinstanz} (z.\,B. eine Bestellung, einen Antrag, einen
+Vertragsabschluss) existiert eine Menge \emph{zulässiger Aufrufsequenzen}
+$c = (\sigma_{i_1}, \sigma_{i_2}, \ldots, \sigma_{i_k}) \in \Sigma^*$.
+
+\textbf{Ziel:} Definiere eine formale, REST-kompatible Erweiterung, mit der ein Server
+\begin{itemize}
+	\item jede eingehende Anfrage gegen die für die jeweilige Prozessinstanz aktuell
+	      zulässigen Operationen prüft,
+	\item bei Abweichung von der vereinbarten Sequenz eine eindeutige Fehlermeldung liefert,
+	      ohne die Zustandslosigkeit auf Protokollebene (jede Anfrage bleibt vollständig
+	      selbstbeschreibend) aufzugeben,
+	\item dem Client mittels \emph{Hypermedia as the Engine of Application State}
+	      (HATEOAS) jederzeit die Menge der zulässigen Folgeoperationen mitteilt,
+	\item die Kenntnis der wahrscheinlichen Folgeoperation(en) zur \emph{spekulativen
+	      Vorbereitung} (Prefetching, Vorberechnung, Caching) nutzt.
+\end{itemize}
+
+\subsection{Motivation}
+
+Drei Beobachtungen motivieren diese Arbeit:
+
+\begin{enumerate}
+	\item \textbf{Führung des Clients.} Ein Client, der eine ungültige Operation
+	      versucht, erhält sofort eine maschinenlesbare Fehlermeldung mit der Menge der
+	      tatsächlich zulässigen Folgeoperationen. Dies reduziert Implementierungsfehler
+	      und Dokumentationsaufwand, da der Prozess \emph{im Protokoll selbst} kodiert ist.
+	\item \textbf{Führung des Servers.} Da der Server zu jedem Zeitpunkt $T_{\text{think}}$
+	      des Clients die Menge der \emph{möglichen} Folgezustände $N(s)$ kennt, kann er
+	      Ressourcen, Datenbankabfragen oder Berechnungen für diese Zustände bereits während
+	      der Bedenkzeit des Clients vorbereiten.
+	\item \textbf{Strukturelle Nähe zum Subgraph-Problem.} Die Prüfung, ob eine beobachtete
+	      Aufrufsequenz mit einem vorgegebenen Prozessautomaten konform ist, lässt sich als
+	      Spezialfall eines Graph-Enthaltenseins-Problems auffassen. Für Prozessphasen mit
+	      \emph{permutierbaren} optionalen Teilschritten erweist sich der in
+	      \cite{epp2026subgraph} entwickelte Subgraph Algorithmus mit zyklischer Rotation
+	      als das strukturell passende und nachweislich optimale Werkzeug.
+\end{enumerate}
+
+\subsection{Beitrag dieser Arbeit}
+
+Diese Arbeit liefert:
+\begin{itemize}
+	\item eine formale Definition eines \emph{Prozessautomaten} als Erweiterung des
+	      REST-Architekturstils (Abschnitt~\ref{sec:grundlagen}),
+	\item die Definition des \emph{SC-REST-Patterns} (\emph{Sequence-Constrained REST})
+	      mit konkreter HTTP-Semantik, einschließlich eines neuen Problem-Detail-Typs
+	      gemäß RFC~7807~\cite{rfc7807} (Abschnitt~\ref{sec:pattern}),
+	\item den formalen Nachweis von Korrektheit (Soundness/Completeness),
+	      Laufzeitkomplexität und Optimalität der Sequenzprüfung
+	      (Abschnitt~\ref{sec:analyse}),
+	\item eine formale Anbindung permutierbarer optionaler Teilschritte an den Subgraph
+	      Algorithmus aus~\cite{epp2026subgraph}, einschließlich eines neuen
+	      Zustandsraum-Explosions-Lemmas (Abschnitt~\ref{sec:permutierbar}),
+	\item ein formales Latenzmodell für serverseitiges Prefetching mit Beweis des
+	      Latenzgewinns (Abschnitt~\ref{sec:prefetch}),
+	\item eine Referenzimplementierung in Python (Abschnitt~\ref{sec:implementierung}),
+	\item eine Veranschaulichung aller Ergebnisse durch matplotlib-Diagramme,
+	\item einen ausführlichen Ausblick auf Standardisierung, verteilte Prozesse,
+	      Verifikation und adaptive Vorhersagemodelle (Abschnitt~\ref{sec:ausblick}).
+\end{itemize}
+
+\section{Grundlagen}
+\label{sec:grundlagen}
+
+\subsection{REST und Hypermedia}
+
+REST-APIs adressieren \emph{Ressourcen} über URIs und manipulieren diese mittels einer
+einheitlichen Schnittstelle aus HTTP-Methoden (GET, POST, PUT, PATCH, DELETE). Im
+\emph{Richardson Maturity Model}~\cite{fowler2010} bildet \emph{HATEOAS} die höchste Stufe:
+Antworten enthalten Links auf zulässige Folgeoperationen, sodass der Client nicht auf
+statische, externe Dokumentation angewiesen ist. SC-REST baut unmittelbar auf dieser Stufe
+auf, erweitert sie jedoch um eine \emph{normative, serverseitig durchgesetzte} Komponente:
+Die in den Links angegebenen Folgeoperationen sind nicht nur \emph{Vorschläge}, sondern die
+\emph{einzigen} Operationen, die der Server für die betreffende Prozessinstanz akzeptiert.
+
+\subsection{Formale Definitionen}
+
+\begin{definition}[Operation]
+	Eine \emph{Operation} $\sigma = (M, P)$ besteht aus einer HTTP-Methode
+	$M \in \{\text{GET}, \text{POST}, \text{PUT}, \text{PATCH}, \text{DELETE}\}$ und einem
+	Ressourcenpfad-Muster $P$. Die Menge aller im Prozess verwendeten Operationen wird mit
+	$\Sigma$ bezeichnet (das \emph{Operationsalphabet}).
+\end{definition}
+
+\begin{definition}[Prozessautomat]
+	\label{def:prozessautomat}
+	Ein \emph{Prozessautomat} ist ein Tupel
+	\[
+		P = (S, \Sigma, \delta, s_0, F)
+	\]
+	mit:
+	\begin{itemize}
+		\item $S$: endliche Menge von \emph{Prozesszuständen},
+		\item $\Sigma$: endliches Operationsalphabet,
+		\item $\delta: S \times \Sigma \rightharpoonup S$: \emph{partielle} (deterministische)
+		      Übergangsfunktion,
+		\item $s_0 \in S$: Startzustand,
+		\item $F \subseteq S$: Menge der \emph{Endzustände} (abgeschlossene Prozessinstanzen).
+	\end{itemize}
+	Für $s \in S$ heißt
+	\[
+		N(s) := \{\, \delta(s,\sigma) \mid \sigma \in \Sigma,\ \delta(s,\sigma) \text{ ist definiert} \,\}
+	\]
+	die Menge der \emph{erreichbaren Folgezustände} und
+	\[
+		\Sigma(s) := \{\, \sigma \in \Sigma \mid \delta(s,\sigma) \text{ ist definiert} \,\}
+	\]
+	die Menge der in $s$ \emph{zulässigen Operationen}. Die Größe $d(s) := |\Sigma(s)|$
+	heißt \emph{Verzweigungsgrad} von $s$.
+\end{definition}
+
+\begin{definition}[Aufrufsequenz und Lauf]
+	\label{def:lauf}
+	Eine \emph{Aufrufsequenz} $c = (c_1, \ldots, c_k) \in \Sigma^*$ ist eine endliche Folge
+	von Operationen. Ein \emph{Lauf} von $P$ auf $c$ ist eine Folge von Zuständen
+	$s_0, s_1, \ldots, s_k$ mit $s_i = \delta(s_{i-1}, c_i)$ für $i = 1, \ldots, k$.
+\end{definition}
+
+\begin{definition}[Konformität]
+	\label{def:konformitaet}
+	Eine Aufrufsequenz $c = (c_1, \ldots, c_k)$ heißt \emph{(partiell) konform} bezüglich
+	$P$, wenn ein Lauf $s_0, \ldots, s_k$ gemäß Definition~\ref{def:lauf} existiert, d.\,h.
+	wenn $\delta(s_{i-1}, c_i)$ für alle $i = 1, \ldots, k$ definiert ist. Die Sequenz heißt
+	\emph{vollständig konform} (oder \emph{abgeschlossen}), wenn zusätzlich $s_k \in F$ gilt.
+	Die Menge aller partiell konformen Sequenzen heißt $\mathcal{L}^*(P)$, die Menge aller
+	vollständig konformen Sequenzen $\mathcal{L}(P) \subseteq \mathcal{L}^*(P)$.
+\end{definition}
+
+\begin{bemerkung}
+	Da $\delta$ als \emph{Funktion} (nicht als Relation) definiert ist, ist der Folgezustand
+	$s_i = \delta(s_{i-1}, c_i)$ für jeden Schritt eindeutig bestimmt. Diese Eigenschaft ist
+	notwendig (aber nicht hinreichend), damit ein Server zu jedem Zeitpunkt einen
+	wohldefinierten Prozesszustand pro Prozessinstanz führen kann.
+\end{bemerkung}
+
+\begin{beispiel}[Bestellprozess]
+	\label{bsp:bestellprozess}
+	Abbildung~\ref{fig:automat} zeigt einen Prozessautomaten für einen vereinfachten
+	Bestellprozess mit
+	$S = \{s_0, s_1, s_2, s_3, s_4, s_5\}$, $F = \{s_5\}$ und
+	$\Sigma = \{$\texttt{POST /cart}, \texttt{POST /cart/items}, \texttt{POST /checkout},
+	\texttt{POST /payment}, \texttt{POST /confirm}$\}$. Tabelle~\ref{tab:delta} listet die
+	Übergangsfunktion $\delta$ vollständig auf. Jede Operation, die in einem Zustand $s$
+	nicht in $\Sigma(s)$ enthalten ist, führt â€” gemäß der in
+	Abschnitt~\ref{sec:pattern} definierten Semantik â€” zu einer
+	\texttt{409 Conflict}-Antwort, ohne dass sich der Prozesszustand ändert.
+
+	\begin{figure}[h]
+		\centering
+		\includegraphics[width=0.95\textwidth]{plots/plot1_automat.pdf}
+		\caption{Prozessautomat eines Bestellprozesses. Durchgezogene blaue Pfeile
+		bilden den (eindeutigen) Lauf des Hauptpfades; die Selbstschleife an $s_2$
+		erlaubt das mehrfache Hinzufügen von Artikeln. Gestrichelte rote Pfeile
+		repräsentieren Operationen, die in dem jeweiligen Zustand \emph{nicht} in
+		$\Sigma(s)$ enthalten sind und daher gemäß Definition~\ref{def:sc-rest-server}
+		mit \texttt{409 Conflict} beantwortet werden, ohne den Zustand zu verändern
+		(der Zustand $\bot$ ist daher kein Element von $S$, sondern eine grafische
+		Sammeldarstellung aller abgewiesenen Übergänge).}
+		\label{fig:automat}
+	\end{figure}
+
+	\begin{table}[h]
+		\centering
+		\caption{Übergangsfunktion $\delta$ des Bestellprozesses aus
+		Abbildung~\ref{fig:automat}.}
+		\label{tab:delta}
+		\begin{tabular}{@{}lll@{}}
+			\toprule
+			Zustand $s$ & Operation $\sigma$ & Folgezustand $\delta(s,\sigma)$ \\
+			\midrule
+			$s_0$ & \texttt{POST /cart}       & $s_1$ \\
+			$s_1$ & \texttt{POST /cart/items} & $s_2$ \\
+			$s_2$ & \texttt{POST /cart/items} & $s_2$ \\
+			$s_2$ & \texttt{POST /checkout}   & $s_3$ \\
+			$s_3$ & \texttt{POST /payment}    & $s_4$ \\
+			$s_4$ & \texttt{POST /confirm}    & $s_5$ \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+
+	Die Sequenz
+	\[
+		\begin{aligned}
+			c = (&\texttt{POST /cart},\ \texttt{POST /cart/items},\ \texttt{POST /checkout},\\
+			     &\texttt{POST /payment},\ \texttt{POST /confirm})
+		\end{aligned}
+	\]
+	ist vollständig konform: Der zugehörige Lauf ist $s_0, s_1, s_2, s_3, s_4, s_5$ mit
+	$s_5 \in F$. Die Sequenz $c' = (\texttt{POST /cart}, \texttt{POST /checkout})$ ist
+	\emph{nicht} konform, da $\delta(s_1, \texttt{POST /checkout})$ undefiniert ist
+	($\Sigma(s_1) = \{\texttt{POST /cart/items}\}$).
+\end{beispiel}
+
+\section{Das SC-REST-Pattern}
+\label{sec:pattern}
+
+\subsection{Prozessinstanzen und Serverzustand}
+
+REST verlangt, dass \emph{jede Anfrage} alle notwendigen Informationen enthält. SC-REST
+verletzt dieses Prinzip nicht: Der pro Prozessinstanz geführte Zustand $s \in S$ ist kein
+verstecktes Sitzungsobjekt, sondern wird als \emph{Ressourcenattribut} der Prozessinstanz
+modelliert und ist über deren URI adressierbar.
+
+\begin{definition}[Prozessinstanz]
+	\label{def:prozessinstanz}
+	Eine \emph{Prozessinstanz} ist ein Tupel $(id, s)$, wobei $id$ ein eindeutiger
+	Bezeichner (z.\,B. eine UUID, kodiert in der Ressourcen-URI
+	\texttt{/orders/\{id\}}) und $s \in S$ der aktuelle Zustand der Instanz im
+	Prozessautomaten $P$ ist. Der Server führt eine (partielle) Abbildung
+	$\pi: \text{ID} \rightharpoonup S$ mit $\pi(id) = s$.
+\end{definition}
+
+\begin{definition}[SC-REST-Operationssemantik]
+	\label{def:sc-rest-server}
+	Sei $P = (S,\Sigma,\delta,s_0,F)$ ein Prozessautomat und $\pi(id) = s$ der aktuelle
+	Zustand einer Prozessinstanz. Auf eine eingehende Anfrage $\sigma \in \Sigma$
+	reagiert ein SC-REST-Server wie folgt:
+	\begin{enumerate}
+		\item \textbf{Falls $\delta(s,\sigma)$ definiert ist} (\emph{konformer Übergang}):
+		\begin{itemize}
+			\item Führe die durch $\sigma$ beschriebene Fachlogik aus,
+			\item setze $\pi(id) := \delta(s,\sigma)$,
+			\item antworte mit einem 2xx-Statuscode und einer Repräsentation, die
+			      gemäß HATEOAS Links auf alle Operationen
+			      $\Sigma(\delta(s,\sigma))$ enthält.
+		\end{itemize}
+		\item \textbf{Falls $\delta(s,\sigma)$ undefiniert ist} (\emph{Sequenzverletzung}):
+		\begin{itemize}
+			\item $\pi(id)$ bleibt unverändert,
+			\item der Server antwortet mit \texttt{409 Conflict} und einem
+			      Problem-Detail-Objekt gemäß RFC~7807~\cite{rfc7807} vom Typ
+			      \texttt{"{}sequence-violation"{}}, das die Menge $\Sigma(s)$ der
+			      tatsächlich zulässigen Operationen enthält.
+		\end{itemize}
+	\end{enumerate}
+\end{definition}
+
+\begin{lstlisting}[language=, caption=Problem-Detail-Antwort bei Sequenzverletzung (RFC 7807)]
+HTTP/1.1 409 Conflict
+Content-Type: application/problem+json
+
+{
+  "type": "https://api.example.com/probs/sequence-violation",
+  "title": "Ungueltige Operation fuer aktuellen Prozesszustand",
+  "status": 409,
+  "instance": "/orders/7f3e-...-91ab",
+  "currentState": "s1",
+  "attemptedOperation": "POST /checkout",
+  "allowedOperations": [
+    { "method": "POST", "path": "/orders/7f3e-.../items",
+      "rel": "add-item" }
+  ]
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=, caption=Erfolgsantwort mit HATEOAS-Links auf zulaessige Folgeoperationen]
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "orderId": "7f3e-...-91ab",
+  "state": "s2",
+  "_links": {
+    "add-item":  { "method": "POST",
+                    "href": "/orders/7f3e-.../items" },
+    "checkout":  { "method": "POST",
+                    "href": "/orders/7f3e-.../checkout" }
+  }
+}
+\end{lstlisting}
+
+\subsection{Zustandslosigkeit und SC-REST}
+
+\begin{bemerkung}
+	SC-REST hebt die Zustandslosigkeit der einzelnen Anfrage nicht auf. Der Zustand $s$
+	ist eine \emph{persistente Eigenschaft der adressierten Ressource} (der
+	Prozessinstanz), nicht ein an die Verbindung oder Sitzung gebundenes Artefakt. Jede
+	Anfrage bleibt selbstbeschreibend: Methode, Pfad und Repräsentation sind hinreichend,
+	um die Anfrage zu bearbeiten; lediglich die \emph{Akzeptanz} der Anfrage hängt
+	zusätzlich vom persistenten, ressourcengebundenen Zustand $\pi(id)$ ab â€” analog zur
+	bekannten Bedingung, dass ein \texttt{PUT} auf eine Ressource mit
+	\texttt{If-Match}-Header vom aktuellen \texttt{ETag} der Ressource abhängt. SC-REST
+	verallgemeinert dieses Prinzip von einzelnen Versionskonflikten auf
+	\emph{Sequenzkonflikte}.
+\end{bemerkung}
+
+\subsection{Implementierung der Übergangsprüfung}
+
+Algorithmus~\ref{lst:transition} zeigt die Kernprüfung als Python-Funktion. Die
+Übergangsfunktion $\delta$ wird als verschachteltes \texttt{dict} (Hashtabelle)
+$\Sigma \times S \to S$ realisiert, sodass die Prüfung in konstanter erwarteter Zeit
+erfolgt (siehe Satz~\ref{satz:laufzeit-pruefung}).
+
+\begin{lstlisting}[language=Python, label=lst:transition, caption=SC-REST Uebergangspruefung als Middleware-Funktion]
+def handle_request(process: ProcessAutomaton,
+                    instance_id: str,
+                    operation: tuple) -> Response:
+    """
+    Prueft eine eingehende Operation gegen den aktuellen
+    Zustand einer Prozessinstanz und fuehrt bei Konformitaet
+    den Zustandsuebergang durch.
+
+    delta: Dict[Tuple[State, Operation], State]
+    """
+    current_state = process.pi[instance_id]
+
+    next_state = process.delta.get((current_state, operation))
+
+    if next_state is None:
+        # Sequenzverletzung: Zustand bleibt unveraendert
+        allowed = [op for (s, op) in process.delta
+                   if s == current_state]
+        return problem_detail(
+            status=409,
+            type="sequence-violation",
+            current_state=current_state,
+            attempted=operation,
+            allowed_operations=allowed,
+        )
+
+    # Konformer Uebergang: Fachlogik ausfuehren, Zustand setzen
+    result = process.execute(operation, instance_id)
+    process.pi[instance_id] = next_state
+
+    return success_response(
+        result=result,
+        state=next_state,
+        links=hateoas_links(process, next_state, instance_id),
+    )
+\end{lstlisting}
+
+\section{Formale Analyse}
+\label{sec:analyse}
+
+Dieser Abschnitt erbringt vier formale Nachweise: (1) Korrektheit der Sequenzkontrolle
+(Soundness und Completeness), (2) Laufzeit- und Optimalitätsschranken der
+Übergangsprüfung, (3) die Charakterisierung der Konformitätsprüfung als
+Pfad-Subgraph-Problem sowie deren Erweiterung auf permutierbare Teilschritte mittels des
+Subgraph Algorithmus aus~\cite{epp2026subgraph}, und (4) ein formales Latenzmodell für
+serverseitiges Prefetching.
+
+\subsection{Korrektheit der Sequenzkontrolle}
+
+\begin{satz}[Korrektheit der Sequenzkontrolle]
+	\label{satz:korrektheit}
+	Sei $P=(S,\Sigma,\delta,s_0,F)$ ein Prozessautomat und sei
+	$c=(c_1,\ldots,c_k)\in\Sigma^*$ eine Aufrufsequenz, die einem SC-REST-Server gemäß
+	Definition~\ref{def:sc-rest-server} beginnend bei $\pi(id)=s_0$ Operation für
+	Operation präsentiert wird. Dann gilt:
+	\begin{enumerate}
+		\item[(a)] (\emph{Soundness}) Der Server antwortet auf $c_1,\ldots,c_k$ genau dann
+		      \emph{niemals} mit \texttt{409 Conflict}, wenn $c \in \mathcal{L}^*(P)$
+		      partiell konform ist.
+		\item[(b)] (\emph{Completeness}) Ist $c$ partiell konform, so stimmt der nach
+		      Verarbeitung von $c$ erreichte Serverzustand $\pi(id)$ exakt mit dem
+		      eindeutigen Lauf-Endzustand $s_k$ aus Definition~\ref{def:lauf} überein.
+		\item[(c)] (\emph{Fehlerlokalisierung}) Ist $c$ \emph{nicht} konform, so existiert
+		      ein eindeutiges minimales $i^\ast \in \{1,\ldots,k\}$, sodass
+		      $c_1,\ldots,c_{i^\ast-1}$ konform ist, $\delta(s_{i^\ast-1},c_{i^\ast})$
+		      undefiniert ist, und der Server bei genau diesem Schritt -- und nur bei
+		      diesem -- mit \texttt{409 Conflict} antwortet, wobei $\pi(id)$ auf
+		      $s_{i^\ast-1}$ verbleibt.
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	Wir führen vollständige Induktion über $i=0,\ldots,k$ und zeigen die Invariante
+	\[
+		I(i):\quad \pi(id) \text{ ist nach Verarbeitung von } c_1,\ldots,c_i
+		\text{ wohldefiniert und gleich } s_i,
+	\]
+	solange $c_1,\ldots,c_i$ konform ist, andernfalls gleich $s_{i^\ast-1}$ für das
+	kleinste $i^\ast \le i$, für das $\delta(s_{i^\ast-1},c_{i^\ast})$ undefiniert ist.
+
+	\textbf{Induktionsanfang ($i=0$):} $\pi(id)=s_0$ nach Voraussetzung; $I(0)$ gilt
+	trivial, da die leere Sequenz konform ist mit Lauf $s_0$.
+
+	\textbf{Induktionsschritt ($i-1 \to i$):} Nach Induktionsannahme gilt $I(i-1)$.
+	Zwei Fälle:
+	\begin{itemize}
+		\item \emph{Fall A: $c_1,\ldots,c_{i-1}$ ist konform und $\pi(id)=s_{i-1}$.}
+		      Bei Eintreffen von $c_i$ prüft der Server gemäß
+		      Definition~\ref{def:sc-rest-server}, ob $\delta(s_{i-1},c_i)$ definiert ist.
+		      \begin{itemize}
+			      \item Ist es definiert, setzt der Server $\pi(id):=\delta(s_{i-1},c_i)=s_i$
+			            (Definition~\ref{def:lauf}) und antwortet nicht mit \texttt{409}.
+			            Damit ist $c_1,\ldots,c_i$ konform und $I(i)$ gilt mit $\pi(id)=s_i$.
+			      \item Ist es undefiniert, antwortet der Server mit \texttt{409 Conflict}
+			            und $\pi(id)$ bleibt bei $s_{i-1}$. Damit ist $i^\ast = i$ das
+			            gesuchte minimale Indexelement, und $I(i)$ gilt mit
+			            $\pi(id)=s_{i^\ast-1}=s_{i-1}$.
+		      \end{itemize}
+		\item \emph{Fall B: $c_1,\ldots,c_{i-1}$ ist bereits nicht konform mit
+		      Verletzungsindex $i^\ast \le i-1$ und $\pi(id)=s_{i^\ast-1}$.} Da $\delta$ in
+		      Definition~\ref{def:sc-rest-server} bei einer Sequenzverletzung den Zustand
+		      \emph{nicht} verändert, bleibt $\pi(id)=s_{i^\ast-1}$ auch nach Verarbeitung
+		      von $c_i$ -- unabhängig davon, ob $\delta(s_{i^\ast-1},c_i)$ definiert wäre,
+		      denn der Server prüft stets gegen den \emph{aktuellen}, nicht den
+		      ursprünglich vorgesehenen Zustand. $I(i)$ gilt also mit demselben $i^\ast$.
+	\end{itemize}
+
+	Aus $I(k)$ folgen unmittelbar (a)--(c): Tritt während der gesamten Verarbeitung von
+	$c_1,\ldots,c_k$ kein Fall â€žundefiniertâ€œ auf, ist $c$ nach Definition~\ref{def:lauf}
+	konform mit Lauf $s_0,\ldots,s_k$ und der Server antwortet nie mit \texttt{409}
+	(Soundness, durch Kontraposition von Fall A in beiden Richtungen).
+	Tritt der Fall â€žundefiniertâ€œ erstmals bei Index $i^\ast$ auf, so ist dies nach
+	Konstruktion eindeutig und minimal, der Server antwortet exakt einmal -- bei
+	$i^\ast$ -- mit \texttt{409}, und $\pi(id)$ verbleibt für alle $i \ge i^\ast$ bei
+	$s_{i^\ast-1}$ (Fehlerlokalisierung, (c)). Im konformen Fall liefert $I(k)$ direkt
+	(b). \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	Satz~\ref{satz:korrektheit}(c) ist die formale Grundlage für die in der Einführung
+	geforderte \emph{Führung des Clients}: Der Server lehnt nicht nur ab, sondern tut dies
+	beim \emph{frühestmöglichen} Zeitpunkt einer Sequenzverletzung, und der Zustand der
+	Prozessinstanz bleibt für \emph{beliebig viele} nachfolgende fehlerhafte Anfragen
+	stabil bei $s_{i^\ast-1}$ -- ein Client kann also nach einem \texttt{409} beliebig oft
+	erneut die laut \texttt{allowedOperations} korrekte Operation versuchen, ohne dass
+	der Prozesszustand durch die fehlgeschlagenen Versuche beeinflusst wird
+	(\emph{Stabilität unter Fehlversuchen}).
+\end{bemerkung}
+
+\subsection{Laufzeit und Optimalität der Übergangsprüfung}
+
+\begin{satz}[Laufzeit der Übergangsprüfung]
+	\label{satz:laufzeit-pruefung}
+	Wird $\delta$ als Hashtabelle $H: S \times \Sigma \to S \cup \{\text{undef}\}$
+	realisiert (Algorithmus~\ref{lst:transition}), so benötigt die Prüfung, ob
+	$\delta(s,\sigma)$ definiert ist, sowie -- falls definiert -- die Bestimmung von
+	$\delta(s,\sigma)$, im Erwartungswert $O(1)$ Zeit, unabhängig von $|S|$, $|\Sigma|$
+	und der Länge $k$ der bisherigen Aufrufsequenz.
+\end{satz}
+
+\begin{proof}
+	Ein Hashtabellen-Lookup $H[(s,\sigma)]$ erfordert die Berechnung eines Hashwerts über
+	das Paar $(s,\sigma)$ -- beides Werte konstanter Beschreibungsgröße (Zustands-ID bzw.
+	Methode+Pfad-Muster) -- sowie den Zugriff auf den entsprechenden Bucket. Beide
+	Operationen sind unter Standardannahmen an die Hashfunktion (gleichverteilte Streuung,
+	Lastfaktor $O(1)$) im Erwartungswert $O(1)$. Die Anzahl $|S|$ der Zustände und
+	$|\Sigma|$ der Operationen beeinflusst lediglich die \emph{Größe} der Hashtabelle,
+	nicht jedoch -- bei konstantem Lastfaktor -- die erwartete Zugriffszeit. Die Länge $k$
+	der bisherigen Sequenz geht nicht in die Prüfung ein, da nur der aktuelle Zustand
+	$\pi(id)=s_{k}$ betrachtet wird (Markov-Eigenschaft des Prozessautomaten,
+	Definition~\ref{def:lauf}). \qedhere
+\end{proof}
+
+\begin{satz}[Optimalität der Gesamtprüfung einer Sequenz]
+	\label{satz:optimalitaet-sequenz}
+	Die Prüfung der Konformität einer vollständigen Aufrufsequenz $c=(c_1,\ldots,c_k)$
+	gemäß Definition~\ref{def:konformitaet} benötigt $\Theta(k)$ Zeit und ist
+	asymptotisch optimal: Kein korrekter Algorithmus kann diese Prüfung in $o(k)$ Zeit
+	durchführen.
+\end{satz}
+
+\begin{proof}
+	\textbf{Obere Schranke $O(k)$.} Nach Satz~\ref{satz:laufzeit-pruefung} kostet jeder
+	der $k$ Übergangsschritte $O(1)$, in Summe also $O(k)$.
+
+	\textbf{Untere Schranke $\Omega(k)$.} Sei $\mathcal{A}$ ein beliebiger korrekter
+	Algorithmus, der für eine Eingabesequenz $c=(c_1,\ldots,c_k)$ entscheidet, ob
+	$c \in \mathcal{L}^*(P)$. Angenommen, $\mathcal{A}$ liest ein Element $c_j$ für ein
+	$j\in\{1,\ldots,k\}$ nicht. Wir konstruieren zwei Eingaben $c$ und $c'$, die sich nur
+	in $c_j$ unterscheiden:
+	\[
+		c = (c_1,\ldots,c_{j-1}, \sigma, c_{j+1},\ldots,c_k), \qquad
+		c' = (c_1,\ldots,c_{j-1}, \sigma', c_{j+1},\ldots,c_k),
+	\]
+	wobei $\sigma, \sigma' \in \Sigma(s_{j-1})$ mit $\sigma \neq \sigma'$ und
+	$\delta(s_{j-1},\sigma) \neq \delta(s_{j-1},\sigma')$ -- eine solche Wahl existiert,
+	sobald $d(s_{j-1}) \ge 2$, was o.\,B.\,d.\,A. für mindestens ein $j$ gilt (sonst ist
+	$P$ trivial, da jeder Zustand höchstens einen Folgezustand besitzt, und die Aussage
+	wird leer). Für geeignete Fortsetzungen $c_{j+1},\ldots,c_k$ -- etwa eine konforme
+	Fortsetzung ab $\delta(s_{j-1},\sigma)$, die ab $\delta(s_{j-1},\sigma')$ \emph{nicht}
+	konform ist -- unterscheiden sich die korrekten Antworten für $c$ und $c'$. Da
+	$\mathcal{A}$ den Eintrag $c_j$ nicht liest, verhält sich $\mathcal{A}$ auf $c$ und
+	$c'$ identisch und liefert für mindestens eine der beiden Eingaben ein falsches
+	Ergebnis -- Widerspruch zur Korrektheit. Folglich muss $\mathcal{A}$ jedes Element
+	$c_1,\ldots,c_k$ lesen, also $T_{\mathcal{A}}(k) \ge \Omega(k)$. \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	Satz~\ref{satz:optimalitaet-sequenz} zeigt, dass die SC-REST-Konformitätsprüfung --
+	anders als das allgemeine Subgraph-Problem aus~\cite{epp2026subgraph} mit seiner
+	unteren Schranke $\Omega(n^{3-\varepsilon})$ -- \emph{linear} und damit
+	vergleichsweise â€žbilligâ€œ ist. Der Grund liegt in der \emph{linearen Struktur} einer
+	Aufrufsequenz: Sie ist ein einfacher Pfad, kein beliebiger Graph. Abschnitt
+	\ref{sec:permutierbar} zeigt, dass diese Eigenschaft verloren geht, sobald
+	\emph{permutierbare} Teilschritte zugelassen werden -- und genau dann wird der
+	Subgraph Algorithmus mit zyklischer Rotation wieder relevant.
+\end{bemerkung}
+
+\subsection{Konformität als Pfad-Subgraph-Problem}
+
+\begin{definition}[Prozessgraph]
+	\label{def:prozessgraph}
+	Der \emph{Prozessgraph} $G_P=(S,E)$ zu einem Prozessautomaten
+	$P=(S,\Sigma,\delta,s_0,F)$ ist der gerichtete, kantenbeschriftete Graph mit
+	\[
+		E = \{\, (s,s',\sigma) \mid s,s' \in S,\ \sigma\in\Sigma,\ \delta(s,\sigma)=s' \,\}.
+	\]
+	Eine Aufrufsequenz $c=(c_1,\ldots,c_k)$ induziert den \emph{Sequenzgraphen}
+	$G_c$: einen einfachen, gerichteten Pfad mit $k+1$ Knoten $u_0,\ldots,u_k$ und Kanten
+	$(u_{i-1},u_i,c_i)$ für $i=1,\ldots,k$.
+\end{definition}
+
+\begin{satz}[Pfad-Charakterisierung der Konformität]
+	\label{satz:pfadcharakterisierung}
+	Eine Aufrufsequenz $c$ ist genau dann partiell konform bezüglich $P$
+	(Definition~\ref{def:konformitaet}), wenn der Sequenzgraph $G_c$ unter der Abbildung
+	$u_0 \mapsto s_0$ als beschrifteter Teilpfad in $G_P$ einbettbar ist, d.\,h. wenn eine
+	Folge von Knoten $s_0=v_0,v_1,\ldots,v_k \in S$ existiert mit
+	$(v_{i-1},v_i,c_i)\in E$ für alle $i=1,\ldots,k$.
+\end{satz}
+
+\begin{proof}
+	â€ž$\Rightarrow$â€œ: Ist $c$ konform, existiert nach Definition~\ref{def:lauf} ein Lauf
+	$s_0,\ldots,s_k$ mit $\delta(s_{i-1},c_i)=s_i$. Nach Definition~\ref{def:prozessgraph}
+	ist dann $(s_{i-1},s_i,c_i)\in E$ für alle $i$, also bildet $v_i:=s_i$ die geforderte
+	Pfadeinbettung.
+
+	â€ž$\Leftarrow$â€œ: Existiert eine solche Knotenfolge $v_0=s_0,\ldots,v_k$ mit
+	$(v_{i-1},v_i,c_i)\in E$, so gilt nach Definition~\ref{def:prozessgraph}
+	$\delta(v_{i-1},c_i)=v_i$ für alle $i$. Da $\delta$ eine Funktion ist
+	(Definition~\ref{def:prozessautomat}), ist diese Folge der \emph{eindeutige} Lauf von
+	$P$ auf $c$ mit $s_i=v_i$, also ist $c$ konform. \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	\label{bem:einfacher-fall}
+	Satz~\ref{satz:pfadcharakterisierung} reduziert die Konformitätsprüfung auf die
+	Einbettbarkeit eines \emph{einfachen, beschrifteten Pfades} $G_c$ in $G_P$ -- ein
+	Spezialfall des allgemeinen Subgraph-Enthaltenseins-Problems. Während das allgemeine
+	Problem (zwei beliebige Graphen, Einbettung unter Knotenpermutation bzw. zyklischer
+	Rotation) nach~\cite{epp2026subgraph} eine scharfe untere Schranke
+	$\Omega(n^{3-\varepsilon})$ unter SETH besitzt, ist die Pfad-Einbettung \emph{ab dem
+	festen Startknoten $s_0$} wegen der Determiniertheit von $\delta$ trivial in
+	$\Theta(k)$ entscheidbar (Satz~\ref{satz:optimalitaet-sequenz}): An jedem Knoten $v_i$
+	existiert höchstens \emph{eine} mit $c_{i+1}$ beschriftete ausgehende Kante, sodass
+	keine Suche über mehrere Kandidaten und keine Rotation erforderlich ist. Der
+	allgemeine, schwere Fall des Subgraph-Problems tritt erst dann wieder auf, wenn der
+	Startknoten \emph{nicht fest} ist oder wenn -- wie in
+	Abschnitt~\ref{sec:permutierbar} -- mehrere Kanten mit unterschiedlichen Beschriftungen
+	in beliebiger Reihenfolge durchlaufen werden dürfen.
+\end{bemerkung}
+
+\subsection{Permutierbare optionale Teilschritte}
+\label{sec:permutierbar}
+
+Viele Geschäftsprozesse enthalten Phasen, in denen mehrere optionale Teilschritte
+\emph{in beliebiger Reihenfolge}, jedoch jeweils höchstens einmal, ausgeführt werden
+dürfen, bevor der Prozess fortgesetzt wird -- etwa das Hinzufügen mehrerer unabhängiger
+Zusatzoptionen zu einer Bestellung (Geschenkverpackung, Expresslieferung, Gutscheincode,
+Versicherung), deren Reihenfolge fachlich irrelevant ist.
+
+\begin{definition}[Sammelzustand mit permutierbaren Teilschritten]
+	\label{def:sammelzustand}
+	Ein Zustand $s_c \in S$ heißt \emph{Sammelzustand mit $r$ permutierbaren optionalen
+	Teilschritten}, wenn ein Operationssatz
+	$\Sigma_{\mathrm{opt}} = \{\sigma_1,\ldots,\sigma_r\} \subseteq \Sigma$ sowie eine
+	Abschlussoperation $\sigma_{\mathrm{done}} \in \Sigma$ existieren, sodass für jede
+	Teilmenge $T \subseteq \{1,\ldots,r\}$ der bereits ausgeführten Operationen und jedes
+	$j \notin T$ gilt: Aus dem zu $T$ korrespondierenden (logischen) Zwischenzustand ist
+	$\sigma_j$ zulässig und führt zum Zwischenzustand $T \cup \{j\}$; aus dem
+	Zwischenzustand zu $T=\{1,\ldots,r\}$ (alle Teilschritte ausgeführt, oder ein
+	beliebiges zulässiges $T$, falls $\sigma_{\mathrm{done}}$ auch früher erlaubt ist)
+	führt $\sigma_{\mathrm{done}}$ in den Folgezustand des Prozesses.
+\end{definition}
+
+\begin{lemma}[Zustandsraum-Explosion bei naiver Automatenkodierung]
+	\label{lem:zustandsexplosion}
+	Sei $s_c$ ein Sammelzustand mit $r$ permutierbaren optionalen Teilschritten gemäß
+	Definition~\ref{def:sammelzustand}, und seien für je zwei verschiedene Teilmengen
+	$T \neq T' \subseteq \{1,\ldots,r\}$ die jeweils zulässigen Restoperationen
+	$\Sigma_{\mathrm{opt}} \setminus T$ und $\Sigma_{\mathrm{opt}} \setminus T'$
+	verschieden (d.\,h. $\Sigma(s_T) \neq \Sigma(s_{T'})$ für die zu $T$ bzw. $T'$
+	gehörigen Zwischenzustände $s_T,s_{T'}$). Dann benötigt \emph{jeder} deterministische
+	Prozessautomat, der diesen Sammelzustand abbildet, mindestens $2^r$ Zustände, also
+	$|S| \geq 2^r$.
+\end{lemma}
+
+\begin{proof}
+	Wir zeigen, dass die $2^r$ Zwischenzustände $s_T$, $T \subseteq \{1,\ldots,r\}$,
+	paarweise \emph{verschieden} sein müssen -- ein Argument in der Tradition des
+	Myhill-Nerode-Theorems für reguläre Sprachen, angewandt auf
+	Erreichbarkeits-Äquivalenzklassen von Zuständen.
+
+	Angenommen, $s_T = s_{T'}$ für zwei verschiedene Teilmengen $T \neq T'$. Da $\delta$
+	als Funktion eines einzelnen Zustands definiert ist
+	(Definition~\ref{def:prozessautomat}), folgt $\Sigma(s_T) = \Sigma(s_{T'})$ -- die
+	Menge der von $s_T$ aus zulässigen Operationen hängt nur vom Zustand selbst ab, nicht
+	von der â€žHistorieâ€œ, über die er erreicht wurde. Dies widerspricht jedoch der
+	Voraussetzung $\Sigma(s_T) \neq \Sigma(s_{T'})$ für $T \neq T'$.
+
+	Also müssen alle $2^r$ Teilmengen $T \subseteq \{1,\ldots,r\}$ auf paarweise
+	verschiedene Zustände $s_T \in S$ abgebildet werden, woraus $|S| \geq 2^r$ folgt.
+	\qedhere
+\end{proof}
+
+\begin{bemerkung}
+	Lemma~\ref{lem:zustandsexplosion} ist die formale Begründung dafür, dass ein
+	SC-REST-Server für Sammelzustände \emph{nicht} naiv $\delta$ über den vollständigen
+	Potenzmengen-Zustandsraum $2^{\{1,\ldots,r\}}$ kodieren sollte: Bereits für $r=20$
+	permutierbare Teilschritte ergäbe dies über $10^6$ Zustände allein für diese eine
+	Prozessphase. Stattdessen genügt es, gemäß Satz~\ref{satz:permutierbar-subgraph} eine
+	kompakte Repräsentation der Größe $O(r)$ zu führen und die Konformität einer
+	beobachteten Teilreihenfolge mittels des Subgraph Algorithmus zu prüfen.
+\end{bemerkung}
+
+\begin{definition}[Signaturfolgen für Sammelzustände]
+	\label{def:signaturfolge-sammel}
+	Für einen Sammelzustand $s_c$ mit Operationssatz
+	$\Sigma_{\mathrm{opt}}=\{\sigma_1,\ldots,\sigma_r\}$ sei $\sigma^P =
+	[\sigma_1,\ldots,\sigma_r]$ die \emph{kanonische Reihenfolge} (z.\,B. die im
+	Prozessmodell dokumentierte Referenzreihenfolge). Eine vom Client beobachtete
+	Ausführungsreihenfolge $c' = (c'_1,\ldots,c'_r)$ ist eine Permutation von
+	$\Sigma_{\mathrm{opt}}$. Wir bezeichnen mit $\sigma^{C}=[c'_1,\ldots,c'_r]$ die
+	zugehörige \emph{Beobachtungsfolge}.
+\end{definition}
+
+\begin{satz}[Verifikation permutierbarer Teilschritte via Subgraph Algorithmus]
+	\label{satz:permutierbar-subgraph}
+	Sei $s_c$ ein Sammelzustand mit $r$ permutierbaren optionalen Teilschritten und sei
+	$c'=(c'_1,\ldots,c'_r)$ eine vom Client vollständig durchlaufene Beobachtungsfolge
+	(jede Operation aus $\Sigma_{\mathrm{opt}}$ genau einmal, in beliebiger Reihenfolge).
+	Dann gilt:
+	\begin{enumerate}
+		\item[(a)] Die Aussage â€ž$c'$ ist eine zulässige Reihenfolge (Permutation) der
+		      Operationen aus $\Sigma_{\mathrm{opt}}$â€œ ist äquivalent zur Aussage â€ždie
+		      Signaturfolge $\sigma^{C}$ ist -- als Multimenge -- identisch zu
+		      $\sigma^{P}$, d.\,h. $\sigma^{C}$ entsteht aus $\sigma^{P}$ durch
+		      Anwendung einer Permutation auf die Indexmenge $\{1,\ldots,r\}$â€œ.
+		\item[(b)] Beschränkt man die zulässigen Umordnungen auf \emph{zyklische
+		      Rotationen} von $\sigma^{P}$ (z.\,B. weil eine Teilmenge der $r$
+		      Teilschritte eine vom Prozessdesign vorgegebene relative Ordnung
+		      beibehalten muss, die nur als Ganzes zyklisch verschoben werden darf), so
+		      lässt sich die Prüfung von (a) mit dem Subgraph Algorithmus aus
+		      \cite{epp2026subgraph} in $\Theta(r^3)$ Zeit durchführen, und diese
+		      Laufzeit ist nach dem Optimalitätssatz von~\cite{epp2026subgraph}
+		      asymptotisch optimal unter SETH: Keine Prüfung ist in
+		      $O(r^{3-\varepsilon})$ Zeit für $\varepsilon>0$ möglich.
+		\item[(c)] Im allgemeinen Fall (beliebige Permutationen statt zyklischer
+		      Rotationen) genügt bereits eine Sortierung der Signaturfolgen in
+		      $O(r \log r)$ Zeit, um (a) zu entscheiden.
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	\textbf{(a)} Da jede Operation aus $\Sigma_{\mathrm{opt}}$ in $c'$ nach Voraussetzung
+	genau einmal vorkommt, ist $c'$ per Definition eine Permutation von
+	$(\sigma_1,\ldots,\sigma_r)$. Die zugehörige Signaturfolge $\sigma^{C}$ entsteht somit
+	aus $\sigma^{P}=[\sigma_1,\ldots,\sigma_r]$ durch Umordnung gemäß genau dieser
+	Permutation. Umgekehrt definiert jede Umordnung von $\sigma^{P}$, die als Multimenge
+	mit $\sigma^{P}$ übereinstimmt, eindeutig eine Permutation von
+	$\{1,\ldots,r\}$ und damit eine zulässige Ausführungsreihenfolge im Sinne von
+	Definition~\ref{def:sammelzustand} (jede Operation wird, unabhängig von der
+	Reihenfolge, genau einmal ausgeführt und überführt den Sammelzustand in den
+	Folgezustand des Prozesses).
+
+	\textbf{(b)} Wende den Subgraph Algorithmus aus~\cite{epp2026subgraph} auf die beiden
+	Sequenzen $\sigma^{P}$ und $\sigma^{C}$ an: Beide haben Länge $r$, die
+	Spalten-Signaturen $\sigma_j = \sum_i A_{ij}2^i + j\cdot 2^r$ werden für beide Folgen
+	gebildet (hier interpretiert als $1\times r$-â€žAdjazenzmatrizenâ€œ über dem
+	Operationsalphabet, wobei $A_{ij}=1$ gdw. die $i$-te Operation an Position $j$ der
+	jeweiligen Folge steht). Für jede der $r$ zyklischen Rotationen von $\sigma^{C}$ wird
+	via LCS geprüft, ob $\sigma^{P}\subseteq\mathrm{rot}_k(\sigma^{C})$ gilt
+	(Satz~2 in~\cite{epp2026subgraph}). Nach Satz~â€žLaufzeitâ€œ und
+	Satz~â€žOptimalität des Subgraph Algorithmusâ€œ aus~\cite{epp2026subgraph} ist diese
+	Prüfung in $\Theta(r^3)$ durchführbar und unter SETH nicht in
+	$O(r^{3-\varepsilon})$ für $\varepsilon>0$ verbesserbar -- die untere Schranke aus
+	\cite{epp2026subgraph} (kombiniert aus Eingabe-Leseschranke, Notwendigkeit aller
+	Rotationen und der SETH-basierten LCS-Schranke) übertragen sich unverändert, da die
+	Signaturkonstruktion injektiv ist (Lemma â€žEindeutigkeit der Signaturenâ€œ,
+	\cite{epp2026subgraph}) und somit keine Information verloren geht.
+
+	\textbf{(c)} Da Signaturen nach \cite{epp2026subgraph} (Lemma â€žEindeutigkeit der
+	Signaturenâ€œ) injektiv und damit als Schlüssel für eine Ordnungsrelation geeignet sind,
+	kann man $\sigma^{C}$ und $\sigma^{P}$ jeweils in $O(r\log r)$ sortieren und
+	elementweise vergleichen: Gleichheit der sortierten Folgen ist äquivalent zur
+	Multimengen-Gleichheit aus (a). Dies ist günstiger als $\Theta(r^3)$, jedoch nur
+	anwendbar, wenn \emph{beliebige} Permutationen zulässig sind und keine relative
+	Ordnung zwischen Teilgruppen der $r$ Operationen erhalten bleiben muss. \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	\label{bem:permutierbar-fazit}
+	Satz~\ref{satz:permutierbar-subgraph} zeigt eine doppelte Erweiterung gegenüber
+	\cite{epp2026subgraph}: Erstens wird der Subgraph Algorithmus von seinem
+	ursprünglichen Anwendungsfeld (AST-Vergleich, Graph-Deduplizierung) auf die
+	Konformitätsprüfung permutierbarer API-Teilschritte \emph{übertragen}. Zweitens zeigt
+	Lemma~\ref{lem:zustandsexplosion} zusammen mit Satz~\ref{satz:permutierbar-subgraph},
+	dass die signaturbasierte Prüfung eine \emph{exponentielle} Raumersparnis erzielt: Statt
+	$\Omega(2^r)$ Zuständen im naiv kodierten Automaten genügt eine Signaturfolge der
+	Größe $O(r)$ zuzüglich einer Prüfung in $\Theta(r^3)$ -- ein klassischer
+	Zeit-Raum-Trade-off, der für praktisch relevante $r$ (typischerweise $r \le 20$, siehe
+	Abbildung~\ref{fig:komplexitaet}) deutlich zugunsten der signaturbasierten Methode
+	ausfällt, da $2^{20} \approx 10^6 \gg 20^3 = 8000$.
+\end{bemerkung}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=\textwidth]{plots/plot3_komplexitaet.pdf}
+	\caption{Links: Vergleich der Konformitätsprüfung einer festen, linearen
+	Aufrufsequenz ($O(k)$, Satz~\ref{satz:optimalitaet-sequenz}) mit der signaturbasierten
+	Prüfung permutierbarer Teilschritte mittels Subgraph Algorithmus und zyklischer
+	Rotation ($\Theta(r^3)$, Satz~\ref{satz:permutierbar-subgraph}). Beide Kurven wachsen
+	polynomial, jedoch mit unterschiedlichem Grad -- die lineare Sequenzprüfung bleibt
+	für alle betrachteten Größen um Größenordnungen günstiger, was die in
+	Bemerkung~\ref{bem:einfacher-fall} beschriebene strukturelle Vereinfachung
+	widerspiegelt. Rechts: Vergleich des Subgraph Algorithmus ($\Theta(r^3)$) mit der
+	naiven vollständigen Permutationsprüfung ($O(r!\cdot r^2)$,
+	vgl.~\cite{epp2026subgraph}) auf logarithmischer Skala für $r=1,\ldots,12$. Bereits ab
+	$r\approx 6$ übersteigt die naive Methode die rotationsbasierte Methode um mehrere
+	Größenordnungen, was Lemma~\ref{lem:zustandsexplosion} und
+	Bemerkung~\ref{bem:permutierbar-fazit} empirisch illustriert.}
+	\label{fig:komplexitaet}
+\end{figure}
+
+\subsection{Spekulative Vorbereitung (Prefetching)}
+\label{sec:prefetch}
+
+Da der Server gemäß Definition~\ref{def:prozessautomat} für jeden Zustand $s$ die Menge
+$N(s)$ der erreichbaren Folgezustände \emph{vollständig kennt}, kann er bereits während
+der Bedenkzeit des Clients Vorbereitungsarbeiten für alle $s' \in N(s)$ anstoßen.
+
+\begin{definition}[Latenzmodell]
+	\label{def:latenzmodell}
+	Für eine Operation $\sigma$ mit $\delta(s,\sigma)=s'$ seien:
+	\begin{itemize}
+		\item $T_{\mathrm{exec}}(\sigma)$: die Zeit zur Ausführung der eigentlichen
+		      Fachlogik von $\sigma$ (z.\,B. Schreiboperation, Validierung),
+		\item $T_{\mathrm{prep}}(s')$: die Zeit, um Ressourcen für den Zustand $s'$
+		      \emph{vorzubereiten} (z.\,B. Vorab-Laden von Referenzdaten, Reservierung von
+		      Inventar, Aufwärmen von Caches),
+		\item $T_{\mathrm{think}}$: die Zeit zwischen dem Eintreffen der Antwort auf die
+		      vorherige Operation (die in Zustand $s$ überführt hat) und dem Eintreffen
+		      der nächsten Anfrage $\sigma$ des Clients (\emph{Bedenkzeit}).
+	\end{itemize}
+	\textbf{Ohne Prefetching} beginnt die Vorbereitung von $s'$ erst, nachdem $\sigma$
+	eingetroffen ist:
+	\[
+		E[L_{\text{ohne}}] = T_{\mathrm{prep}}(s') + T_{\mathrm{exec}}(\sigma).
+	\]
+	\textbf{Mit Prefetching} startet der Server, sobald $\pi(id)=s$ erreicht ist, für
+	\emph{jedes} $s'' \in N(s)$ parallel eine Vorbereitung. Trifft $\sigma$ mit
+	$\delta(s,\sigma)=s'$ ein, ist die Vorbereitung für $s'$ bereits
+	$\min(T_{\mathrm{think}}, T_{\mathrm{prep}}(s'))$ weit fortgeschritten:
+	\[
+		E[L_{\mathrm{pf}}] = \max\bigl(T_{\mathrm{prep}}(s') - T_{\mathrm{think}},\, 0\bigr)
+		+ T_{\mathrm{exec}}(\sigma).
+	\]
+\end{definition}
+
+\begin{satz}[Latenzgewinn durch Prefetching]
+	\label{satz:latenzgewinn}
+	Unter dem Latenzmodell aus Definition~\ref{def:latenzmodell} gilt für den
+	Latenzgewinn $\Delta := E[L_{\text{ohne}}] - E[L_{\mathrm{pf}}]$:
+	\[
+		\Delta = \min\bigl(T_{\mathrm{think}},\, T_{\mathrm{prep}}(s')\bigr) \;\geq\; 0.
+	\]
+	Insbesondere wird die Vorbereitungszeit $T_{\mathrm{prep}}(s')$ \emph{vollständig}
+	durch Prefetching verborgen, sobald $T_{\mathrm{think}} \geq T_{\mathrm{prep}}(s')$.
+\end{satz}
+
+\begin{proof}
+	Wir unterscheiden zwei Fälle.
+
+	\textbf{Fall 1: $T_{\mathrm{think}} \geq T_{\mathrm{prep}}(s')$.} Dann ist
+	$T_{\mathrm{prep}}(s') - T_{\mathrm{think}} \leq 0$, also
+	$\max(T_{\mathrm{prep}}(s')-T_{\mathrm{think}},0) = 0$ und somit
+	$E[L_{\mathrm{pf}}] = T_{\mathrm{exec}}(\sigma)$. Es folgt
+	\[
+		\Delta = \bigl(T_{\mathrm{prep}}(s') + T_{\mathrm{exec}}(\sigma)\bigr)
+		- T_{\mathrm{exec}}(\sigma) = T_{\mathrm{prep}}(s')
+		= \min(T_{\mathrm{think}}, T_{\mathrm{prep}}(s')).
+	\]
+
+	\textbf{Fall 2: $T_{\mathrm{think}} < T_{\mathrm{prep}}(s')$.} Dann ist
+	$T_{\mathrm{prep}}(s')-T_{\mathrm{think}} > 0$, also
+	$\max(T_{\mathrm{prep}}(s')-T_{\mathrm{think}},0) = T_{\mathrm{prep}}(s')-T_{\mathrm{think}}$
+	und somit
+	\[
+		E[L_{\mathrm{pf}}] = \bigl(T_{\mathrm{prep}}(s')-T_{\mathrm{think}}\bigr)
+		+ T_{\mathrm{exec}}(\sigma).
+	\]
+	Es folgt
+	\[
+		\Delta = \bigl(T_{\mathrm{prep}}(s')+T_{\mathrm{exec}}(\sigma)\bigr)
+		- \bigl((T_{\mathrm{prep}}(s')-T_{\mathrm{think}})+T_{\mathrm{exec}}(\sigma)\bigr)
+		= T_{\mathrm{think}}
+		= \min(T_{\mathrm{think}}, T_{\mathrm{prep}}(s')).
+	\]
+
+	In beiden Fällen gilt $\Delta = \min(T_{\mathrm{think}}, T_{\mathrm{prep}}(s'))$, und
+	da $T_{\mathrm{think}}, T_{\mathrm{prep}}(s') \geq 0$ ist auch $\Delta \geq 0$.
+	\qedhere
+\end{proof}
+
+\begin{bemerkung}[Kosten des Prefetchings]
+	\label{bem:prefetch-kosten}
+	Satz~\ref{satz:latenzgewinn} betrachtet nur die \emph{Latenz aus Sicht des Clients}.
+	Die \emph{Kosten} des Prefetchings für den Server skalieren mit dem
+	Verzweigungsgrad $d(s)=|N(s)|$ (Definition~\ref{def:prozessautomat}): Für jeden der
+	$d(s)$ möglichen Folgezustände muss eine Vorbereitung angestoßen werden, von denen
+	höchstens eine tatsächlich genutzt wird (\emph{spekulative Verschwendung}). Ein
+	SC-REST-Server sollte daher
+	\begin{itemize}
+		\item den Verzweigungsgrad $d(s)$ pro Zustand durch Prozessdesign begrenzen
+		      (z.\,B. $d(s) \leq D_{\max}$ für ein konfigurierbares $D_{\max}$),
+		\item Vorbereitungsoperationen mit geringen Kosten $T_{\mathrm{prep}}(s')$
+		      priorisieren, da nach Satz~\ref{satz:latenzgewinn} der Gewinn durch
+		      $\min(T_{\mathrm{think}},T_{\mathrm{prep}}(s'))$ für kleine
+		      $T_{\mathrm{prep}}(s')$ ohnehin gering ist, während die
+		      \emph{verschwendeten} Ressourcen proportional zu $T_{\mathrm{prep}}(s')$
+		      anfallen,
+		\item idempotente bzw. abbrechbare Vorbereitungsoperationen verwenden, sodass im
+		      Fall einer nicht genutzten Vorbereitung kein inkonsistenter Zustand
+		      entsteht.
+	\end{itemize}
+	Die empirische Auswertung in Abschnitt~\ref{sec:empirisch} (Abbildung
+	\ref{fig:lernkurve}, rechts) zeigt den kumulierten Effekt des Latenzgewinns über
+	mehrere Prozessinstanzen unter realistischer Trefferquote.
+\end{bemerkung}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=\textwidth]{plots/plot2_latenz.pdf}
+	\caption{Links: Erwartete Antwortlatenz $E[L]$ in Abhängigkeit von der Bedenkzeit
+	$T_{\mathrm{think}}$ des Clients, für $T_{\mathrm{prep}}=100\,\mathrm{ms}$ und
+	$T_{\mathrm{exec}}=50\,\mathrm{ms}$. Ohne Prefetching (rot, gestrichelt) ist die
+	Latenz konstant $T_{\mathrm{prep}}+T_{\mathrm{exec}}=150\,\mathrm{ms}$, unabhängig von
+	$T_{\mathrm{think}}$. Mit Prefetching (blau) sinkt die Latenz linear mit
+	$T_{\mathrm{think}}$ bis zur unteren Schranke $T_{\mathrm{exec}}$, die bei
+	$T_{\mathrm{think}}\geq T_{\mathrm{prep}}$ erreicht wird. Rechts: Latenzgewinn
+	$\Delta=\min(T_{\mathrm{think}},T_{\mathrm{prep}})$ gemäß
+	Satz~\ref{satz:latenzgewinn} -- ein stückweise linearer, konkaver Verlauf mit
+	Sättigung bei $T_{\mathrm{prep}}$.}
+	\label{fig:latenz}
+\end{figure}
+
+\subsection{Robustheit: Idempotenz und Replay-Sicherheit}
+\label{sec:robustheit}
+
+\begin{definition}[Erweiterter Automat mit Idempotenz-Schleifen]
+	\label{def:idempotenz}
+	Sei $P=(S,\Sigma,\delta,s_0,F)$ ein Prozessautomat. Der \emph{idempotent erweiterte
+	Automat} $P^{+}=(S,\Sigma,\delta^{+},s_0,F)$ ist definiert durch
+	\[
+		\delta^{+}(s,\sigma) =
+		\begin{cases}
+			\delta(s,\sigma), & \text{falls } \delta(s,\sigma) \text{ definiert ist}, \\
+			s, & \text{falls } \exists\, s_{\mathrm{prev}}\in S:\ \delta(s_{\mathrm{prev}},\sigma)=s
+			      \text{ und } \sigma \text{ die zuletzt erfolgreich}\\
+			   & \text{ausgeführte Operation war}, \\
+			\text{undef}, & \text{sonst.}
+		\end{cases}
+	\]
+	Das heißt: Wiederholt ein Client genau die Operation, die ihn zuletzt erfolgreich in
+	den aktuellen Zustand $s$ überführt hat (z.\,B. weil die ursprüngliche Antwort durch
+	einen Netzwerkfehler verloren ging), so verbleibt der Automat in $s$ und liefert
+	erneut die (gecachte) Erfolgsantwort, statt eine Sequenzverletzung zu melden.
+\end{definition}
+
+\begin{satz}[Replay-Sicherheit]
+	\label{satz:replay}
+	Sei $P^{+}$ der idempotent erweiterte Automat zu $P$ gemäß
+	Definition~\ref{def:idempotenz}, und sei $c=(c_1,\ldots,c_k)$ vollständig konform
+	bezüglich $P$ mit Lauf $s_0,\ldots,s_k$. Sei $\hat c$ eine Sequenz, die aus $c$ durch
+	beliebig häufige unmittelbare Wiederholung einzelner Elemente entsteht (d.\,h. jedes
+	$\hat c_j \in \{c_i, c_i\}$ für ein passendes $i$, wobei die relative Reihenfolge der
+	$c_i$ erhalten bleibt und Wiederholungen stets unmittelbar auf das Original folgen).
+	Dann ist $\hat c$ vollständig konform bezüglich $P^{+}$, und der erreichte Endzustand
+	ist identisch zu $s_k$.
+\end{satz}
+
+\begin{proof}
+	Wir zeigen die Aussage durch Induktion über die Position $j$ in $\hat c$, mit der
+	Invariante, dass nach Verarbeitung des durch $\hat c_1,\ldots,\hat c_j$ definierten
+	Präfixes der Zustand von $P^{+}$ gleich $s_i$ ist, wobei $i$ die Anzahl der
+	\emph{nicht wiederholten} (d.\,h. â€žneuenâ€œ) Elemente in $\hat c_1,\ldots,\hat c_j$ ist.
+
+	\textbf{Fall â€žneues Elementâ€œ:} Ist $\hat c_j = c_{i+1}$ ein bisher nicht in dieser
+	Position wiederholtes Element, so gilt nach Induktionsannahme
+	$\pi(id)=s_i$ und nach Konformität von $c$ ist $\delta(s_i,c_{i+1})=s_{i+1}$
+	definiert; nach Definition~\ref{def:idempotenz} gilt $\delta^{+}=\delta$ in diesem
+	Fall, also $\pi(id):=s_{i+1}$.
+
+	\textbf{Fall â€žWiederholungâ€œ:} Ist $\hat c_j$ eine unmittelbare Wiederholung von
+	$\hat c_{j-1}=c_{i+1}$ (der zuletzt erfolgreich ausgeführten Operation, die
+	$\pi(id)$ von $s_i$ nach $s_{i+1}$ überführt hat), so greift der zweite Fall von
+	Definition~\ref{def:idempotenz} mit $s=s_{i+1}$, $s_{\mathrm{prev}}=s_i$,
+	$\sigma=c_{i+1}$: $\delta^{+}(s_{i+1},c_{i+1})=s_{i+1}$, also bleibt
+	$\pi(id)=s_{i+1}$ unverändert -- die Anzahl der â€žneuenâ€œ Elemente bleibt $i+1$, die
+	Invariante bleibt erhalten.
+
+	Nach Verarbeitung von $\hat c$ entspricht die Anzahl der â€žneuenâ€œ Elemente genau $k$
+	(da $c$ vollständig $k$ Elemente hat und jede Wiederholung per Definition keinem
+	neuen Element entspricht), also ist $\pi(id)=s_k$. Da $s_k\in F$ (vollständige
+	Konformität von $c$), ist auch $\hat c$ vollständig konform bezüglich $P^{+}$ mit
+	demselben Endzustand. \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	Satz~\ref{satz:replay} zeigt, dass die strikte Sequenzkontrolle aus
+	Definition~\ref{def:sc-rest-server} \emph{nicht} im Widerspruch zu robusten
+	Netzwerkprotokollen steht: Ein Client, der wegen eines Zeitüberschreitung (Timeout)
+	eine erfolgreiche Anfrage erneut sendet, wird durch $P^{+}$ nicht fälschlich mit
+	\texttt{409 Conflict} abgewiesen. In der Praxis wird $\delta^{+}$ üblicherweise mittels
+	eines \emph{Idempotency-Key}-Headers realisiert (vgl. die Diskussion bei
+	Helland~\cite{helland2007} zu â€žat-least-onceâ€œ-Semantik in verteilten Systemen): Der
+	Server speichert zu jedem $(id, \text{Idempotency-Key})$-Paar die zuletzt gesendete
+	Antwort und liefert diese bei Wiederholung erneut aus, ohne die Fachlogik erneut
+	auszuführen.
+\end{bemerkung}
+
+\section{Empirische Veranschaulichung}
+\label{sec:empirisch}
+
+Zur Veranschaulichung der formalen Ergebnisse aus Abschnitt~\ref{sec:analyse} wird die
+Einführung eines SC-REST-Servers in einem simulierten Szenario betrachtet: Ein
+Integrations-Team bindet schrittweise einen neuen Client an den Bestellprozess aus
+Beispiel~\ref{bsp:bestellprozess} (Abbildung~\ref{fig:automat}) an.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=\textwidth]{plots/plot4_lernkurve.pdf}
+	\caption{Links: Simulierter Anteil von \texttt{409 Conflict}-Antworten über
+	$n=1,\ldots,30$ bearbeitete Prozessinstanzen, modelliert als exponentieller
+	Lernprozess $p(n)=p_\infty+(p_0-p_\infty)e^{-\lambda n}$ mit $p_0=0{,}42$,
+	$p_\infty=0{,}015$, $\lambda=0{,}18$ (durchgezogene blaue Kurve) und einer
+	binomialverteilten Stichprobe mit $m=40$ Anfragen je Instanz (rote Balken,
+	Zufallsgenerator-Seed $42$). Die anfänglich hohe Fehlerrate sinkt rasch, da
+	Sequenzverletzungen gemäß Satz~\ref{satz:korrektheit}(c) sofort und mit präziser
+	\texttt{allowedOperations}-Angabe zurückgemeldet werden -- der Client kann sein
+	Verhalten unmittelbar korrigieren. Eine Restfehlerrate $p_\infty>0$ bleibt bestehen
+	(z.\,B. durch seltene Edge-Cases oder konkurrierende Prozessinstanzen). Rechts:
+	Kumulierte Latenzeinsparung gemäß $\sum_n (1-p(n))\cdot m \cdot T_{\mathrm{prep}}$ mit
+	$T_{\mathrm{prep}}=100\,\mathrm{ms}$ -- jede konform abgeschlossene Anfrage profitiert
+	vom in Satz~\ref{satz:latenzgewinn} bewiesenen Latenzgewinn durch Prefetching, sodass
+	sich der Gesamtgewinn über viele Prozessinstanzen linear mit der Trefferquote
+	$1-p(n)$ aufsummiert.}
+	\label{fig:lernkurve}
+\end{figure}
+
+Die Kombination der Abbildungen~\ref{fig:automat}, \ref{fig:latenz},
+\ref{fig:komplexitaet} und \ref{fig:lernkurve} veranschaulicht den vollständigen
+Wirkungszusammenhang des SC-REST-Patterns: Der Prozessautomat
+(Abbildung~\ref{fig:automat}) definiert sowohl die zulässigen Sequenzen als auch die
+Menge $\Sigma(s)$, die im Fehlerfall kommuniziert wird (Satz~\ref{satz:korrektheit});
+diese Information ermöglicht serverseitiges Prefetching mit beweisbarem Latenzgewinn
+(Abbildung~\ref{fig:latenz}, Satz~\ref{satz:latenzgewinn}); für lineare Abschnitte des
+Prozesses bleibt die Prüfung dabei $\Theta(k)$-optimal, während permutierbare Abschnitte
+strukturell auf den optimalen Subgraph Algorithmus zurückgeführt werden
+(Abbildung~\ref{fig:komplexitaet}, Satz~\ref{satz:permutierbar-subgraph}); und der
+Gesamtnutzen kumuliert über den Lebenszyklus einer Client-Integration
+(Abbildung~\ref{fig:lernkurve}).
+
+\section{Implementierung}
+\label{sec:implementierung}
+
+Abschnitt~\ref{sec:pattern} hat bereits die Kernfunktion \texttt{handle\_request}
+(Algorithmus~\ref{lst:transition}) eingeführt. Listing~\ref{lst:flask} zeigt eine
+vollständigere Referenzimplementierung als Flask-Middleware, die die
+Übergangsfunktion $\delta$ deklarativ definiert, Prefetching gemäß
+Abschnitt~\ref{sec:prefetch} anstößt und die Problem-Detail-Antworten aus
+Abschnitt~\ref{sec:pattern} erzeugt.
+
+\begin{lstlisting}[language=Python, label=lst:flask, caption=Referenzimplementierung eines SC-REST-Prozessautomaten in Flask]
+from dataclasses import dataclass, field
+from typing import Dict, Tuple, Set, List
+from concurrent.futures import ThreadPoolExecutor
+from flask import Flask, jsonify, request, abort
+
+app = Flask(__name__)
+executor = ThreadPoolExecutor(max_workers=8)
+
+@dataclass
+class ProcessAutomaton:
+    states: Set[str]
+    delta: Dict[Tuple[str, str], str]
+    start: str
+    final: Set[str]
+    pi: Dict[str, str] = field(default_factory=dict)
+
+    def allowed_ops(self, state: str) -> List[str]:
+        return [op for (s, op) in self.delta if s == state]
+
+    def reachable_states(self, state: str) -> Set[str]:
+        return {self.delta[(state, op)]
+                for op in self.allowed_ops(state)}
+
+
+# Definition 2: Prozessautomat fuer den Bestellprozess
+order_process = ProcessAutomaton(
+    states={"s0", "s1", "s2", "s3", "s4", "s5"},
+    delta={
+        ("s0", "POST /cart"):        "s1",
+        ("s1", "POST /cart/items"):  "s2",
+        ("s2", "POST /cart/items"):  "s2",
+        ("s2", "POST /checkout"):    "s3",
+        ("s3", "POST /payment"):     "s4",
+        ("s4", "POST /confirm"):     "s5",
+    },
+    start="s0",
+    final={"s5"},
+)
+
+
+def prefetch_resources(state: str) -> None:
+    """Definition 9/10: spekulative Vorbereitung fuer alle s' in N(s)."""
+    for target_state in order_process.reachable_states(state):
+        executor.submit(prepare_state_resources, target_state)
+
+
+def prepare_state_resources(target_state: str) -> None:
+    # z.B. Inventar reservieren, Zahlungsdienstleister vorab
+    # autorisieren, Bestaetigungs-Template vorrendern, ...
+    ...
+
+
+@app.route("/orders/<order_id>/<path:op_path>", methods=["POST"])
+def process_step(order_id: str, op_path: str):
+    operation = f"POST /{op_path}"
+    current_state = order_process.pi.get(order_id, order_process.start)
+
+    next_state = order_process.delta.get((current_state, operation))
+
+    if next_state is None:
+        # Satz 1 (Korrektheit, Fehlerlokalisierung):
+        # Zustand bleibt unveraendert, Fehler ist eindeutig lokalisiert
+        return jsonify({
+            "type": "https://api.example.com/probs/sequence-violation",
+            "title": "Ungueltige Operation fuer aktuellen Prozesszustand",
+            "status": 409,
+            "instance": f"/orders/{order_id}",
+            "currentState": current_state,
+            "attemptedOperation": operation,
+            "allowedOperations":
+                order_process.allowed_ops(current_state),
+        }), 409
+
+    # Konformer Uebergang (Satz 1b: Completeness)
+    result = execute_business_logic(operation, order_id)
+    order_process.pi[order_id] = next_state
+
+    # Satz 5 (Latenzgewinn): Vorbereitung fuer N(next_state)
+    # waehrend der Bedenkzeit des Clients anstossen
+    prefetch_resources(next_state)
+
+    return jsonify({
+        "orderId": order_id,
+        "state": next_state,
+        "result": result,
+        "_links": hateoas_links(order_process, next_state, order_id),
+    }), 201
+\end{lstlisting}
+
+\section{Von SC-REST zu HST: Horizon State Transfer}
+\label{sec:sst}
+
+\subsection{Motivation: Das Navigationsdefizit von SC-REST}
+\label{sec:hst-motivation}
+
+Das Akronym REST steht für \emph{Representational State Transfer}; namensgebend ist die
+Beschränkung der \emph{Zustandslosigkeit} der Kommunikation~\cite{fielding2000}. Präzise
+gefasst verlangt diese Beschränkung, dass jede Anfrage alle zur Bearbeitung notwendigen
+Informationen enthält und der Server keinen \emph{Sitzungszustand} (\emph{session state})
+führt -- also keinen Zustand, der ausschließlich der Kommunikation mit einem bestimmten
+Client dient und ohne den frühere Anfragen dieses Clients nicht interpretierbar wären.
+Davon zu unterscheiden ist der \emph{Ressourcenzustand} (in~\cite{fielding2000} auch als
+Teil des \emph{application state} verstanden): persistente, über die Ressourcen-URI
+adressierbare Daten, die unabhängig vom anfragenden Client existieren.
+
+Die Bemerkung zur Zustandslosigkeit in Abschnitt~\ref{sec:pattern} stellt fest, dass
+SC-REST diese Unterscheidung respektiert: $\pi(id)=s$ ist Ressourcenzustand, kein
+Sitzungszustand. SC-REST ist insofern bereits REST-konform. Konsequent zu Ende gedacht
+zeigt sich jedoch eine zweite, bislang unadressierte Asymmetrie zwischen Server und
+Client -- das \emph{Navigationsdefizit}.
+
+Formal kennt der Server zu jedem Zeitpunkt nicht nur den aktuellen Zustand
+$\pi(id)=s$, sondern den \emph{gesamten} Prozessautomaten
+$P=(S,\Sigma,\delta,s_0,F)$ -- insbesondere für jeden erreichbaren Zustand $s'\in N(s)$
+wiederum $\Sigma(s')$, $N(s')$ usw. Gemäß Definition~\ref{def:sc-rest-server} übermittelt
+ein SC-REST-Server in seiner Antwort jedoch nur $\Sigma(\delta(s,\sigma))$ -- also
+Informationen über genau \emph{einen} Schritt voraus. Ein Client, der $k>1$ Schritte
+planen möchte (etwa um zu entscheiden, ob ein mehrstufiger Vorgang überhaupt zulässig
+ist, oder um -- wie in Abschnitt~\ref{sec:prefetch} diskutiert -- Ressourcen für mehrere
+Schritte vorzubereiten), muss dafür $k$ aufeinanderfolgende Anfragen stellen,
+\emph{obwohl} die hierfür nötige Information (die Einschränkung von $\delta$ auf den
+relevanten Ausschnitt) bereits zum Zeitpunkt der ersten Antwort vollständig und
+deterministisch beim Server vorliegt.
+
+\begin{bemerkung}
+	\label{bem:navigationsdefizit}
+	Das Navigationsdefizit ist kein Verstoß gegen die Zustandslosigkeit im Sinne
+	von~\cite{fielding2000} -- die einzelne Anfrage bleibt selbstbeschreibend, und der
+	Server speichert keinen client-spezifischen Sitzungszustand. Es handelt sich jedoch
+	um eine \emph{Unvollständigkeit der übertragenen Repräsentation} gegenüber dem, was
+	REST mit der Beschränkung der \emph{Selbstbeschreibungsfähigkeit} und insbesondere
+	mit HATEOAS anstrebt: Eine Repräsentation soll dem Client ermöglichen, ohne über die
+	Anwendung hinausgehendes Wissen fortzufahren. SC-REST realisiert HATEOAS nur mit
+	\emph{Horizont $h=1$} -- der folgende Abschnitt führt den Horizont $h$ als expliziten
+	Parameter ein und verallgemeinert SC-REST entsprechend.
+\end{bemerkung}
+
+Ziel dieses Abschnitts ist die formale Definition eines Patterns, das dieses Defizit
+behebt, ohne die Zustandslosigkeit (Abschnitt~\ref{sec:hst-zustandslosigkeit})
+einzuschränken. Wir nennen dieses Pattern \emph{Horizon State Transfer (HST)}, da --
+wie sich zeigen wird -- die zusätzlich übertragene Information genau der von $s$ aus in
+höchstens $h$ Schritten erreichbare Teilgraph des Prozessautomaten ist
+(formal behandelt in~\cite{epp2026subgraph}), also der \emph{Navigationshorizont} der
+Tiefe $h$. Der Name ist bewusst in Analogie zu \emph{Representational State Transfer}
+gewählt: Während REST in jeder Antwort eine \emph{Repräsentation} des aktuellen Zustands
+überträgt, überträgt HST zusätzlich den vollständigen \emph{Horizont} $G_s^h$ des
+Zustandsraums -- den lokal relevanten Ausschnitt des Navigationswissens, das der Server
+ohnehin vollständig besitzt, begrenzt durch den Parameter $h$.
+
+\subsection{Das HST-Pattern: Formale Definition}
+\label{sec:hst-definition}
+
+\begin{definition}[$h$-Schritt-Horizont-Subgraph]
+	\label{def:horizont-subgraph}
+	Sei $P=(S,\Sigma,\delta,s_0,F)$ ein Prozessautomat, $s\in S$ und $h\in\mathbb{N}_0$.
+	Wir fassen $P$ als gerichteten, mit $\Sigma$ beschrifteten Graphen $(S,\to)$ auf, mit
+	$s_1\xrightarrow{\sigma}s_2 :\Leftrightarrow \delta(s_1,\sigma)=s_2$. Für
+	$(c_1,\ldots,c_k)\in\Sigma^k$ sei $\delta^{*}(s,(c_1,\ldots,c_k))$ der gemäß
+	Definition~\ref{def:lauf} erreichte Zustand nach Ausführung von
+	$(c_1,\ldots,c_k)$ ab $s$, mit $\delta^{*}(s,())=s$. Der \emph{$h$-Schritt-Horizont-Subgraph}
+	$G_s^h=(V_s^h,E_s^h)$ ist definiert durch
+	\[
+		V_s^h := \bigl\{\, s' \in S \;\bigm|\; \exists\, k\le h,\ \exists\, c\in\Sigma^k:\
+		s'=\delta^{*}(s,c) \,\bigr\}
+	\]
+	und, für $h\ge1$,
+	\[
+		E_s^h := \bigl\{\, (s_1,\sigma,s_2) \;\bigm|\; s_1\in V_s^{h-1},\ \sigma\in\Sigma(s_1),\
+		s_2=\delta(s_1,\sigma) \,\bigr\},
+	\]
+	mit $E_s^0:=\emptyset$. Jeder Knoten $s'\in V_s^h\setminus V_s^{h-1}$ (für $h\ge1$)
+	heißt \emph{Randknoten} von $G_s^h$; die Menge der Randknoten wird mit $\partial
+	G_s^h$ bezeichnet.
+\end{definition}
+
+Anschaulich ist $G_s^h$ der induzierte Teilgraph, der durch eine Breitensuche (BFS) der
+Tiefe $h$ ab $s$ im Prozessautomaten entsteht -- einschließlich aller Kanten, deren
+Startknoten in höchstens $h-1$ Schritten ab $s$ erreichbar ist.
+
+\begin{bemerkung}
+	\label{bem:sc-rest-spezialfall}
+	$G_s^0=(\{s\},\emptyset)$, und $G_s^1$ entspricht genau der in
+	Definition~\ref{def:sc-rest-server} übertragenen Information: $V_s^1=\{s\}\cup N(s)$
+	mit den Kanten $\{(s,\sigma,\delta(s,\sigma))\mid \sigma\in\Sigma(s)\}$. \textbf{SC-REST
+	ist somit der Spezialfall $h=1$ von HST.}
+\end{bemerkung}
+
+\begin{definition}[HST-Repräsentation]
+	\label{def:hst-repraesentation}
+	Sei $(id,s)$ eine Prozessinstanz gemäß Definition~\ref{def:prozessinstanz} und
+	$h\in\mathbb{N}$ ein (server- oder anwendungsseitig konfigurierter)
+	\emph{Horizontparameter}. Die \emph{HST-Repräsentation} der Prozessinstanz ist das
+	Tupel
+	\[
+		R(id,s,h) := \bigl(\, \rho(id,s),\ s,\ G_s^h \,\bigr),
+	\]
+	wobei $\rho(id,s)$ die fachliche Ressourcenrepräsentation (Nutzdaten der
+	Prozessinstanz) bezeichnet und $G_s^h$ gemäß Definition~\ref{def:horizont-subgraph}
+	als annotierter Graph übertragen wird: Jeder Knoten $s'\in V_s^h$ wird auf eine URI
+	(bzw.\ einen URI-Template-Parameter) abgebildet, jede Kante $(s_1,\sigma,s_2)\in
+	E_s^h$ auf einen HATEOAS-Link mit Methode, Pfad und annotiertem Zielzustand $s_2$.
+\end{definition}
+
+\begin{definition}[HST-Operationssemantik]
+	\label{def:hst-server}
+	Sei $P=(S,\Sigma,\delta,s_0,F)$ ein Prozessautomat, $\pi(id)=s$ der aktuelle Zustand
+	einer Prozessinstanz und $h\in\mathbb{N}$ der Horizontparameter. Auf eine eingehende
+	Anfrage $\sigma\in\Sigma$ reagiert ein \emph{HST-Server} wie folgt:
+	\begin{enumerate}
+		\item \textbf{Falls $\delta(s,\sigma)$ definiert ist:} Wie in
+		Definition~\ref{def:sc-rest-server} (Fachlogik ausführen, $\pi(id):=
+		\delta(s,\sigma)$), jedoch antwortet der Server mit der HST-Repräsentation
+		$R(id,\delta(s,\sigma),h)$ statt nur mit $\Sigma(\delta(s,\sigma))$.
+		\item \textbf{Falls $\delta(s,\sigma)$ undefiniert ist:} Wie in
+		Definition~\ref{def:sc-rest-server} (\texttt{409 Conflict} mit
+		Problem-Detail-Objekt, $\pi(id)$ bleibt unverändert); zusätzlich enthält die
+		Antwort weiterhin $G_s^h$ (unverändert, da $\pi(id)$ unverändert bleibt), sodass
+		der Client den Sequenzfehler unmittelbar im Kontext seines bereits bekannten
+		Horizont-Subgraphen einordnen kann.
+	\end{enumerate}
+\end{definition}
+
+\begin{beispiel}[Bestellprozess mit Horizont $h=2$]
+	\label{bsp:hst-bestellprozess}
+	Für den Prozessautomaten aus Beispiel~\ref{bsp:bestellprozess} und $s=s_1$ (Zustand
+	nach \texttt{POST /cart}) ergibt sich für $h=2$:
+	\[
+		V_{s_1}^2 = \{s_1,s_2,s_3\},
+	\]
+	\[
+		\begin{aligned}
+			E_{s_1}^2 = \bigl\{\, &(s_1,\texttt{POST /cart/items},s_2),\
+				(s_2,\texttt{POST /cart/items},s_2),\\
+				&(s_2,\texttt{POST /checkout},s_3) \,\bigr\}.
+		\end{aligned}
+	\]
+	Ein Client, der $G_{s_1}^2$ erhält, kann \emph{ohne weitere Serveranfrage}
+	feststellen, dass \texttt{POST /checkout} aus $s_1$ direkt nicht zulässig ist, jedoch
+	nach genau einem \texttt{POST /cart/items} zulässig wird -- eine Information, die in
+	der SC-REST-Repräsentation ($h=1$, nur $\Sigma(s_1)=\{\texttt{POST /cart/items}\}$)
+	nicht enthalten ist.
+\end{beispiel}
+
+\subsection{Zustandslosigkeit von HST}
+\label{sec:hst-zustandslosigkeit}
+
+\begin{satz}[Zustandslosigkeit von HST]
+	\label{satz:hst-zustandslosigkeit}
+	Für jeden Horizont $h\in\mathbb{N}$ erfüllt ein HST-Server gemäß
+	Definition~\ref{def:hst-server} die Zustandslosigkeits-Beschränkung
+	nach~\cite{fielding2000}: Der Server führt keinen client-spezifischen
+	Sitzungszustand, und jede Antwort ist eine deterministische Funktion ausschließlich
+	von (a) dem Prozessautomaten $P$ und (b) dem Ressourcenzustand $\pi(id)=s$.
+\end{satz}
+
+\begin{proof}
+	Wir zeigen, dass $R(id,s,h)$ gemäß Definition~\ref{def:hst-repraesentation}
+	vollständig durch $(P,id,s,h)$ bestimmt ist, unabhängig davon, welcher Client die
+	Anfrage stellt oder welche Anfragen zuvor gestellt wurden.
+
+	(1) $\rho(id,s)$ ist nach Definition~\ref{def:prozessinstanz} die fachliche
+	Repräsentation der Ressource $id$ im Zustand $s$ -- eine Funktion von $(id,s)$,
+	unabhängig vom anfragenden Client.
+
+	(2) $G_s^h$ ist nach Definition~\ref{def:horizont-subgraph} eine Funktion von
+	$(P,s,h)$: Die Mengen $V_s^h$ und $E_s^h$ werden ausschließlich mittels
+	$\delta^{*}$ -- also iterierter Anwendung von $\delta$, einer Komponente von $P$ --
+	aus $s$ berechnet. In diese Berechnung geht insbesondere keine Information über die
+	Identität des anfragenden Clients, über dessen vorherige Anfragen oder über andere
+	Prozessinstanzen ein.
+
+	(3) $h$ ist nach Voraussetzung ein server- oder anwendungsseitig (nicht
+	client-sitzungsseitig) konfigurierter Parameter -- etwa eine Konstante des
+	Prozessautomaten $P$ oder ein in der aktuellen Anfrage selbst übermittelter Parameter
+	(z.\,B.\ Query-Parameter \texttt{?horizon=2}); in beiden Fällen ist $h$ Teil der
+	Eingabe der aktuellen Anfrage und keine gespeicherte Information.
+
+	Damit ist $R(id,s,h)=(\rho(id,s),s,G_s^h)$ eine Funktion von $(P,id,s,h)$, wobei $P$
+	statisch (bzw.\ unabhängig versioniert, siehe Abschnitt~\ref{sec:hst-cache}) und
+	$\pi(id)=s$ Ressourcenzustand im Sinne der Bemerkung zur Zustandslosigkeit in
+	Abschnitt~\ref{sec:pattern} ist. Insbesondere benötigt der Server zur Beantwortung
+	\emph{keinen} zusätzlichen Speicher pro Client oder pro Sitzung -- die einzige
+	persistente, über die Anfrage hinaus gespeicherte Information ist $\pi(id)$, welche
+	bereits für SC-REST ($h=1$) als Ressourcenzustand klassifiziert wurde. Da diese
+	Klassifikation nicht von $h$ abhängt, gilt sie für beliebiges $h\in\mathbb{N}$, also
+	auch für HST. \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	\label{bem:zustandslosigkeit-frei}
+	Satz~\ref{satz:hst-zustandslosigkeit} zeigt, dass die Erhöhung des Horizonts $h$
+	\emph{zustandslosigkeitsneutral} ist: $h$ beeinflusst ausschließlich die
+	\emph{Größe} der Antwort (Abschnitt~\ref{sec:hst-groesse}), nicht deren Charakter als
+	zustandslose, selbstbeschreibende Nachricht. Der vermeintliche Zielkonflikt zwischen
+	â€žmehr Navigationsinformation für den Clientâ€œ und â€žREST-Konformitätâ€œ -- der die in
+	Bemerkung~\ref{bem:navigationsdefizit} beschriebene Beschränkung auf $h=1$ in der
+	Praxis oft motiviert -- existiert formal nicht; lediglich der in
+	Abschnitt~\ref{sec:hst-kosten} formalisierte Kosten-Nutzen-Tradeoff begrenzt $h$ auf
+	einen endlichen, optimalen Wert $h^\ast$.
+\end{bemerkung}
+\subsection{Größe des Horizont-Subgraphen}
+\label{sec:hst-groesse}
+
+\begin{lemma}[Größenschranke für $G_s^h$]
+	\label{lem:horizont-groesse}
+	Sei $P=(S,\Sigma,\delta,s_0,F)$ ein Prozessautomat und $d:=\max_{s'\in S}d(s')$ der
+	maximale Verzweigungsgrad (Definition~\ref{def:prozessautomat}). Für jeden Zustand
+	$s\in S$ und jeden Horizont $h\in\mathbb{N}_0$ gilt
+	\[
+		|V_s^h| \;\le\; \sum_{i=0}^{h} d^{\,i} \;=\;
+		\begin{cases}
+			h+1, & d=1,\\[2pt]
+			\dfrac{d^{h+1}-1}{d-1}, & d\ne1.
+		\end{cases}
+	\]
+	Gleichheit gilt genau dann, wenn der von $s$ aus erreichbare Teil von $P$ bis zur
+	Tiefe $h$ ein Baum mit konstantem Verzweigungsgrad $d$ ist, d.\,h.\ wenn
+	$\delta^{*}$ auf Pfaden der Länge $\le h$ ab $s$ injektiv ist (keine zwei
+	verschiedenen solchen Pfade führen zum selben Zustand) und jeder Zustand auf Tiefe
+	$<h$ genau $d$ ausgehende Operationen besitzt.
+\end{lemma}
+
+\begin{proof}
+	Wir zerlegen $V_s^h$ in Schichten $L_0,\ldots,L_h$ mit $L_0:=\{s\}$ und, für
+	$i\ge1$, $L_i:=V_s^i\setminus V_s^{i-1}$ (mit $V_s^{-1}:=\emptyset$). Wir zeigen
+	$|L_i|\le d^i$ für alle $i\le h$ durch Induktion über $i$.
+
+	\emph{Induktionsanfang} ($i=0$): $L_0=\{s\}$, also $|L_0|=1=d^0$.
+
+	\emph{Induktionsschritt}: Sei $|L_{i-1}|\le d^{i-1}$ gezeigt. Jeder Knoten
+	$s'\in L_i$ ist nach Definition~\ref{def:horizont-subgraph} von der Form
+	$s'=\delta(s'',\sigma)$ für ein $s''\in L_{i-1}$ und $\sigma\in\Sigma(s'')$ -- denn
+	$s'\in V_s^i\setminus V_s^{i-1}$ bedeutet, dass der kürzeste Pfad von $s$ nach $s'$
+	genau Länge $i$ hat, also über einen Knoten $s''$ auf Tiefe $i-1$ verläuft
+	(andernfalls wäre $s'$ bereits über einen kürzeren Pfad in $V_s^{i-1}$ enthalten).
+	Da $d(s'')\le d$ für alle $s''\in S$ (Definition von $d$ als Maximum), gibt es zu
+	jedem $s''\in L_{i-1}$ höchstens $d$ Operationen $\sigma\in\Sigma(s'')$ und damit
+	höchstens $d$ Kandidaten für Nachfolgeknoten. Da
+	$L_i\subseteq\bigcup_{s''\in L_{i-1}}\{\delta(s'',\sigma)\mid\sigma\in\Sigma(s'')\}$,
+	folgt
+	\[
+		|L_i| \le |L_{i-1}|\cdot d \le d^{i-1}\cdot d = d^i.
+	\]
+
+	Damit folgt $|V_s^h|=\sum_{i=0}^{h}|L_i|\le\sum_{i=0}^{h}d^i$.
+
+	\emph{Gleichheitsfall}: Gleichheit $|L_i|=d\cdot|L_{i-1}|$ für alle $i\le h$ gilt
+	genau dann, wenn (a) jeder Knoten $s''\in L_{i-1}$ \emph{genau} $d$ ausgehende
+	Operationen besitzt (der maximale Verzweigungsgrad wird an jedem dieser Knoten
+	tatsächlich erreicht) \emph{und} (b) die resultierenden $d\cdot|L_{i-1}|$
+	Nachfolgeknoten paarweise verschieden sind und nicht bereits in $V_s^{i-1}$ liegen.
+	Bedingungen (a) und (b) für alle $i\le h$ sind äquivalent dazu, dass $\delta^{*}$ auf
+	Pfaden der Länge $\le h$ ab $s$ injektiv ist und jeder Knoten auf Tiefe $<h$
+	Verzweigungsgrad genau $d$ hat -- d.\,h.\ der von $s$ aus erreichbare Teilgraph bis
+	Tiefe $h$ ist ein $d$-närer Baum. \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	\label{bem:horizont-groesse-praxis}
+	Lemma~\ref{lem:horizont-groesse} zeigt, dass $|V_s^h|$ für $d\ge2$
+	\emph{exponentiell} in $h$ wächst. Für die in Abschnitt~\ref{sec:permutierbar}
+	betrachteten Sammelzustände mit $r$ permutierbaren optionalen Teilschritten ist dies
+	kein Widerspruch zu Bemerkung~\ref{bem:permutierbar-fazit}: Dort wird $|S|\ge2^r$ als
+	\emph{untere} Schranke für die naive Kodierung des \emph{gesamten} Automaten gezeigt,
+	während Lemma~\ref{lem:horizont-groesse} eine \emph{obere} Schranke für den
+	\emph{lokal pro Anfrage übertragenen} Teilgraphen $G_s^h$ liefert -- für $h<r$ ist
+	$|V_s^h|$ um Größenordnungen kleiner als $|S|$. Abbildung~\ref{fig:horizont-groesse}
+	illustriert das Wachstum von $|V_s^h|$ für $d\in\{1,2,3\}$.
+\end{bemerkung}
+
+\begin{figure}[ht]
+	\centering
+	\begin{tikzpicture}[
+		every node/.style={circle, draw, minimum size=7mm, font=\footnotesize},
+		level distance=13mm,
+		level 1/.style={sibling distance=30mm},
+		level 2/.style={sibling distance=15mm},
+		edge from parent/.style={draw, -{Stealth[length=2mm]}},
+		>=Stealth
+		]
+		\node[fill=mainblue!25, draw=mainblue, line width=0.9pt] (s) {$s$}
+			child { node[fill=mainblue!25, draw=mainblue, line width=0.9pt] (a) {$s_a$}
+				child { node[fill=mainblue!25, draw=mainblue, line width=0.9pt] {$s_{a1}$}
+					child { node[draw=lightgray, text=darkgray, dashed] {$\cdots$} edge from parent[draw=lightgray, dashed] }
+				}
+				child { node[fill=mainblue!25, draw=mainblue, line width=0.9pt] {$s_{a2}$}
+					child { node[draw=lightgray, text=darkgray, dashed] {$\cdots$} edge from parent[draw=lightgray, dashed] }
+				}
+			}
+			child { node[fill=mainblue!25, draw=mainblue, line width=0.9pt] (b) {$s_b$}
+				child { node[fill=mainblue!25, draw=mainblue, line width=0.9pt] {$s_{b1}$}
+					child { node[draw=lightgray, text=darkgray, dashed] {$\cdots$} edge from parent[draw=lightgray, dashed] }
+				}
+				child { node[fill=mainblue!25, draw=mainblue, line width=0.9pt] {$s_{b2}$}
+					child { node[draw=lightgray, text=darkgray, dashed] {$\cdots$} edge from parent[draw=lightgray, dashed] }
+				}
+			};
+		\node[draw=none, fill=none, font=\scriptsize] at ($(s)!0.4!(a) + (-0.25,0)$) {$\sigma_1$};
+		\node[draw=none, fill=none, font=\scriptsize] at ($(s)!0.4!(b) + (0.25,0)$) {$\sigma_2$};
+		\draw[dashed, accentred, line width=0.8pt, rounded corners]
+			($(s.north)+(-4.6,0.35)$) rectangle ($(b.south)+(4.6,-1.55)$);
+		\node[draw=none, fill=none, shape=rectangle, accentred, font=\scriptsize, anchor=north west]
+			at ($(s.north)+(-4.55,0.3)$) {Horizont $h=2$: $G_s^2$};
+	\end{tikzpicture}
+	\caption{Schematische Darstellung des Horizont-Subgraphen $G_s^2$ (blau, innerhalb
+	der gestrichelten roten Umrandung) für einen Prozessautomaten mit Verzweigungsgrad
+	$d=2$ ab dem aktuellen Zustand $s$. Gemäß Lemma~\ref{lem:horizont-groesse} enthält
+	$G_s^2$ höchstens $\sum_{i=0}^2 2^i=1+2+4=7$ Knoten -- hier mit Gleichheit, da der
+	dargestellte Ausschnitt ein binärer Baum ist. Die hellgrau gestrichelten Knoten
+	($\cdots$) liegen auf Tiefe $3$, also außerhalb des Horizonts, und sind dem Client
+	ohne weitere Anfrage nicht bekannt: Erst nach einem Zustandsübergang innerhalb des
+	Horizonts (z.\,B.\ $s\xrightarrow{\sigma_1}s_a$) liefert der Server den
+	\emph{aktualisierten} Subgraphen $G_{s_a}^2$, dessen Randknoten dann diese zuvor
+	verborgenen Zustände enthält. Der Horizont â€žwandertâ€œ also mit der Prozessinstanz
+	mit, ohne dass der Server jemals den vollständigen Automaten $P$ in einer einzelnen
+	Antwort übertragen muss.}
+	\label{fig:horizont-baum}
+\end{figure}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=\textwidth]{plots/plot5_horizont_groesse.pdf}
+	\caption{Links: Anzahl der Knoten $|V_s^h|$ des Horizont-Subgraphen (logarithmische
+	Skala) in Abhängigkeit vom Horizont $h$, für maximale Verzweigungsgrade $d=1$
+	(lineare Prozessabschnitte ohne Verzweigung, z.\,B.\ der Hauptpfad in
+	Beispiel~\ref{bsp:bestellprozess}), $d=2$ und $d=3$, gemäß der Schranke aus
+	Lemma~\ref{lem:horizont-groesse} (mit angenommener Gleichheit als Worst-Case). Für
+	$d=1$ wächst $|V_s^h|$ nur linear ($h+1$), für $d\ge2$ exponentiell -- bereits für
+	$d=3$ und $h=8$ ergeben sich knapp $10^4$ Knoten. Rechts: geschätzte
+	Übertragungsgröße der HST-Repräsentation $R(id,s,h)$ in Kilobyte, unter der
+	konservativen Annahme von ca.\ 250\,Byte pro Knoten bzw.\ Kante (URI, Methode,
+	Zustandskennung, JSON-Strukturoverhead). Die gestrichelte Linie markiert 8\,KB als
+	groben Richtwert für eine â€žleichtgewichtigeâ€œ HTTP-Antwort. Für $d=2$ wird dieser Wert
+	bereits bei $h\approx4$, für $d=3$ bei $h\approx3$ überschritten -- dies motiviert
+	den in Abschnitt~\ref{sec:hst-kosten} formalisierten kostenoptimalen Horizont
+	$h^\ast$, der für praxisrelevante Parameter deutlich kleiner ist als die in
+	Abschnitt~\ref{sec:permutierbar} betrachteten Werte $r\le20$.}
+	\label{fig:horizont-groesse}
+\end{figure}
+
+\subsection{Lokale Vollständigkeit und Planungshorizont}
+\label{sec:hst-vollstaendigkeit}
+
+\begin{satz}[Lokale Vollständigkeit von $G_s^h$]
+	\label{satz:lokale-vollstaendigkeit}
+	Sei $(id,s)$ eine Prozessinstanz und $G_s^h$ der zugehörige Horizont-Subgraph gemäß
+	Definition~\ref{def:horizont-subgraph}. Für jede Aufrufsequenz $c=(c_1,\ldots,c_k)$
+	mit $k\le h$ gilt: Die Frage, ob $c$ ab $s$ (partiell) konform ist
+	(Definition~\ref{def:konformitaet}), und -- falls ja -- welcher Zustand
+	$\delta^{*}(s,c)$ erreicht wird, ist \emph{vollständig aus $G_s^h$ entscheidbar},
+	ohne weitere Anfrage an den Server.
+\end{satz}
+
+\begin{proof}
+	Wir zeigen zunächst die monotone Inklusion $V_s^i\subseteq V_s^j$ für $i\le j$: Jeder
+	in höchstens $i$ Schritten ab $s$ erreichbare Zustand ist insbesondere auch in
+	höchstens $j\ge i$ Schritten erreichbar (man kann dieselbe Sequenz verwenden), also
+	folgt die Inklusion direkt aus Definition~\ref{def:horizont-subgraph}.
+
+	Wir zeigen die Behauptung nun durch Induktion über $k\le h$.
+
+	\emph{Induktionsanfang} ($k=0$): $c=()$ ist nach Definition~\ref{def:konformitaet}
+	trivial konform mit $\delta^{*}(s,())=s\in V_s^h$ für jedes $h\ge0$.
+
+	\emph{Induktionsschritt}: Sei die Aussage für $k-1<h$ Schritte gezeigt, d.\,h.\ es
+	existiert (unter der Annahme, dass $(c_1,\ldots,c_{k-1})$ konform ist) ein Zustand
+	$s_{k-1}:=\delta^{*}(s,(c_1,\ldots,c_{k-1}))\in V_s^{k-1}$, und dieser Zustand sowie
+	die Konformität von $(c_1,\ldots,c_{k-1})$ sind aus $G_s^h$ bestimmbar. Wegen
+	$k-1\le h-1$ und der oben gezeigten Monotonie gilt $s_{k-1}\in V_s^{h-1}$.
+
+	Zu prüfen ist, ob $\delta(s_{k-1},c_k)$ definiert ist. Da $s_{k-1}\in V_s^{h-1}$, ist
+	nach Definition~\ref{def:horizont-subgraph} \emph{jede} Operation
+	$\sigma\in\Sigma(s_{k-1})$ Quelle einer Kante
+	$(s_{k-1},\sigma,\delta(s_{k-1},\sigma))\in E_s^h$ -- die Kantenmenge $E_s^h$
+	enthält per Definition alle ausgehenden Kanten \emph{jedes} Knotens aus
+	$V_s^{h-1}$, unabhängig davon, ob deren Zielknoten neu (Randknoten von $G_s^h$)
+	oder bereits in $V_s^{h-1}$ enthalten ist. Somit gilt:
+	\begin{itemize}
+		\item $\delta(s_{k-1},c_k)$ ist definiert $\iff$ es existiert eine Kante
+		      $(s_{k-1},c_k,s_k)\in E_s^h$ für ein $s_k\in V_s^h$ -- diese Bedingung ist
+		      direkt aus der (endlichen) Kantenmenge $E_s^h$ ablesbar.
+		\item Ist $\delta(s_{k-1},c_k)$ definiert, so ist der gemäß
+		      Definition~\ref{def:prozessautomat} eindeutige Zielknoten $s_k$ dieser
+		      Kante genau $\delta^{*}(s,(c_1,\ldots,c_k))$, und $s_k\in V_s^{k}\subseteq
+		      V_s^h$ (wieder nach Monotonie, $k\le h$).
+		\item Ist $\delta(s_{k-1},c_k)$ undefiniert, so ist $c$ ab Schritt $k$ nicht
+		      konform -- auch diese Information ist aus $E_s^h$ ablesbar (Abwesenheit
+		      einer entsprechenden Kante mit Quelle $s_{k-1}$ und Beschriftung $c_k$).
+	\end{itemize}
+	In beiden Fällen ist die Konformität von $c$ bis Schritt $k$ und ggf.\ der erreichte
+	Zustand $\delta^{*}(s,(c_1,\ldots,c_k))$ vollständig aus $G_s^h$ bestimmbar. Per
+	Induktion folgt die Behauptung für alle $k\le h$. \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	\label{bem:hst-permutierbar}
+	Satz~\ref{satz:lokale-vollstaendigkeit} hat eine direkte Konsequenz für die in
+	Abschnitt~\ref{sec:permutierbar} behandelten Sammelzustände: Ist $s_c$ ein
+	Sammelzustand mit $r$ permutierbaren optionalen Teilschritten
+	(Definition~\ref{def:sammelzustand}) und wählt der Server den Horizont $h\ge r$, so
+	enthält $G_{s_c}^h$ -- mit $d=2$ an jedem Zwischenzustand (Operation $\sigma_j$
+	ausführen oder nicht) und damit nach Lemma~\ref{lem:horizont-groesse} mit
+	$|V_{s_c}^h|\le\sum_{i=0}^r 2^i=2^{r+1}-1$ Knoten -- den \emph{vollständigen}
+	Entscheidungsbaum aller $r!$ möglichen Ausführungsreihenfolgen. Ein Client kann damit
+	für eine \emph{beliebige}, lokal geplante Reihenfolge $c'$ der $r$ Teilschritte
+	mittels Satz~\ref{satz:lokale-vollstaendigkeit} \emph{vorab und lokal} prüfen, ob
+	$c'$ konform ist -- und kann zusätzlich, sofern $c'$ als Beobachtungsfolge im Sinne
+	von Definition~\ref{def:signaturfolge-sammel} interpretiert wird, den Subgraph
+	Algorithmus aus~\cite{epp2026subgraph} \emph{client-seitig} auf den in $G_{s_c}^h$
+	enthaltenen Signaturen ausführen (Satz~\ref{satz:permutierbar-subgraph}(b),
+	$\Theta(r^3)$). Die Konformitätsprüfung für Sammelzustände wird damit
+	\emph{vollständig dezentralisiert}: Der Server muss sie nur noch im Fehlerfall (echte
+	Sequenzverletzung, etwa durch einen vom Plan abweichenden Client) erneut
+	durchführen, vgl.\ Definition~\ref{def:hst-server}(2).
+\end{bemerkung}
+\subsection{Kostenoptimaler Horizont}
+\label{sec:hst-kosten}
+
+\begin{definition}[Kostenmodell für den Horizont]
+	\label{def:kostenmodell-horizont}
+	Sei $\alpha>0$ die marginale Übertragungskosten pro Knoten/Kante des
+	Horizont-Subgraphen (z.\,B.\ in normierten Bandbreiten- oder Byte-Einheiten) und
+	$\beta>0$ die Kosten eines zusätzlichen Anfrage-Antwort-Zyklus
+	(\emph{Round-Trip}), der anfällt, wenn der Client eine Operation ausführen möchte,
+	deren Zielzustand außerhalb von $G_s^h$ liegt (\emph{Horizontüberschreitung}). Wir
+	modellieren die Anzahl der vom Client über den Horizont $h$ hinaus benötigten
+	Schritte als eine Zufallsvariable mit geometrisch fallender Überschreitungswahrscheinlichkeit:
+	Mit \emph{Fortsetzungswahrscheinlichkeit} $p\in(0,1)$ sei
+	$\Pr[\text{Client überschreitet Horizont }h] = p^{h+1}$, und im Überschreitungsfall
+	seien im Erwartungswert $\frac{1}{1-p}$ zusätzliche Round-Trips erforderlich
+	(geometrische Reihe über weitere mögliche Überschreitungen). Die \emph{erwarteten
+	Gesamtkosten} für Horizont $h\in\mathbb{N}_0$ sind dann
+	\[
+		C(h) := \alpha\cdot|V_s^h| + \beta\cdot\frac{p^{h+1}}{1-p}
+		     \;=\; \alpha\sum_{i=0}^{h} d^i \;+\; \beta\cdot\frac{p^{h+1}}{1-p},
+	\]
+	wobei $|V_s^h|=\sum_{i=0}^h d^i$ gemäß Lemma~\ref{lem:horizont-groesse}
+	(Gleichheitsfall, als Worst-Case-Schätzung des Verzweigungsgrads $d\ge1$) verwendet
+	wird.
+\end{definition}
+
+\begin{satz}[Existenz und Charakterisierung des optimalen Horizonts]
+	\label{satz:optimaler-horizont}
+	Sei $C(h)$ wie in Definition~\ref{def:kostenmodell-horizont}, mit $d\ge1$,
+	$p\in(0,1)$, $\alpha,\beta>0$. Dann gilt:
+	\begin{enumerate}
+		\item[(a)] Die Differenzfunktion $\Delta C(h):=C(h+1)-C(h)=\alpha\,d^{h+1} -
+		\beta\,p^{h+1}$ ist streng monoton wachsend in $h\in\mathbb{N}_0$.
+		\item[(b)] $C$ ist \emph{unimodal}: Es existiert ein eindeutiges
+		$h^\ast\in\mathbb{N}_0$, sodass $C(0)>C(1)>\cdots>C(h^\ast)\le
+		C(h^\ast+1)<C(h^\ast+2)<\cdots$ (mit der Konvention, dass die linke Kette leer
+		ist, falls bereits $\Delta C(0)\ge0$). Insbesondere gilt
+		$C(h^\ast)=\min_{h\in\mathbb{N}_0}C(h)$.
+		\item[(c)] Es gilt die geschlossene Form
+		\[
+			h^\ast = \max\!\left(0,\ \left\lceil \log_{d/p}\!\left(\frac{\beta}{\alpha}\right)
+			\right\rceil - 1\right).
+		\]
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	\textbf{(a)} Da $d\ge1$ und $0<p<1$, gilt $d/p>1$ (im Fall $d=1$ ist $d/p=1/p>1$
+	wegen $p<1$; im Fall $d>1$ erst recht). Für die zweite Differenz gilt
+	\[
+		\Delta C(h+1)-\Delta C(h)
+		= \bigl(\alpha d^{h+2}-\beta p^{h+2}\bigr) - \bigl(\alpha d^{h+1}-\beta p^{h+1}\bigr)
+		= \alpha d^{h+1}(d-1) + \beta p^{h+1}(1-p).
+	\]
+	Da $d\ge1$ (also $d-1\ge0$), $0<p<1$ (also $1-p>0$) und $\alpha,\beta>0$, ist der
+	zweite Summand $\beta p^{h+1}(1-p)$ stets strikt positiv und der erste Summand
+	nicht-negativ. Also $\Delta C(h+1)-\Delta C(h)>0$ für alle $h\ge0$, d.\,h.\ $\Delta C$
+	ist streng monoton wachsend.
+
+	\textbf{(b)} Für $h\to\infty$ gilt $\Delta C(h)=\alpha d^{h+1}-\beta p^{h+1}$. Da
+	$p^{h+1}\to0$ und $d^{h+1}\ge1$ für alle $h\ge0$ (mit $d^{h+1}\to\infty$ falls $d>1$
+	bzw.\ $d^{h+1}=1$ konstant falls $d=1$), folgt $\Delta C(h)\to\alpha\cdot
+	\lim_{h\to\infty}d^{h+1}\ge\alpha>0$ für $h\to\infty$ -- insbesondere wird
+	$\Delta C(h)$ für hinreichend großes $h$ positiv. Da $\Delta C$ nach (a) streng
+	monoton wachsend ist und für große $h$ positiv wird, gibt es höchstens einen
+	Vorzeichenwechsel von â€ž$<0$â€œ zu â€ž$\ge0$â€œ. Sei
+	\[
+		h^\ast := \min\{\, h\in\mathbb{N}_0 \mid \Delta C(h)\ge0 \,\}
+	\]
+	(wohldefiniert, da die Menge nichtleer ist nach obigem Grenzwertargument). Für
+	$h<h^\ast$ gilt $\Delta C(h)<0$ (Minimalität von $h^\ast$ und Monotonie von
+	$\Delta C$ schließen $\Delta C(h)\ge0$ für $h<h^\ast$ aus), also
+	$C(h+1)<C(h)$: $C$ ist auf $\{0,\ldots,h^\ast\}$ streng fallend. Für $h\ge h^\ast$
+	gilt $\Delta C(h)\ge0$ wegen Monotonie von $\Delta C$ und $\Delta C(h^\ast)\ge0$,
+	also $C(h+1)\ge C(h)$, mit strikter Ungleichung für $h>h^\ast$ (da $\Delta C(h)>
+	\Delta C(h^\ast)\ge0$ für $h>h^\ast$ nach strikter Monotonie). Also ist $C$ auf
+	$\{h^\ast,h^\ast+1,\ldots\}$ streng wachsend. Damit ist $C$ unimodal mit eindeutigem
+	Minimum bei $h^\ast$.
+
+	\textbf{(c)} Die definierende Bedingung $\Delta C(h)\ge0$ ist äquivalent zu
+	\[
+		\alpha\,d^{h+1}\ge\beta\,p^{h+1}
+		\iff \left(\frac{d}{p}\right)^{h+1}\ge\frac{\beta}{\alpha}
+		\iff (h+1)\log\frac{d}{p}\ge\log\frac{\beta}{\alpha}
+		\iff h+1\ge\log_{d/p}\frac{\beta}{\alpha},
+	\]
+	wobei die letzte Äquivalenz gilt, da $\log(d/p)>0$ nach (a) und das Logarithmieren
+	einer Ungleichung mit positiver Basis $>1$ die Richtung erhält. Der kleinste
+	ganzzahlige Wert $h\ge0$ mit $h+1\ge\log_{d/p}(\beta/\alpha)$ ist
+	\[
+		h = \max\!\left(0,\ \left\lceil\log_{d/p}\!\left(\frac{\beta}{\alpha}\right)\right\rceil-1\right)
+	\]
+	(die Maximumsbildung mit $0$ deckt den Fall ab, dass bereits $\Delta C(0)\ge0$ gilt,
+	also $\log_{d/p}(\beta/\alpha)\le1$). Nach Definition von $h^\ast$ in (b) ist dies
+	genau $h^\ast$. \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	\label{bem:optimaler-horizont-interpretation}
+	Satz~\ref{satz:optimaler-horizont} bestätigt formal die in
+	Bemerkung~\ref{bem:zustandslosigkeit-frei} aufgeworfene Beobachtung: Der optimale
+	Horizont $h^\ast$ hängt \emph{ausschließlich} vom Kostenverhältnis $\beta/\alpha$
+	(Round-Trip- vs.\ Knotenkosten) und vom Verhältnis $d/p$ (Verzweigungsgrad vs.\
+	Fortsetzungswahrscheinlichkeit) ab, \emph{nicht} jedoch von einer prinzipiellen
+	REST-Inkompatibilität (Satz~\ref{satz:hst-zustandslosigkeit}). Für hochlatente
+	Verbindungen (großes $\beta$, z.\,B.\ mobile Clients) oder Prozesse mit hoher
+	Fortsetzungswahrscheinlichkeit $p$ (lange, vorhersehbare Sequenzen, etwa
+	Sammelzustände gemäß Bemerkung~\ref{bem:hst-permutierbar}) wächst $h^\ast$.
+	Abbildung~\ref{fig:optimaler-horizont} (rechts) zeigt diese Abhängigkeit als
+	Stufenfunktion, da $h^\ast$ ganzzahlig ist. Insbesondere ist für Sammelzustände mit
+	$r$ permutierbaren Teilschritten der Horizont $h^\ast\ge r$ (vollständige
+	Dezentralisierung gemäß Bemerkung~\ref{bem:hst-permutierbar}) gemäß (c) genau dann
+	optimal, wenn $\beta/\alpha\ge(d/p)^{r}$ -- für latenzkritische Anwendungen (großes
+	$\beta/\alpha$) also bereits für moderate $r$ erfüllt, während für
+	latenzunkritische Anwendungen (kleines $\beta/\alpha$) ein kleinerer Horizont
+	$h^\ast<r$ kosteneffizienter ist und die Sammelzustands-Konformität partiell
+	serverseitig verbleibt.
+\end{bemerkung}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=\textwidth]{plots/plot6_optimaler_horizont.pdf}
+	\caption{Links: Gesamtkosten $C(h)$ (logarithmische Skala) gemäß
+	Definition~\ref{def:kostenmodell-horizont} für $\alpha=1$, $\beta=50$, $d=2$ und
+	Fortsetzungswahrscheinlichkeiten $p\in\{0.3,0.5,0.7\}$. Die Sterne markieren das nach
+	Satz~\ref{satz:optimaler-horizont} eindeutige Minimum $h^\ast$: Für $p=0.3$ und
+	$p=0.5$ liegt es bei $h^\ast=2$, für $p=0.7$ bei $h^\ast=3$ -- in Übereinstimmung
+	mit der geschlossenen Form aus (c), denn für $p=0.7$ gilt
+	$\log_{2/0.7}(50)\approx3.83$, also $h^\ast=\lceil3.83\rceil-1=3$. Rechts: optimaler
+	Horizont $h^\ast$ als Funktion des Kostenverhältnisses $\beta/\alpha$
+	(logarithmische Abszisse) für $d=2$ und dieselben $p$-Werte, als Stufenfunktion
+	gemäß (c). Größere $\beta/\alpha$ (teurere Round-Trips relativ zur Payload-Größe,
+	z.\,B.\ bei hoher Netzwerklatenz) und größere $p$ (Prozesse mit tendenziell langen
+	Aufrufsequenzen) führen zu größerem $h^\ast$; die Stufen markieren die in (c)
+	bewiesenen Schwellenwerte $\beta/\alpha=(d/p)^{h+1}$.}
+	\label{fig:optimaler-horizont}
+\end{figure}
+
+\subsection{Versionierung und Cache-Kohärenz via Signaturen}
+\label{sec:hst-cache}
+
+\begin{definition}[Signatur des Horizont-Subgraphen]
+	\label{def:signatur-horizont}
+	Sei $G_s^h=(V_s^h,E_s^h)$ ein Horizont-Subgraph mit einer fest gewählten,
+	kanonischen Aufzählung $V_s^h=\{v_0,\ldots,v_{m-1}\}$ (z.\,B.\ in BFS-Reihenfolge
+	gemäß Definition~\ref{def:horizont-subgraph}, mit $v_0=s$) und sei
+	$\mathrm{idx}:\Sigma\to\{0,\ldots,|\Sigma|-1\}$ eine feste Indizierung des
+	Operationsalphabets. Die \emph{Signatur} von $G_s^h$ ist
+	\[
+		\mathrm{Sig}(G_s^h) := \sum_{(v_i,\sigma,v_j)\in E_s^h}
+		\Bigl(\, i \;+\; j\cdot m \;+\; \mathrm{idx}(\sigma)\cdot m^2 \,\Bigr)\cdot
+		\bigl(2|\Sigma|\,m^2\bigr)^{\,\mathrm{rang}(v_i,\sigma,v_j)},
+	\]
+	wobei $\mathrm{rang}(\cdot)$ eine feste Aufzählung der Kanten $0,1,2,\ldots$
+	bezeichnet. Diese Konstruktion übertragt das Prinzip der Spalten-Signaturen
+	$\sigma_j=\sum_iA_{ij}2^i+j\cdot2^n$ aus~\cite{epp2026subgraph} -- dort für
+	Adjazenzmatrizen von Aufrufsequenzen definiert -- auf die (Knoten-, Kanten-,
+	Beschriftungs-)Tripel von $G_s^h$: Jede Kante wird auf einen Wert im Bereich
+	$[0,2|\Sigma|m^2)$ abgebildet und die Kanten werden, analog zur stellenwertigen
+	Kodierung in~\cite{epp2026subgraph}, mit unterschiedlichen â€žStellenâ€œ (Potenzen von
+	$2|\Sigma|m^2$) gewichtet, sodass $\mathrm{Sig}$ auf der Menge aller Graphen mit
+	höchstens $m$ Knoten über dem Operationsalphabet $\Sigma$ injektiv ist (Übertragung
+	des Eindeutigkeitslemmas aus~\cite{epp2026subgraph} auf die hier verwendete
+	stellenwertige Kodierung).
+\end{definition}
+
+\begin{bemerkung}[Cache-Kohärenz für Navigationsgraphen]
+	\label{bem:cache-kohaerenz}
+	Ein Client speichert $(G_s^h,\mathrm{Sig}(G_s^h))$ lokal. Wird der Prozessautomat
+	$P$ -- etwa im Rahmen einer fachlichen Prozessänderung -- zu $P'$ aktualisiert,
+	sodass sich $\delta$ in einem für $s$ relevanten Bereich ändert, so unterscheidet
+	sich der neue Horizont-Subgraph $(G')_s^h$ von $G_s^h$ in mindestens einer Kante.
+	Da $\mathrm{Sig}$ nach Definition~\ref{def:signatur-horizont} injektiv ist, folgt
+	$\mathrm{Sig}((G')_s^h)\ne\mathrm{Sig}(G_s^h)$. Ein HST-Server kann die aktuelle
+	Signatur in einem \texttt{ETag}-Header der HST-Repräsentation übermitteln; ein
+	Client kann damit in $O(1)$ (Vergleich zweier Zahlen) erkennen, ob sein lokal
+	zwischengespeicherter Horizont-Subgraph noch gültig ist, und nur im Falle einer
+	Änderung eine vollständige Neuübertragung von $G_s^h$ anfordern
+	(\texttt{If-None-Match}-Mechanismus gemäß~\cite{rfc7231}). Dies überträgt das in
+	Abschnitt~\ref{sec:pattern} (Unterabschnitt â€žZustandslosigkeit und SC-RESTâ€œ)
+	beschriebene Prinzip der \texttt{ETag}-basierten Versionsprüfung von einzelnen
+	Ressourcenzuständen auf den \emph{gesamten, im Horizont enthaltenen
+	Navigationsgraphen} -- ein Client kann damit nicht nur erkennen, ob sich
+	\emph{seine} Ressource geändert hat, sondern auch, ob sich die für ihn relevanten
+	\emph{Spielregeln} ($\delta$ eingeschränkt auf $G_s^h$) geändert haben.
+\end{bemerkung}
+
+\subsection{HST als Architekturstil: Generalisierung von REST}
+\label{sec:hst-architekturstil}
+
+Fielding definiert Architekturstile in~\cite{fielding2000} durch sukzessives Hinzufügen
+von Beschränkungen (\emph{constraints}) zu einem â€žNullstilâ€œ ohne jede Beschränkung; REST
+entsteht durch Hinzufügen von Client-Server, Zustandslosigkeit, Cache, Uniform
+Interface, Layered System und (optional) Code-on-Demand. Die in
+Abschnitt~\ref{sec:hst-vollstaendigkeit} bewiesene lokale Vollständigkeit motiviert eine
+\emph{zusätzliche} Beschränkung, mit der sich HST formal als echte Verfeinerung von REST
+einordnen lässt.
+
+\begin{definition}[HST-Architekturstil]
+	\label{def:hst-architekturstil}
+	Der \emph{HST-Architekturstil} ist der REST-Architekturstil~\cite{fielding2000},
+	erweitert um die folgende zusätzliche Beschränkung:
+	\begin{quote}
+		\textbf{Horizont-Lokalität.} Es existiert ein anwendungsweit oder
+		ressourcenspezifisch konfigurierter Horizont $h\ge1$, sodass jede
+		Repräsentation einer zustandsbehafteten Ressource zusätzlich zu den unmittelbar
+		gültigen Übergängen (Uniform Interface / HATEOAS) den vollständigen
+		$h$-Schritt-Horizont-Subgraphen $G_s^h$ gemäß
+		Definition~\ref{def:horizont-subgraph} enthält, sodass jeder Client für
+		Aufrufsequenzen der Länge $\le h$ lokale Vollständigkeit im Sinne von
+		Satz~\ref{satz:lokale-vollstaendigkeit} besitzt.
+	\end{quote}
+\end{definition}
+
+\begin{table}[ht]
+	\centering
+	\renewcommand{\arraystretch}{1.35}
+	\caption{Die REST-Beschränkungen nach~\cite{fielding2000} und ihre Realisierung in
+	SC-REST ($h=1$) bzw.\ HST ($h\ge1$ allgemein).}
+	\label{tab:rest-vergleich}
+	\begin{tabular}{@{}p{3.3cm}p{5.55cm}p{5.55cm}@{}}
+		\toprule
+		REST-Beschränkung & SC-REST ($h=1$) & HST ($h\ge1$, allgemein) \\
+		\midrule
+		Client-Server & unverändert & unverändert \\
+		Zustands\-losigkeit &
+		$\pi(id)=s$ als Ressourcenzustand (Abschn.~\ref{sec:pattern}) &
+		unverändert gültig für beliebiges $h$ (Satz~\ref{satz:hst-zustandslosigkeit}) \\
+		Cache &
+		Standard-HTTP-Caching pro Ressourcenzustand &
+		zusätzlich signaturbasierte Kohärenz für $G_s^h$
+		(Abschn.~\ref{sec:hst-cache}) \\
+		Uniform Interface (\mbox{HATEOAS}) &
+		Links auf $\Sigma(\delta(s,\sigma))$, Horizont $1$ &
+		vollständiger Horizont-Subgraph $G_s^h$, Horizont $h\ge1$ konfigurierbar \\
+		Layered System & unverändert & unverändert \\
+		Code-on-Demand & nicht betrachtet & nicht betrachtet \\
+		\emph{(neu)}\newline Horizont-Lokalität &
+		trivial erfüllt für Sequenzlänge $\le1$ &
+		erfüllt für Sequenzlänge $\le h$ (Satz~\ref{satz:lokale-vollstaendigkeit}) \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\begin{bemerkung}
+	Die Einordnung von HST als \emph{Erweiterung}, nicht als Ersetzung, von REST
+	entspricht Fieldings Methodik~\cite{fielding2000}, Architekturstile inkrementell
+	durch Hinzufügen von Beschränkungen zu definieren. Jede HST-konforme Architektur ist
+	insbesondere REST-konform -- Satz~\ref{satz:hst-zustandslosigkeit} zeigt dies
+	explizit für die Zustandslosigkeits-Beschränkung, die unter allen übrigen
+	Beschränkungen invariant bleibt. HST ist somit, ebenso wie SC-REST, kein
+	alternativer Stil zu REST, sondern eine \emph{Verfeinerung}: SC-REST verfeinert REST
+	um Sequenzkonformität (Abschnitt~\ref{sec:pattern}), und HST verfeinert SC-REST
+	zusätzlich um Horizont-Lokalität. Die Beziehung
+	\[
+		\text{REST} \;\supseteq\; \text{SC-REST} \;\supseteq\; \text{HST}
+	\]
+	(als Mengen von Architekturen, die die jeweiligen Beschränkungen erfüllen) ist
+	gemäß Bemerkung~\ref{bem:sc-rest-spezialfall} sogar eine Gleichheit zwischen
+	SC-REST und HST für $h=1$: SC-REST ist also nicht nur \emph{enthalten} in HST,
+	sondern der Grenzfall $h=1$ \emph{ist} HST.
+\end{bemerkung}
+
+\subsection{Referenzimplementierung: Berechnung des Horizont-Subgraphen}
+\label{sec:hst-implementierung}
+
+Listing~\ref{lst:hst-bfs} erweitert die Middleware aus
+Listing~\ref{lst:transition}/\ref{lst:flask} um eine Breitensuche, die den
+Horizont-Subgraphen $G_s^h$ gemäß Definition~\ref{def:horizont-subgraph} berechnet, und
+um eine Funktion, die diesen Subgraphen gemäß Definition~\ref{def:hst-repraesentation} in
+die HST-Repräsentation einbettet.
+
+\begin{lstlisting}[language=Python, label=lst:hst-bfs, caption=Breitensuchbasierte Berechnung des Horizont-Subgraphen $G_s^h$ und Einbettung in die HST-Repraesentation]
+def horizon_subgraph(process: ProcessAutomaton,
+                      s: str, h: int):
+    """
+    Berechnet G_s^h = (V, E) gemaess Definition
+    "h-Schritt-Horizont-Subgraph" per Breitensuche.
+
+    V: Menge erreichbarer Zustaende (Knoten)
+    E: Liste von (s1, operation, s2)-Tripeln (Kanten)
+    """
+    V = {s}
+    E = []
+    frontier = {s}
+
+    for _ in range(h):
+        next_frontier = set()
+        for s1 in frontier:
+            for op in process.allowed_operations(s1):
+                s2 = process.delta[(s1, op)]
+                E.append((s1, op, s2))
+                if s2 not in V:
+                    V.add(s2)
+                    next_frontier.add(s2)
+        frontier = next_frontier
+        if not frontier:
+            break  # Horizont reicht bis F oder Sackgasse
+
+    return V, E
+
+
+def sst_representation(process: ProcessAutomaton,
+                        instance_id: str, h: int = 2):
+    """
+    Erstellt die HST-Repraesentation R(id, s, h) gemaess
+    Definition "HST-Repraesentation".
+    """
+    s = process.pi[instance_id]
+    V, E = horizon_subgraph(process, s, h)
+
+    return {
+        "orderId": instance_id,
+        "state": s,
+        "_horizon": h,
+        "_graph": {
+            "nodes": sorted(V),
+            "edges": [
+                {"from": s1, "op": op, "to": s2}
+                for (s1, op, s2) in E
+            ],
+        },
+        # h=1-Teilmenge entspricht den bisherigen
+        # HATEOAS-Links (Listing 4, Bemerkung "SC-REST
+        # ist Spezialfall h=1 von HST")
+        "_links": hateoas_links(process, s, instance_id),
+    }
+\end{lstlisting}
+
+\begin{bemerkung}
+	Die Laufzeit von \texttt{horizon\_subgraph} ist $O(|V_s^h|\cdot d)= O(d^{h+1})$
+	(Lemma~\ref{lem:horizont-groesse}), da jede der $h$ BFS-Schichten höchstens
+	$|V_s^h|$ Knoten mit jeweils höchstens $d$ ausgehenden Operationen betrachtet; bei
+	Hashtabellen-basierter Implementierung von $\delta$ (Satz~\ref{satz:laufzeit-pruefung})
+	ist jeder Zugriff $\delta[(s_1,\sigma)]$ in erwarteter konstanter Zeit möglich. Für
+	die in Abbildung~\ref{fig:horizont-groesse} betrachteten praxisrelevanten Horizonte
+	$h\le4$ und $d\le3$ ist dieser Aufwand vernachlässigbar gegenüber der ohnehin
+	anfallenden Fachlogik-Ausführung in Definition~\ref{def:hst-server}.
+\end{bemerkung}
+
+\section{Zusammenfassung}
+
+Diese Arbeit hat mit SC-REST ein formales Pattern für sequenzgebundene REST-Schnittstellen
+entwickelt (Abschnitte~\ref{sec:pattern}--\ref{sec:implementierung}) und dieses Pattern in
+Abschnitt~\ref{sec:sst} zu \emph{HST (Horizon State Transfer)} weiterentwickelt: SC-REST
+übermittelt pro Antwort die im aktuellen Zustand zulässigen Folgeoperationen ($1$-Schritt-
+Horizont), während HST den vollständigen $h$-Schritt-Horizont-Subgraphen $G_s^h$
+überträgt und damit lokale Vollständigkeit für Aufrufsequenzen der Länge $\le h$
+herstellt (Satz~\ref{satz:lokale-vollstaendigkeit}), ohne die Zustandslosigkeit nach
+Fielding~\cite{fielding2000} zu beeinträchtigen (Satz~\ref{satz:hst-zustandslosigkeit}).
+SC-REST ist dabei formal der Spezialfall $h=1$ von HST
+(Bemerkung~\ref{bem:sc-rest-spezialfall}); beide Pattern teilen daher dieselbe
+Anwendungsgrundlage, die im Folgenden zusammengefasst wird, bevor in
+Abschnitt~\ref{sec:ausblick} -- nun unter besonderer Berücksichtigung von HST --
+Erweiterungen und Forschungsrichtungen diskutiert werden.
+
+\subsection{Anwendungen}
+
+Das SC-REST-Pattern (und, mit größerem Horizont, HST) eignet sich insbesondere für:
+\begin{itemize}
+	\item E-Commerce-Checkout-Prozesse (Warenkorb, Versand, Zahlung, Bestätigung) wie in
+	      Beispiel~\ref{bsp:bestellprozess},
+	\item mehrstufige Antrags- und Genehmigungsprozesse in Verwaltung und Finanzwesen
+	      (Einreichung, Prüfung, Freigabe, Auszahlung),
+	\item Onboarding-Flows mit zwingender Reihenfolge (Identitätsprüfung vor
+	      Vertragsabschluss vor Zahlungseinrichtung),
+	\item zustandsbehaftete Geräteprotokolle, die über REST gekapselt werden
+	      (Initialisierung, Kalibrierung, Messung, Abschluss),
+	\item Multi-Step-Formulare und Wizards in Web-Anwendungen, bei denen
+	      Schrittreihenfolgen serverseitig erzwungen werden müssen, um inkonsistente
+	      Zwischenzustände zu verhindern.
+\end{itemize}
+
+Für HST (Abschnitt~\ref{sec:sst}) treten insbesondere solche Anwendungen hinzu, bei denen
+\emph{Planungsvorsprung} fachlich wertvoll ist: Mobile Clients mit instabiler Verbindung
+(großes $\beta$ in Definition~\ref{def:kostenmodell-horizont}, daher größeres $h^\ast$
+nach Satz~\ref{satz:optimaler-horizont}), grafische Prozess-Editoren und Wizard-UIs, die
+dem Nutzer \emph{vorab} alle erreichbaren Folgeschritte mehrerer Ebenen anzeigen möchten
+(â€žFortschrittsanzeigeâ€œ als direkte UI-Repräsentation von $G_s^h$), sowie -- gemäß
+Bemerkung~\ref{bem:hst-permutierbar} -- Sammelzustände mit permutierbaren Teilschritten,
+für die HST mit $h\ge r$ die in Abschnitt~\ref{sec:permutierbar} entwickelte
+signaturbasierte Konformitätsprüfung vollständig auf den Client verlagert.
+
+\subsection{Ausblick}
+\label{sec:ausblick}
+
+Das in dieser Arbeit vorgestellte SC-REST-Pattern und seine Verallgemeinerung zu HST
+(Abschnitt~\ref{sec:sst}) bilden die formale Grundlage für zahlreiche Erweiterungen und
+Forschungsrichtungen, die im Folgenden ausführlich diskutiert werden. Die ersten zwölf
+Unterabschnitte betreffen primär SC-REST und seine in Abschnitt~\ref{sec:analyse} bis
+\ref{sec:implementierung} entwickelten Resultate; die abschließenden Unterabschnitte
+widmen sich speziell den durch HST eröffneten Fragestellungen.
+
+\subsubsection{Formale Spezifikationssprache für Prozessautomaten}
+
+Die Definitionen~\ref{def:prozessautomat}--\ref{def:konformitaet} legen nahe, $\delta$
+nicht imperativ (wie in Listing~\ref{lst:flask}) zu kodieren, sondern \emph{deklarativ} in
+einer maschinenlesbaren Spezifikation. Ein naheliegender Ansatz ist eine Erweiterung von
+OpenAPI um ein Feld \texttt{x-process-state}, das pro Operation den Vorbedingungszustand
+(\texttt{requires-state}) und den Folgezustand (\texttt{transitions-to}) angibt. Aus einer
+solchen Spezifikation ließen sich automatisch (1) die Hashtabelle $\delta$ für
+Satz~\ref{satz:laufzeit-pruefung}, (2) Client-SDKs mit typsicheren Zustandsübergängen, (3)
+interaktive API-Dokumentation mit Zustandsdiagrammen analog zu
+Abbildung~\ref{fig:automat}, und (4) Testsuiten generieren, die systematisch alle
+$\delta(s,\sigma)$ sowie alle erwarteten \texttt{409}-Fälle (alle $(s,\sigma)\notin
+\mathrm{dom}(\delta)$) abdecken. Eine solche DSL würde die in
+Bemerkung~\ref{bem:prefetch-kosten} geforderte Begrenzung $d(s)\leq D_{\max}$ bereits zur
+Designzeit statisch prüfbar machen.
+
+\subsubsection{Verteilte Prozessinstanzen und das Saga-Pattern}
+
+Reale Geschäftsprozesse erstrecken sich häufig über mehrere Microservices, von denen jeder
+nur einen Teil von $\Sigma$ implementiert. Eine natürliche Erweiterung besteht darin, den
+globalen Prozessautomaten $P$ als \emph{Choreographie} mehrerer lokaler Automaten
+$P_1,\ldots,P_n$ zu modellieren, deren Zustände $S_i$ über Ereignisse synchronisiert
+werden -- eine Verbindung zum klassischen Saga-Pattern für verteilte Transaktionen
+\cite{garcia1987}. Im Unterschied zu klassischen Sagas, die primär
+\emph{Kompensationsaktionen} bei Fehlern definieren, würde eine SC-REST-Choreographie
+zusätzlich \emph{präventiv} verhindern, dass ein Client überhaupt eine Operation auslöst,
+deren Vorbedingungen in einem anderen Service noch nicht erfüllt sind. Hierzu wäre
+Satz~\ref{satz:korrektheit} auf ein verteiltes Setting zu verallgemeinern, in dem $\pi(id)$
+nicht von einem einzelnen Server, sondern von einer verteilten, eventuell replizierten
+Datenstruktur verwaltet wird -- mit den entsprechenden Konsistenzfragen (siehe Punkt
+â€žMulti-Tenantâ€œ weiter unten).
+
+\subsubsection{Nichtdeterministische Automaten und parallele Teilprozesse}
+
+Definition~\ref{def:prozessautomat} fordert, dass $\delta$ eine \emph{Funktion} ist
+(deterministisch). Viele Prozesse enthalten jedoch \emph{parallele} Zweige, die
+unabhängig voneinander und potenziell gleichzeitig fortschreiten (im Unterschied zu den in
+Abschnitt~\ref{sec:permutierbar} behandelten \emph{sequentiell, aber in beliebiger
+Reihenfolge} auszuführenden Teilschritten). Eine natürliche Erweiterung ist der Übergang
+von Prozessautomaten zu \emph{Petri-Netzen}~\cite{murata1989}: Stellen (places)
+modellieren Teilprozesse, Marken (tokens) den Fortschritt, und Transitionen werden erst
+â€žfeuerbarâ€œ, wenn alle Vorbedingungs-Stellen markiert sind. Die Konformitätsprüfung
+(Satz~\ref{satz:pfadcharakterisierung}) würde dann zu einer Erreichbarkeitsprüfung im
+Markierungsgraphen des Petri-Netzes, deren Komplexität im Allgemeinen deutlich höher ist
+als $\Theta(k)$ -- ein Forschungsfeld, in dem die Übertragung der
+Subgraph Algorithmus-Technik aus Satz~\ref{satz:permutierbar-subgraph} auf
+Markierungsvektoren ein vielversprechender Ansatzpunkt für zukünftige Arbeiten ist.
+
+\subsubsection{Sicherheit: Geschützte Zustandstoken}
+
+In der hier vorgestellten Form wird $\pi(id)$ serverseitig gespeichert. In hochskalierbaren
+oder Edge-Architekturen kann es vorteilhaft sein, den Zustand $s$ direkt im Client zu
+halten -- kodiert als signiertes JSON Web Token (JWT), das bei jeder Anfrage mitgesendet
+wird. Dies würde die Statelessness im klassischen Sinn vollständig wiederherstellen
+(\emph{kein} serverseitiger Zustand pro Instanz), erfordert jedoch eine kryptografische
+Signatur, die Manipulation des Zustands durch den Client ausschließt (sonst könnte ein
+Client durch direktes Setzen von $s:=s_4$ die Prüfung $\delta(s,\sigma)$ umgehen). Die
+formale Korrektheitsaussage aus Satz~\ref{satz:korrektheit} bliebe in diesem Modell
+gültig, sofern die Signaturprüfung als zusätzliche, der eigentlichen
+$\delta$-Prüfung vorgeschaltete Operation modelliert wird, deren Fehlschlagen ebenfalls zu
+einer (jedoch von \texttt{sequence-violation} zu unterscheidenden,
+\texttt{401}/\texttt{403}-artigen) Fehlerantwort führt.
+
+\subsubsection{Adaptive Vorhersage mittels maschinellem Lernen}
+
+Das Latenzmodell aus Definition~\ref{def:latenzmodell} und Satz~\ref{satz:latenzgewinn}
+geht von einem festen, durch $N(s)$ gegebenen Kandidatensatz für das Prefetching aus. Bei
+hohem Verzweigungsgrad $d(s)$ (Bemerkung~\ref{bem:prefetch-kosten}) ist es jedoch
+ineffizient, \emph{alle} $|N(s)|$ Kandidaten gleich zu priorisieren. Stattdessen könnte ein
+Markov-Modell höherer Ordnung -- basierend auf der Historie vorheriger Prozessinstanzen --
+eine Wahrscheinlichkeitsverteilung $P(\sigma \mid s, \text{Kontext})$ über die nächste
+Operation schätzen und das Prefetching nur für die $w$ wahrscheinlichsten Kandidaten
+durchführen (\emph{Top-$w$-Prefetching}). Satz~\ref{satz:latenzgewinn} ließe sich dann zu
+einem \emph{erwarteten} Latenzgewinn
+$E[\Delta] = \sum_{\sigma\in\Sigma(s)} P(\sigma\mid s)\cdot
+\min(T_{\mathrm{think}},T_{\mathrm{prep}}(\delta(s,\sigma)))$ verfeinern, und die Wahl von
+$w$ würde einen expliziten Kompromiss zwischen erwartetem Latenzgewinn und
+Ressourcenverbrauch (Bemerkung~\ref{bem:prefetch-kosten}) parametrisieren. Die in
+Abbildung~\ref{fig:lernkurve} gezeigte Lernkurve liefert hierfür bereits die empirische
+Grundlage: Die mit zunehmender Prozessreife sinkende Fehlerrate $p(n)$ entspricht einer
+zunehmend â€žspitzerenâ€œ Verteilung $P(\sigma\mid s)$.
+
+\subsubsection{Verifikation und Model Checking}
+
+Da $P=(S,\Sigma,\delta,s_0,F)$ ein endlicher Automat ist, lassen sich Eigenschaften wie
+â€žjeder Zustand $s\in S\setminus F$ besitzt mindestens einen Pfad nach $F$â€œ
+(\emph{Lebendigkeit}, keine â€žSackgassenâ€œ) oder â€ž$F$ ist von $s_0$ aus stets erreichbarâ€œ
+mit Standardverfahren der Erreichbarkeitsanalyse in $O(|S|+|E|)$ prüfen (Tiefen- bzw.
+Breitensuche auf $G_P$, Definition~\ref{def:prozessgraph}). Für die in
+Abschnitt~\ref{sec:permutierbar} diskutierten Sammelzustände mit ihrer impliziten
+$2^r$-Struktur (Lemma~\ref{lem:zustandsexplosion}) wären jedoch symbolische Verfahren
+(BDD-basiertes Model Checking, LTL/CTL-Spezifikationen) notwendig, um Eigenschaften wie
+â€žjede Reihenfolge der $r$ optionalen Teilschritte führt zu einem konsistenten
+Folgezustandâ€œ ohne explizite Aufzählung aller $2^r$ Zwischenzustände zu verifizieren --
+ein direkter Anknüpfungspunkt für die formale Methode dieser Arbeit.
+
+\subsubsection{Integration mit GraphQL, gRPC und AsyncAPI}
+
+Das SC-REST-Pattern wurde für REST/HTTP mit JSON-Repräsentationen formuliert. Die
+zugrundeliegenden Definitionen~\ref{def:prozessautomat}--\ref{def:sc-rest-server} sind
+jedoch protokollunabhängig: Für GraphQL ließe sich $\Sigma$ als Menge von Mutationen
+interpretieren, wobei \texttt{409}-artige Fehler als typisierte GraphQL-Errors mit einem
+analogen \texttt{sequence-violation}-Feld kodiert würden; für gRPC entsprächen die
+Operationen RPC-Methoden, und Sequenzverletzungen würden über den
+\texttt{FAILED\_PRECONDITION}-Statuscode signalisiert, dessen Metadaten die Menge
+$\Sigma(s)$ trügen. Für ereignisgetriebene Architekturen (AsyncAPI) wäre $\Sigma$ die
+Menge der konsumierten Nachrichtentypen, und eine Sequenzverletzung würde als
+\emph{Dead-Letter}-Ereignis mit Verweis auf $\Sigma(s)$ veröffentlicht. In allen Fällen
+blieben Satz~\ref{satz:korrektheit} (Korrektheit) und Satz~\ref{satz:laufzeit-pruefung}
+(Laufzeit) unverändert gültig, da beide ausschließlich auf der abstrakten Struktur von
+$P$, nicht auf HTTP-spezifischen Details, beruhen.
+
+\subsubsection{Hierarchische Automaten und Subprozesse}
+
+Komplexe Prozesse lassen sich häufig in Subprozesse zerlegen, die selbst wieder
+Prozessautomaten gemäß Definition~\ref{def:prozessautomat} sind. Ein Zustand $s\in S$ des
+übergeordneten Automaten könnte dann â€žinternâ€œ einen vollständigen Subprozessautomaten
+$P_s=(S_s,\Sigma_s,\delta_s,s_0^{(s)},F_s)$ repräsentieren, wobei der Übergang aus $s$ im
+übergeordneten Automaten erst erfolgt, wenn $P_s$ einen Zustand in $F_s$ erreicht hat. Der
+Prozessgraph $G_P$ (Definition~\ref{def:prozessgraph}) würde dadurch zu einem
+\emph{hierarchischen Graphen}, in dem jeder â€žSuperknotenâ€œ selbst einen Graphen $G_{P_s}$
+enthält. Die Konformitätsprüfung einer Aufrufsequenz würde rekursiv: Auf jeder
+Hierarchieebene wird Satz~\ref{satz:pfadcharakterisierung} angewendet, und für
+Sammelzustände mit permutierbaren Teilschritten (Abschnitt~\ref{sec:permutierbar}) auf
+jeder Ebene unabhängig Satz~\ref{satz:permutierbar-subgraph}. Dies eröffnet die
+Möglichkeit, den Subgraph Algorithmus aus~\cite{epp2026subgraph} \emph{rekursiv} auf
+verschachtelte Subgraphen anzuwenden -- ein direkter struktureller Bezug zur in
+\cite{epp2026subgraph} diskutierten AST-Analyse, bei der Teilbäume (Subgraphen)
+ebenfalls rekursiv verglichen werden.
+
+\subsubsection{Standardisierung: Vorschlag für eine OpenAPI-Erweiterung â€žx-sc-restâ€œ}
+
+Die in dieser Arbeit entwickelten Definitionen könnten Grundlage eines formalen
+Standardisierungsvorschlags sein, etwa als OpenAPI-Erweiterungsfeld
+\texttt{x-sc-rest} oder als eigenständiges Internet-Draft analog zu RFC~7807
+\cite{rfc7807}. Ein solcher Standard müsste mindestens spezifizieren: (1) das Format zur
+Deklaration von $S,\Sigma,\delta,s_0,F$ (vgl. â€žFormale Spezifikationsspracheâ€œ oben), (2)
+den Problem-Detail-Typ \texttt{sequence-violation} inklusive des Feldes
+\texttt{allowedOperations}, (3) die HATEOAS-Link-Relationstypen für Folgeoperationen, und
+(4) optionale Erweiterungsfelder für Sammelzustände (Definition~\ref{def:sammelzustand}),
+etwa \texttt{x-sc-rest-collection} mit den Feldern \texttt{operations} (entsprechend
+$\Sigma_{\mathrm{opt}}$) und \texttt{completion} (entsprechend $\sigma_{\mathrm{done}}$).
+Ein solcher Standard würde die in Pautasso et al.~\cite{pautasso2008} diskutierte Debatte
+zwischen â€žRESTfulâ€œ und â€žBig Web Servicesâ€œ (WS-BPEL) um eine dritte Position ergänzen:
+prozessbewusste REST-APIs, die die Vorteile beider Welten -- die Einfachheit von REST und
+die Prozessgarantien von WS-BPEL-Choreographien -- formal vereinen.
+
+\subsubsection{Experimentelle Validierung in Produktionssystemen}
+
+Die in Abschnitt~\ref{sec:empirisch} gezeigten Diagramme basieren auf simulierten Daten.
+Eine naheliegende Folgearbeit ist die Instrumentierung einer SC-REST-Referenzimplementierung
+(Abschnitt~\ref{sec:implementierung}) in einem produktiven Microservice-Umfeld
+\cite{newman2021}, um (1) die in Satz~\ref{satz:latenzgewinn} postulierte
+Latenzreduktion unter realer Lastverteilung von $T_{\mathrm{think}}$ und
+$T_{\mathrm{prep}}$ zu vermessen, (2) die tatsächliche Verteilung der
+Verzweigungsgrade $d(s)$ in realen Prozessmodellen zu erheben (als Eingabe für
+Bemerkung~\ref{bem:prefetch-kosten}), und (3) die in Lemma~\ref{lem:zustandsexplosion}
+postulierte Zustandsraum-Explosion für reale Sammelzustände (typische Werte für $r$) zu
+quantifizieren. Eine offene Benchmark-Suite, die verschiedene Prozessautomaten
+$P$ unterschiedlicher Größe $|S|$, $|\Sigma|$ und Verzweigungsgrade enthält, würde
+zudem den systematischen Vergleich verschiedener Implementierungsstrategien für $\delta$
+(Hashtabelle, Entscheidungsbaum, kompilierter endlicher Automat) ermöglichen.
+
+\subsubsection{Energieeffizienz durch reduzierte Fehlversuche}
+
+Jede \texttt{409}-Antwort gemäß Satz~\ref{satz:korrektheit}(c) repräsentiert eine
+â€žvergeblicheâ€œ Anfrage: Netzwerkübertragung, TLS-Handshake (falls keine Connection
+wiederverwendet wird), Server-seitige Verarbeitung der Anfrage und der Fehlerantwort --
+alles ohne fachlichen Nutzen. Die in Abbildung~\ref{fig:lernkurve} gezeigte sinkende
+Fehlerrate $p(n)$ impliziert daher nicht nur einen Latenz-, sondern auch einen
+Energieeffizienzgewinn: Pro vermiedener \texttt{409}-Antwort wird die gesamte
+Verarbeitungskette einmal weniger durchlaufen. Eine quantitative Abschätzung dieses
+Effekts -- etwa in Joule pro vermiedener Anfrage, aggregiert über Rechenzentren mit
+hohem API-Durchsatz -- wäre ein Beitrag zur Diskussion um â€žGreen Software Engineeringâ€œ und
+ergänzt die in Bemerkung~\ref{bem:prefetch-kosten} diskutierte Kostenseite des
+Prefetchings: Während Prefetching gezielt \emph{zusätzliche} Berechnungen vorzieht, um
+Latenz zu sparen, spart die Sequenzkontrolle selbst Berechnungen \emph{vollständig} ein,
+indem sie von vornherein unmögliche Anfragen früh und billig (Satz
+\ref{satz:laufzeit-pruefung}, $O(1)$) abweist.
+
+\subsubsection{Multi-Tenant-Architekturen und verteilte Zustandsspeicher}
+
+Definition~\ref{def:prozessinstanz} setzt voraus, dass $\pi: \text{ID}\rightharpoonup S$
+konsistent gelesen und geschrieben werden kann. In horizontal skalierten Systemen wird
+$\pi$ typischerweise in einem verteilten Schlüssel-Wert-Speicher (z.\,B. Redis-Cluster)
+gehalten. Damit stellt sich die Frage, welche Konsistenzgarantien für $\pi$ erforderlich
+sind, damit Satz~\ref{satz:korrektheit} weiterhin gilt: Wird $\pi(id)$ unter
+Eventual Consistency repliziert, könnten zwei nahezu gleichzeitige Anfragen für dieselbe
+Prozessinstanz $id$ auf unterschiedlichen Replikaten denselben Ausgangszustand $s$ sehen
+und beide einen (jeweils für sich konformen) Übergang $\delta(s,\sigma)$ und
+$\delta(s,\sigma')$ ausführen -- ein klassisches \emph{Lost-Update}-Problem, das die
+Eindeutigkeit des Laufs aus Definition~\ref{def:lauf} verletzt. Eine Erweiterung dieser
+Arbeit müsste daher entweder (a) starke Konsistenz für $\pi(id)$ fordern (z.\,B. mittels
+eines verteilten Locks oder einer Single-Writer-Partitionierung nach $id$, was angesichts
+der CAP-Theorem-Implikationen Verfügbarkeitseinbußen bei Partitionierung bedeutet), oder
+(b) Satz~\ref{satz:korrektheit} zu einer \emph{optimistischen} Variante verfeinern, bei
+der konkurrierende Übergänge mittels eines Versionszählers (analog zu \texttt{ETag}/
+\texttt{If-Match}) erkannt und einer der beiden Übergänge nachträglich mit
+\texttt{409 Conflict} abgewiesen wird -- eine Idempotenz- und
+Konfliktbehandlungsstrategie, die eng mit der in Abschnitt~\ref{sec:robustheit}
+diskutierten Replay-Sicherheit (Satz~\ref{satz:replay}) zusammenhängt und in
+\cite{helland2007} für verteilte Transaktionen allgemein diskutiert wird.
+
+\subsubsection{Adaptiver Horizont: Lernen von $h^\ast$ pro Client und Prozesstyp}
+
+Satz~\ref{satz:optimaler-horizont} liefert $h^\ast$ als Funktion der Parameter
+$\alpha,\beta,d,p$ -- in der Praxis sind insbesondere $\beta$ (Round-Trip-Latenz) und $p$
+(Fortsetzungswahrscheinlichkeit) jedoch nicht global konstant, sondern hängen vom
+\emph{Client} (mobile Verbindung vs.\ Rechenzentrums-zu-Rechenzentrums-Aufruf, also
+unterschiedliches $\beta$) und vom \emph{Prozesstyp} bzw.\ sogar vom \emph{individuellen
+Nutzer} (manche Nutzer brechen Bestellvorgänge häufig nach dem ersten Schritt ab, andere
+durchlaufen sie zuverlässig bis zum Ende, also unterschiedliches $p$) ab. Dies setzt die
+in Abschnitt~\ref{sec:ausblick} (Unterabschnitt â€žAdaptive Vorhersage mittels
+maschinellem Lernenâ€œ) für $T_{\mathrm{think}}$ und $T_{\mathrm{prep}}$ skizzierte Idee
+fort: Ein lernendes System könnte $\hat\beta$ aus den \texttt{RTT}-Werten der
+TCP-Verbindung des jeweiligen Clients und $\hat p$ aus der historischen
+Sequenzlängenverteilung des jeweiligen Nutzers (oder, bei neuen Nutzern, aus einem
+Prozesstyp-Prior) schätzen und daraus gemäß der geschlossenen Form in
+Satz~\ref{satz:optimaler-horizont}(c) einen \emph{personalisierten} Horizont
+$\hat h^\ast(\text{client},\text{user})$ berechnen, der pro Anfrage als
+\texttt{?horizon=}-Parameter (Definition~\ref{def:hst-server}) gesetzt wird. Im
+Gegensatz zu den meisten ML-Einsatzfeldern in zustandsbehafteten APIs ist diese Anwendung
+\emph{folgenlos im Fehlerfall}: Eine falsche Schätzung von $\hat h^\ast$ führt nach
+Satz~\ref{satz:hst-zustandslosigkeit} höchstens zu suboptimalen Kosten $C(\hat
+h^\ast)>C(h^\ast)$, niemals zu einer inkorrekten oder inkonsistenten Antwort -- das
+Lernproblem ist also ein reines Optimierungs-, kein Korrektheitsproblem, was den Einsatz
+von ML hier mit deutlich geringerem Risiko behaftet als etwa bei der in
+\cite{murata1989}-artigen Systemen üblichen Zustandsvorhersage.
+
+\subsubsection{Informationsfreigabe und Zugriffskontrolle im Horizont-Subgraphen}
+
+Definition~\ref{def:hst-repraesentation} setzt implizit voraus, dass \emph{der gesamte}
+Horizont-Subgraph $G_s^h$ für den anfragenden Client offenlegbar ist. In Prozessen mit
+rollenbasierter Autorisierung -- etwa Genehmigungs-Workflows, in denen ein
+Sachbearbeiter nur die für seine Rolle bestimmten Übergänge sehen darf, während
+Eskalationspfade (z.\,B.\ \texttt{POST /reject-and-escalate}) nur für Vorgesetzte
+sichtbar sein sollen -- würde eine ungefilterte Übertragung von $G_s^h$ dem Client
+\emph{Wissen über die Struktur des Prozessautomaten} offenlegen, das über seine eigenen
+Handlungsmöglichkeiten hinausgeht: Allein die \emph{Existenz} eines
+Eskalationszustands im Horizont könnte ein Informationsleck darstellen (etwa wenn die
+bloße Existenz eines â€žSonderkonditionenâ€œ-Zustands für reguläre Kunden vertraulich sein
+soll). Eine konsequente Erweiterung von Definition~\ref{def:hst-server} wäre daher eine
+\emph{rollenfilterte} Variante
+\[
+	G_s^h\!\restriction_\rho := \bigl(V_s^h\cap\mathrm{sichtbar}(\rho),\;
+	E_s^h\cap(\mathrm{sichtbar}(\rho)\times\Sigma\times\mathrm{sichtbar}(\rho))\bigr),
+\]
+wobei $\rho$ die Rolle des Clients und $\mathrm{sichtbar}(\rho)\subseteq S$ die für $\rho$
+sichtbaren Zustände bezeichnet. Eine formale Folgearbeit müsste klären, ob
+$G_s^h\!\restriction_\rho$ weiterhin die in Satz~\ref{satz:lokale-vollstaendigkeit}
+gezeigte lokale Vollständigkeit \emph{für die dem Client tatsächlich erlaubten
+Operationen} besitzt -- vermutlich ja, sofern $\mathrm{sichtbar}(\rho)$ unter $\delta$
+für die Operationen aus $\Sigma_\rho\subseteq\Sigma$ abgeschlossen ist -- und wie sich
+dies auf die in Definition~\ref{def:signatur-horizont} definierte Signatur auswirkt
+(vermutlich müsste $\mathrm{Sig}(G_s^h\!\restriction_\rho)$ rollenabhängig berechnet
+werden, was die Cache-Kohärenz aus Abschnitt~\ref{sec:hst-cache} um eine zusätzliche
+Dimension -- die Rolle -- erweitert).
+
+\subsubsection{Komposition zu einem globalen Anwendungsgraphen}
+
+Reale Anwendungen bestehen aus mehreren Prozessautomaten $P_1,\ldots,P_n$ -- etwa einem
+Bestellprozess (Beispiel~\ref{bsp:bestellprozess}), einem Retourenprozess und einem
+Reklamationsprozess, die über gemeinsame Ressourcen (dieselbe Bestellung) verknüpft sind.
+Eine natürliche Erweiterung von Definition~\ref{def:horizont-subgraph} wäre ein
+\emph{globaler Anwendungsgraph} $G_{\mathrm{App}} := \bigsqcup_{i=1}^n P_i \cup
+E_{\mathrm{cross}}$, wobei $E_{\mathrm{cross}}$ \emph{Querverweis-Kanten} zwischen
+Zuständen verschiedener Prozessautomaten enthält (z.\,B.\ vom Endzustand $s_5\in
+F_{\text{Bestellung}}$ zum Startzustand $s_0'\in S_{\text{Retoure}}$, gemäß der Operation
+\texttt{POST /orders/\{id\}/returns}). Der Horizont-Subgraph $G_s^h$ eines Zustands $s$
+würde dann gegebenenfalls \emph{Zustände anderer Prozessautomaten} als Randknoten
+enthalten, sobald $h$ groß genug ist, um $E_{\mathrm{cross}}$-Kanten zu erreichen. Dies
+würde HATEOAS von der Navigation \emph{innerhalb} eines Prozesses zur Navigation
+\emph{zwischen} Prozessen verallgemeinern -- formal müsste hierzu
+Lemma~\ref{lem:horizont-groesse} auf $G_{\mathrm{App}}$ mit einem
+\emph{kompositionalen} Verzweigungsgrad $d_{\mathrm{App}}=\max(d_1,\ldots,d_n,
+|E_{\mathrm{cross}}|)$ verallgemeinert werden, und Satz~\ref{satz:optimaler-horizont}
+müsste klären, ob ein einheitlicher Horizont $h^\ast$ über Prozessgrenzen hinweg
+sinnvoll ist oder ob $E_{\mathrm{cross}}$-Kanten mit einem eigenen, typischerweise
+größeren Kostenfaktor $\alpha_{\mathrm{cross}}>\alpha$ (Cross-Service-Aufruf statt
+lokaler Tabellenzugriff) zu gewichten sind.
+
+\subsubsection{Graphkompression für große Horizonte mittels Signaturen}
+
+Für $h\ge r$ (Bemerkung~\ref{bem:hst-permutierbar}) enthält $G_{s_c}^h$ für einen
+Sammelzustand $s_c$ den vollständigen $2^r$-Knoten-Entscheidungsbaum aller Teilmengen
+$T\subseteq\{1,\ldots,r\}$ -- nach Lemma~\ref{lem:zustandsexplosion} potenziell sehr
+groß. Viele dieser Teilbäume sind jedoch \emph{isomorph}: Der von einem Zwischenzustand
+$s_T$ aus erreichbare Teilgraph hängt (bei symmetrischen optionalen Teilschritten) nur
+von $|\{1,\ldots,r\}\setminus T|$, der Anzahl noch ausstehender Teilschritte, ab, nicht
+von $T$ selbst. Eine signaturbasierte Kompression könnte daher isomorphe Teilbäume durch
+\emph{Verweise} auf eine einzige kanonische Repräsentation ersetzen, identifiziert über
+die Signatur $\mathrm{Sig}(\cdot)$ aus Definition~\ref{def:signatur-horizont}: Statt
+$\binom{r}{k}$ strukturell identischer Teilbäume für $|T|=k$ würde nur \emph{ein}
+Teilbaum übertragen und $\binom{r}{k}$ Referenzen darauf. Dies entspricht dem
+klassischen Prinzip der \emph{strukturellen Teilung} (\emph{structure sharing}) in
+funktionalen Datenstrukturen, übertragen auf die HST-Repräsentation; eine formale
+Analyse müsste zeigen, dass diese Kompression die in
+Bemerkung~\ref{bem:horizont-groesse-praxis} festgestellte exponentielle
+Übertragungsgröße $|V_s^h|=O(d^h)$ auf eine \emph{polynomielle} Größe der komprimierten
+Repräsentation reduziert -- ein direktes Analogon zur in
+Bemerkung~\ref{bem:permutierbar-fazit} gezeigten Raumersparnis von $O(2^r)$ auf $O(r)$
+für die serverseitige Kodierung, nun angewandt auf die clientseitig übertragene
+HST-Repräsentation.
+
+\subsubsection{Beziehung zu GraphQL: clientseitig verhandelter Horizont}
+
+Der in Abschnitt~\ref{sec:ausblick} (Unterabschnitt â€žIntegration mit GraphQL, gRPC und
+AsyncAPIâ€œ) angesprochene Vergleich mit GraphQL gewinnt durch HST eine neue Dimension:
+GraphQL erlaubt dem Client, die \emph{Tiefe} verschachtelter Relationen einer Anfrage
+selbst zu spezifizieren (etwa â€žlade einen Autor, dessen Bücher, und für jedes Buch dessen
+Rezensionenâ€œ -- eine Tiefe von $2$). Der Horizont $h$ in
+Definition~\ref{def:hst-repraesentation} ist strukturell analog: Ein HST-Server könnte
+$h$ nicht als statische Konfiguration, sondern als \emph{vom Client pro Anfrage
+spezifizierten Parameter} behandeln (wie bereits in Satz~\ref{satz:hst-zustandslosigkeit}
+unter Punkt (3) als Option erwähnt), wodurch der Client den in
+Satz~\ref{satz:optimaler-horizont} berechneten Tradeoff selbst -- abhängig von seiner
+\emph{eigenen} Einschätzung von $\beta$ (seiner Verbindungsqualität) und $p$ (seinem
+geplanten Workflow) -- vornehmen könnte, statt sich auf eine serverseitige Schätzung von
+$\hat\beta,\hat p$ zu verlassen. Eine GraphQL-artige Anfrage könnte dann etwa lauten:
+\texttt{GET /orders/\{id\}?horizon=3\&fields=state,total}, wobei \texttt{horizon=3} den
+gewünschten $h$-Wert und \texttt{fields} die gewünschten Felder von $\rho(id,s)$
+spezifiziert -- eine Verschmelzung der â€ždeklarativen Datenanfrageâ€œ von GraphQL mit der
+â€ždeklarativen Navigationsanfrageâ€œ von HST, die formal als Erweiterung von
+Definition~\ref{def:hst-repraesentation} um einen client-spezifizierten Parameter $h$
+(statt eines fest konfigurierten) zu fassen wäre.
+
+\subsubsection{Empirische Validierung des Kostenmodells $(\alpha,\beta,p)$}
+
+Der in Abschnitt~\ref{sec:ausblick} (Unterabschnitt â€žExperimentelle Validierung in
+Produktionssystemenâ€œ) für SC-REST skizzierte empirische Validierungsbedarf gilt für HST
+in verstärktem Maße, da Satz~\ref{satz:optimaler-horizont} -- anders als die
+asymptotischen Aussagen zu SC-REST -- von \emph{konkreten Werten} der Parameter
+$\alpha,\beta,p,d$ abhängt. Eine produktive Instrumentierung müsste (1) $\alpha$ aus der
+tatsächlich gemessenen Serialisierungsgröße von Knoten/Kanten kalibrieren (die in
+Abbildung~\ref{fig:horizont-groesse} angenommenen 250\,Byte sind eine grobe Schätzung;
+reale JSON- oder HAL-Repräsentationen könnten durch Kompression wie gzip oder durch das
+in Abschnitt~\ref{sec:ausblick} (Graphkompression) skizzierte \emph{structure sharing}
+deutlich darunter liegen), (2) $\beta$ aus der tatsächlichen Verteilung der
+Round-Trip-Zeiten verschiedener Clientklassen (mobil, Desktop, Service-zu-Service)
+erheben, und (3) $p$ aus den \emph{tatsächlichen} Sequenzlängenverteilungen
+unterschiedlicher Prozesstypen schätzen -- letzteres ist methodisch eng mit der für
+Abbildung~\ref{fig:lernkurve} verwendeten empirischen Fehlerratenkurve $p(n)$ verwandt,
+jedoch mit umgekehrter Fragestellung: Während $p(n)$ die Wahrscheinlichkeit \emph{eines
+Sequenzfehlers nach $n$ Trainingsanfragen} misst, beschreibt $p$ in
+Definition~\ref{def:kostenmodell-horizont} die Wahrscheinlichkeit \emph{einer
+Fortsetzung} der Sequenz unabhängig von deren Korrektheit. Mit kalibrierten
+$(\hat\alpha,\hat\beta,\hat p)$ ließe sich die in
+Abbildung~\ref{fig:optimaler-horizont} gezeigte theoretische Stufenfunktion $h^\ast$
+gegen den empirisch tatsächlich kostenoptimalen Horizont validieren.
+
+\subsubsection{Versionsmigration laufender Prozessinstanzen}
+
+Satz~\ref{satz:hst-zustandslosigkeit} setzt voraus, dass $P$ während der Bearbeitung
+einer Anfrage statisch ist; Abschnitt~\ref{sec:hst-cache} behandelt \emph{Erkennung} von
+Änderungen $P\to P'$ via Signaturvergleich, jedoch nicht deren \emph{Behandlung} für
+\emph{bereits laufende} Prozessinstanzen $(id,s)$ mit $s\in S$. Wird $P$ zu $P'$
+aktualisiert (etwa weil ein neuer optionaler Teilschritt $\sigma_{r+1}$ eingeführt oder
+ein Zustand $s\in S$ aus $S'$ entfernt wird), stellt sich die Frage, wie eine Instanz mit
+$\pi(id)=s\notin S'$ zu behandeln ist. Eine formale Behandlung dieses Problems könnte
+eine \emph{Migrationsabbildung} $\mu: S\rightharpoonup S'$ definieren, mit den
+Anforderungen: (a) $\mu(s)=s$ für $s\in S\cap S'$ (unveränderte Zustände bleiben
+erhalten), (b) für $s\in S\setminus S'$ muss $\mu(s)\in S'$ einen â€žäquivalentenâ€œ Zustand
+in $P'$ bezeichnen, wobei Äquivalenz bedeutet, dass die für $s$ in $P$ konformen
+Restsequenzen (gemäß Definition~\ref{def:konformitaet}) unter $\mu$ auf in $P'$ ab
+$\mu(s)$ konforme Restsequenzen abgebildet werden -- eine Bedingung, die strukturell an
+die in Satz~\ref{satz:lokale-vollstaendigkeit} verwendete Charakterisierung über
+$\delta^{*}$ erinnert, jedoch \emph{zwischen zwei verschiedenen Automaten} $P$ und $P'$
+statt innerhalb eines einzelnen $G_s^h$. Existiert kein solches $\mu(s)$ (etwa weil ein
+ganzer Prozesszweig in $P'$ entfernt wurde), müsste die Instanz in einen speziellen
+Migrationszustand überführt und gegebenenfalls manuell oder durch eine
+Kompensationslogik (vgl.\ das in Abschnitt~\ref{sec:ausblick} erwähnte Saga-Pattern und
+\cite{garcia1987}) abgeschlossen werden. Die in Abschnitt~\ref{sec:hst-cache}
+beschriebene signaturbasierte Erkennung von $P\to P'$ wäre damit der \emph{Trigger}, die
+hier skizzierte Migrationsabbildung $\mu$ die \emph{Behandlung} -- zusammen ergäben sie
+ein vollständiges Lebenszyklusmodell für Prozessautomaten, die sich über die Lebensdauer
+einzelner Instanzen hinweg ändern können.
+
+\subsection{Implementierungshinweis}
+
+Der vollständige Code der Referenzimplementierung sowie ergänzende Testfälle sind
+verfügbar unter: \url{https://github.com/hjstephan86/science/tree/main/science/screst}.
+
+\begin{thebibliography}{99}
+
+\bibitem{fielding2000}
+Fielding, R.~T. (2000).
+\emph{Architectural Styles and the Design of Network-based Software Architectures}.
+Dissertation, University of California, Irvine.
+
+\bibitem{rfc7231}
+Fielding, R., Reschke, J. (Hrsg.) (2014).
+\emph{Hypertext Transfer Protocol (HTTP/1.1): Semantics and Content}.
+RFC~7231, IETF.
+
+\bibitem{rfc7807}
+Nottingham, M., Wilde, E. (2016).
+\emph{Problem Details for HTTP APIs}.
+RFC~7807, IETF.
+
+\bibitem{richardson2007}
+Richardson, L., Ruby, S. (2007).
+\emph{RESTful Web Services}.
+O'Reilly Media.
+
+\bibitem{fowler2010}
+Fowler, M. (2010).
+\emph{Richardson Maturity Model -- steps toward the glory of REST}.
+martinfowler.com.
+
+\bibitem{webber2010}
+Webber, J., Parastatidis, S., Robinson, I. (2010).
+\emph{REST in Practice: Hypermedia and Systems Architecture}.
+O'Reilly Media.
+
+\bibitem{newman2021}
+Newman, S. (2021).
+\emph{Building Microservices: Designing Fine-Grained Systems}, 2.~Auflage.
+O'Reilly Media.
+
+\bibitem{hohpe2003}
+Hohpe, G., Woolf, B. (2003).
+\emph{Enterprise Integration Patterns: Designing, Building, and Deploying Messaging
+Solutions}.
+Addison-Wesley.
+
+\bibitem{garcia1987}
+Garcia-Molina, H., Salem, K. (1987).
+\emph{Sagas}.
+ACM SIGMOD Record, 16(3), S.~249--259.
+
+\bibitem{helland2007}
+Helland, P. (2007).
+\emph{Life Beyond Distributed Transactions: An Apostate's Opinion}.
+3rd Biennial Conference on Innovative Data Systems Research (CIDR).
+
+\bibitem{abboud2015}
+Abboud, A., Backurs, A., Vassilevska Williams, V. (2015).
+\emph{Tight Hardness Results for LCS and Other Sequence Similarity Measures}.
+IEEE 56th Annual Symposium on Foundations of Computer Science (FOCS).
+
+\bibitem{epp2026subgraph}
+Epp, S. (2026).
+\emph{Der Subgraph Algorithmus}.
+GitHub: \url{https://github.com/hjstephan86/subgraph}.
+
+\bibitem{murata1989}
+Murata, T. (1989).
+\emph{Petri Nets: Properties, Analysis and Applications}.
+Proceedings of the IEEE, 77(4), S.~541--580.
+
+\bibitem{pautasso2008}
+Pautasso, C., Zimmermann, O., Leymann, F. (2008).
+\emph{RESTful Web Services vs. ``Big'' Web Services: Making the Right Architectural
+Decision}.
+Proceedings of the 17th International Conference on World Wide Web (WWW).
+
+\end{thebibliography}
+
+\end{document}
+

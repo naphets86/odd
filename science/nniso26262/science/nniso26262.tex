@@ -1,0 +1,1100 @@
+﻿\documentclass[12pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[ngerman]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\geometry{a4paper, margin=2.5cm}
+
+\usepackage{setspace}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\usepackage[hidelinks]{hyperref}
+\usepackage{cleveref}
+
+\usepackage{titlesec}
+
+\usepackage{abstract}
+\renewcommand{\abstractnamefont}{\normalfont\bfseries\large}
+
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+
+\newtcolorbox{infobox}[1][]{
+  colback=gray!10,
+  colframe=gray!50,
+  fonttitle=\bfseries,
+  breakable,
+  #1
+}
+
+% -------------------------------------------------------
+% Metadaten
+% -------------------------------------------------------
+\title{
+  {\bfseries Neuronale Netze und ISO 26262}\\
+  {\Large Eine kritische Analyse der Vereinbarkeit unter besonderer Ber\"ucksichtigung von Zuverl\"assigkeit, Vertrauensw\"urdigkeit, Nachvollziehbarkeit und deterministischem Verhalten}}
+
+\author{Stephan Epp}
+\date{30. März 2026}
+
+% -------------------------------------------------------
+% Dokument
+% -------------------------------------------------------
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Einleitung}
+\label{sec:einleitung}
+% ============================================================
+Der Einsatz von k\"unstlichen neuronalen Netzen (KNN) in sicherheitskritischen
+elektronischen Steuerger\"aten (ECUs) des Automobils erfreut sich wachsender
+Beliebtheit, insbesondere in der Realisierung virtueller Sensoren sowie bei
+Fahrerassistenzfunktionen. Diese Entwicklung steht jedoch in einem grunds\"atzlichen
+Spannungsverh\"altnis zum international g\"ultigen Sicherheitsentwicklungsstandard
+ISO~26262, der deterministische, formal verifizierbare und l\"uckenlos r\"uckverfolgbare
+Systeme fordert. Die vorliegende Arbeit analysiert diesen Zielkonflikt systematisch und
+kommt zu dem Schluss, dass neuronale Netze in ihrer gegenw\"artigen Form die zentralen
+Anforderungen der ISO~26262 -- insbesondere Determinismus, Nachvollziehbarkeit,
+Verifikationsf\"ahigkeit sowie Anforderungsverfolgbarkeit -- strukturell nicht erf\"ullen
+k\"onnen. Es wird argumentiert, dass systemarchitektonische
+Kompensationsma\ss{}nahmen diese fundamental-epistemischen Defizite zwar
+einschr\"anken, jedoch nicht beseitigen k\"onnen. Auf Basis einer eingehenden
+Analyse des Normtextes, der Sicherheitsmethodik und des aktuellen Stands der
+KI-Forschung wird ein differenziertes Fazit formuliert, das die strikte
+Beschr\"ankung des KNN-Einsatzes auf unkritische Qualit\"atsmanagement-Funktionen
+empfiehlt und den weiteren Einsatz ablehnt, solange keine formal gleichwertigen
+Nachweisverfahren existieren.
+
+Die Automobilindustrie befindet sich in einem tiefgreifenden technologischen Wandel.
+Hochautomatisiertes Fahren, Elektromobilit\"at und die zunehmende Vernetzung von
+Fahrzeugen mit ihrer Umgebung erfordern immer komplexere elektronische Steuersysteme.
+In diesem Kontext gewinnen Methoden der k\"unstlichen Intelligenz (KI) und insbesondere
+k\"unstliche neuronale Netze (KNN) an Bedeutung, da sie in der Lage sind, komplexe,
+nichtlineare Zusammenh\"ange aus Daten zu erlernen -- F\"ahigkeiten, die klassischen,
+regelbasierten Ans\"atzen oft verschlossen bleiben \cite{LeCun2015}.
+
+Eine prominente Anwendung ist der sogenannte \emph{virtuelle Sensor}: Anstelle eines
+kostenintensiven oder unter Serienbedingungen unpraktikablen physikalischen Sensors
+soll ein KNN ausgehend von anderen, bereits vorhandenen Messgr\"o\ss{}en die gesuchte
+physikalische Gr\"o\ss{}e sch\"atzen. Derartige Konzepte werden heute aktiv von
+Werkzeuganbietern wie dSPACE mit ihrer TargetLink-Umgebung beworben und versprechen,
+den Entwicklungsaufwand zu reduzieren und gleichzeitig die Leistungsf\"ahigkeit von
+Steuerger\"aten zu erh\"ohen.
+
+Diese Entwicklung wirft jedoch eine fundamentale Frage auf, die in der Industrie und
+Wissenschaft bislang nicht befriedigend beantwortet wurde: \emph{K\"onnen neuronale
+Netze die Anforderungen erf\"ullen, die der internationale Sicherheitsstandard
+ISO~26262 an Software in sicherheitskritischen Steuerger\"aten stellt?}
+
+ISO~26262, der Ma\ss{}gebliche Standard f\"ur die funktionale Sicherheit von
+Stra\ss{}enfahrzeugen, definiert einen umfassenden Entwicklungsprozess, der auf
+Determinismus, vollst\"andiger Anforderungsverfolgbarkeit, formaler Verifikation und
+einer nachvollziehbaren, \"uberpr\"ufbaren Systemstruktur beruht \cite{iso26262_1}.
+Diese Eigenschaften sind keine willk\"urlichen b\"urokratischen H\"urden, sondern
+Konsequenz jahrzehntelanger Erfahrung mit sicherheitskritischer Systementwicklung und
+dem Verst\"andnis, dass menschliches Leben von der zuverl\"assigen und vorhersagbaren
+Funktion dieser Systeme abh\"angt \cite{Leveson2011}.
+
+Die vorliegende Arbeit nimmt eine deutlich kritische Position gegen\"uber dem Einsatz
+von neuronalen Netzen in sicherheitskritischen ECUs ein. Sie argumentiert, dass die
+grunds\"atzliche Arbeitsweise neuronaler Netze -- das statistische Erlernen von
+Mustern aus Daten ohne explizit programmierte Logik -- strukturell unvereinbar mit den
+Kernanforderungen von ISO~26262 ist. Der Beitrag gliedert sich wie folgt:
+\Cref{sec:grundlagen} legt die technischen und normativen Grundlagen. \Cref{sec:iso}
+analysiert die relevanten ISO-26262-Anforderungen im Detail. \Cref{sec:knn_probleme}
+identifiziert die spezifischen Defizite neuronaler Netze. \Cref{sec:argumente}
+formuliert die zentralen Argumente gegen den Einsatz. \Cref{sec:gegenargumente}
+setzt sich mit m\"oglichen Gegenargumenten und Kompensationsans\"atzen auseinander und
+zeigt deren Grenzen auf. \Cref{sec:alternativen} diskutiert sichere Alternativen, und
+\Cref{sec:fazit} schlie\ss{}t mit einem Fazit und Empfehlungen.
+
+\textbf{Schl\"usselw\"orter:} ISO~26262, Funktionale Sicherheit, Neuronale
+Netze, K\"unstliche Intelligenz, ASIL, Determinismus, Verifikation,
+Anforderungsverfolgbarkeit, Virtuelle Sensoren, ECU
+
+% ============================================================
+\section{Grundlagen}
+\label{sec:grundlagen}
+% ============================================================
+
+\subsection{Funktionale Sicherheit und ISO~26262}
+\label{subsec:iso_grundlagen}
+
+Funktionale Sicherheit bezeichnet die Eigenschaft eines Systems, auf fehlerhafte
+Zust\"ande in einer f\"ur die Umgebung sicheren Weise zu reagieren
+\cite{iec61508}. Im automobilen Kontext ist ISO~26262 die ma\ss{}gebliche Norm. Sie
+entstand als Ableitung der allgemeinen Norm IEC~61508 und wurde erstmals 2011
+ver\"offentlicht; die zweite, derzeit g\"ultige Ausgabe stammt aus dem Jahr 2018.
+
+Die Norm strukturiert den gesamten Produktentwicklungsprozess in einem sogenannten
+\emph{V-Modell}: Auf der linken Seite des V erfolgt die Spezifikation von
+System-, Hardware- und Software-Anforderungen in absteigender Abstraktionsebene,
+auf der rechten Seite die korrespondierende Verifikation und Validierung auf jeder
+Ebene \cite{iso26262_2}. Kernkonzept der Norm ist das
+\emph{Automotive Safety Integrity Level} (ASIL), eine vierstufige Risikoklassifikation
+von ASIL~A (geringste Anforderungen) bis ASIL~D (h\"ochste Anforderungen) sowie die
+Klasse QM (Quality Management, keine expliziten Sicherheitsanforderungen).
+
+Die ASIL-Einstufung ergibt sich aus einer Risikoanalyse unter Ber\"ucksichtigung von
+Gef\"ahrdungsexposition (E), Kontrollierbarkeit (C) und Schadensausma\ss{} (S). Je
+h\"oher der resultierende ASIL, desto strenger die Anforderungen an
+Entwicklungsprozess, Verifikation, Testabdeckung und Dokumentation.
+
+\subsection{Anforderungsarten in ISO~26262}
+\label{subsec:anforderungsarten}
+
+ISO~26262 unterscheidet verschiedene Klassen von Anforderungen:
+
+\begin{description}[leftmargin=2cm, style=nextline]
+  \item[Sicherheitsziele (Safety Goals):] Oberste Anforderungen auf Fahrzeugebene,
+    direkt aus der Gefährdungs- und Risikoanalyse (HARA) abgeleitet.
+  \item[Funktionale Sicherheitsanforderungen (FSR):] Systemebene, beschreiben das
+    geforderte Sicherheitsverhalten.
+  \item[Technische Sicherheitsanforderungen (TSR):] Hardware/Software-Ebene,
+    beschreiben die technische Implementierung der FSR.
+  \item[Software-Sicherheitsanforderungen (SSR):] Spezifisch f\"ur Software-Einheiten,
+    direkt implementierbar und formal testbar.
+\end{description}
+
+Die Norm verlangt eine l\"uckenlose, bidirektionale
+\emph{Anforderungsverfolgbarkeit} (Requirements Traceability) von den Sicherheitszielen
+bis hinunter zum einzelnen Softwaremodul und zur\"uck \cite{iso26262_6}.
+
+\subsection{Neuronale Netze -- Grundprinzip und Eigenschaften}
+\label{subsec:knn_grundlagen}
+
+K\"unstliche neuronale Netze (KNN) sind mathematische Modelle, die von der Struktur
+biologischer Nervensysteme inspiriert sind \cite{Rumelhart1986}. Sie bestehen aus
+Schichten von \emph{Neuronen}, deren Verbindungen durch numerische Gewichte
+$w_{ij}$ parametriert sind. Die Ausgabe eines Neurons $j$ in Schicht $l$ ergibt sich
+aus der gewichteten Summe der Eing\"ange, auf die eine nichtlineare
+Aktivierungsfunktion $\sigma$ angewendet wird:
+
+\begin{equation}
+  a_j^{(l)} = \sigma\!\left(\sum_{i} w_{ij}^{(l)}\, a_i^{(l-1)} + b_j^{(l)}\right)
+  \label{eq:neuron}
+\end{equation}
+
+Die Gewichte werden nicht explizit programmiert, sondern durch einen Lernalgorithmus
+(typischerweise Backpropagation mit gradientenbasierter Optimierung) aus einem
+Trainingsdatensatz \emph{erlernt} \cite{Goodfellow2016}. Dieser Prozess minimiert
+eine Verlustfunktion \"uber die Trainingsdaten, ohne dass dem Netz explizites Wissen
+\"uber den zugrundeliegenden physikalischen Prozess eingepflanzt wird.
+
+Moderne tiefe Netze (Deep Neural Networks) k\"onnen Millionen bis Milliarden von
+Parametern besitzen. Sie haben in zahlreichen Anwendungsgebieten -- Bildklassifikation,
+Sprachverarbeitung, Steuerungsaufgaben -- herausragende Leistungen erzielt
+\cite{LeCun2015}. Dieser empirische Erfolg sollte jedoch nicht dar\"uber hinwegt\"auschen,
+dass die innere Repr\"asentation solcher Netze f\"ur den Menschen im Wesentlichen
+undurchschaubar bleibt \cite{Lipton2018}.
+
+\subsection{Der Einsatzkontext: Virtuelle Sensoren auf ECUs}
+\label{subsec:virtueller_sensor}
+
+Ein virtueller Sensor ist ein Softwarealgorithmus, der auf Basis priori bekannter
+Eingangskan\"ale einen physikalischen Messwert sch\"atzt, der andernfalls nur durch
+aufwendige oder kostenintensive Hardware-Sensoren erfasst werden k\"onnte. Die Idee
+ist nicht neu -- modellbasierte Beobachter (z.\,B. Luenberger-Beobachter, Kalman-Filter)
+sind seit Jahrzehnten im Einsatz \cite{Leveson2011}. Der wesentliche Unterschied
+beim KNN-basierten Ansatz: Statt eines physikalisch motivierten, mathematisch
+herzuleitenden Modells wird ein rein datengetriebener Ansatz verwendet, dessen
+innere Struktur no implizites physikalisches Wissen tr\"agt.
+
+In sicherheitskritischen Anwendungen -- etwa der Sch\"atzung der Fahrzeuggeschwindigkeit,
+des Reifenzustands, des Motor- oder Bremsmoments -- kann ein Fehler des virtuellen
+Sensors direkt zu Fehlfunktionen sicherheitskritischer Regelsysteme (ABS, ESC,
+Lenkhilfe) f\"uhren und damit Leib und Leben gef\"ahrden.
+
+% ============================================================
+\section{Die Anforderungen der ISO~26262 im Detail}
+\label{sec:iso}
+% ============================================================
+
+\subsection{Determinismus}
+\label{subsec:determinismus}
+
+ISO~26262 Teil~6 fordert f\"ur ASIL-relevante Software, dass das Softwareverhalten
+deterministisch, d.\,h. f\"ur gleiche Eing\"ange jederzeit identisch und vorhersagbar
+sein muss \cite{iso26262_6}. Diese Forderung ist keine formale Spitzfindigkeit: Im
+Rahmen der Verifikation muss jeder Testfall reproduzierbar sein, Regressionstests
+m\"ussen stabile Ergebnisse liefern, und im Falle eines Feldversagens (Field Failure)
+muss das Verhalten des Systems auf dem Pr\"ufstand reproduziert werden k\"onnen,
+um die Fehlerursache zu identifizieren.
+
+Eine deterministische Ausf\"uhrung setzt voraus, dass:
+\begin{itemize}
+  \item der Quellcode keine race conditions oder undefiniertes Verhalten enth\"alt,
+  \item keine zuf\"alligen Elemente (Zufallszahlen, stochastische Sampling-Verfahren)
+    w\"ahrend der Inferenz aktiv sind,
+  \item Flie\ss{}kommaoperationen streng nach IEEE~754 und in reproduzierbarer
+    Reihenfolge ausgef\"uhrt werden.
+\end{itemize}
+
+W\"ahrend ein voll trainiertes, auf festen Gewichten basierendes KNN bei der
+Inferenz theoretisch deterministisch ausgef\"uhrt werden kann, ist dies in der
+Praxis mit erheblichen H\"urden verbunden. Bereits kleine Unterschiede in der
+Reihenfolge von Flie\ss{}kommaoperationen, unterschiedliche Prozessorarchitekturen
+(FPU-Implementierungen) oder Compileroptimierungen k\"onnen zu numerisch
+unterschiedlichen Ergebnissen f\"uhren -- ein f\"ur die ISO~26262-Verifikation
+inakzeptabler Zustand \cite{Dreossi2019}.
+
+\subsection{Anforderungsverfolgbarkeit (Requirements Traceability)}
+\label{subsec:traceability}
+
+ISO~26262 Teil~6, Abschnitt~5.4 fordert, dass jede Software-Implementierungseinheit
+auf eine oder mehrere Software-Sicherheitsanforderungen zur\"uckf\"uhrbar sein muss
+\cite{iso26262_6}. Diese bidirektionale Traceability -- von der Anforderung zum
+Code und vom Code zur Anforderung -- ist Voraussetzung f\"ur:
+
+\begin{enumerate}
+  \item Die Vollst\"andigkeitsnachweise (sind alle Anforderungen implementiert?),
+  \item die Auswirkungsanalyse bei \"Anderungen (Change Impact Analysis),
+  \item den Nachweis, dass kein ungeplanter Funktionsumfang (no unintended
+    functionality) implementiert wurde.
+\end{enumerate}
+
+Ein neuronales Netz besteht nach dem Training aus einer Gewichtsmatrix von
+typischerweise Tausenden bis Millionen numerischer Werte. Es ist prinzipiell
+nicht m\"oglich, einzelnen Gewichten oder aktivierten Neuronen bestimmte funktionale
+Anforderungen zuzuordnen \cite{Lipton2018}. Das Netz als Ganzes \emph{erf\"ullt}
+(im Sinne eines black-box-Verhaltens) im g\"unstigsten Fall die Ausgabespezifikation --
+die innere Struktur ist jedoch von keiner Anforderung getrieben. Dies stellt eine
+fundamentale Verletzung des Traceability-Prinzips dar.
+
+\subsection{Verifikation und Testabdeckung}
+\label{subsec:verifikation}
+
+F\"ur ASIL~D-Software schreibt ISO~26262 Teil~6 Tabelle~10 die vollst\"andige
+MC/DC-Testabdeckung (Modified Condition/Decision Coverage) vor
+\cite{iso26262_6}. MC/DC erfordert, dass jede einzelne Bedingung in einem
+zusammengesetzten booleschen Ausdruck den Ausgabewert unabh\"angig beeinflusst.
+Diese Anforderung ist auf Quellcode mit expliziter, implementierter Logik ausgerichtet.
+
+Auf ein neuronales Netz l\"asst sich MC/DC nicht anwenden: Es gibt weder
+bedingte Verzweigungen im klassischen Sinne noch logische Ausdr\"ucke, deren
+Coverage gemessen werden k\"onnte. Alternative Metriken (Neurons-Coverage,
+Feature-Space-Coverage) existieren in der Forschung \cite{Huang2017}, sind
+jedoch weder in ISO~26262 anerkannt noch in ihrer Aussagekraft bez\"uglich
+sicherheitsrelevanter Fehler empirisch belegt.
+
+Dar\"uber hinaus verlangt ISO~26262 die formale Verifikation kritischer
+Softwareeigenschaften sowie die vollst\"andige Analyse des Datenflussmodells
+(data flow analysis) und Kontrollflusses \cite{iso26262_6}. Beide Analysemethoden
+sind f\"ur die Black-Box-Charakteristik neuronaler Netze nicht anwendbar.
+
+\subsection{Keine unbeabsichtigte Funktionalit\"at}
+\label{subsec:kein_unbeabsichtigtes}
+
+ISO~26262 verlangt explizit den Nachweis, dass Software keine unbeabsichtigte
+Funktionalit\"at (no unintended functionality) implementiert \cite{iso26262_6}.
+Diese Anforderung soll sicherstellen, dass das System ausschlie\ss{}lich das tut,
+was spezifiziert wurde -- nicht mehr und nicht weniger.
+
+Neuronale Netze lernen ihre internen Repr\"asentationen v\"ollig autonom aus den
+Trainingsdaten. Es ist prinzipiell nicht ausgeschlossen, dass das Netz
+\emph{Artefakte} oder \emph{Korrelationen} aus den Trainingsdaten internalisiert,
+die keine physikalische oder funktionale Grundlage haben, aber das Verhalten
+des Netzes f\"ur bestimmte Eingangskonstellationen beeinflussen
+\cite{Goodfellow2015}. Da diese internen Repr\"asentationen nicht
+einsehbar sind, kann der Nachweis ``keine unbeabsichtigte Funktionalit\"at''
+f\"ur ein KNN nicht erbracht werden.
+
+\subsection{\"Anderungsmanagement und Wiederhol-Qualifikation}
+\label{subsec:aenderungsmanagement}
+
+ISO~26262 Teil~8 regelt das \"Anderungsmanagement \cite{iso26262_8}. Bei jeder
+\"Anderung der Software muss eine \emph{Change Impact Analysis} durchgef\"uhrt
+werden, die alle betroffenen Anforderungen und Verifikationsma\ss{}nahmen
+identifiziert. Die Bandbreite der notwendigen Requalifikation wird durch die
+Auswirkungen der \"Anderung auf das funktionale Sicherheitskonzept bestimmt.
+
+Bei einem KNN bedeutet selbst eine marginale \"Anderung des Trainingsdatensatzes
+(z.\,B. Hinzuf\"ugen weniger neuer Messdaten aus dem Feld) eine vollst\"andige
+Neu-Parametrierung aller Gewichte \"uber das Gradientenverfahren. Das resultierende
+Netz ist ein \emph{neues} Modell, dessen Verhalten systematisch von seinem
+Vorg\"anger abweichen kann -- auch in Bereichen, die scheinbar nicht von den
+neuen Daten betroffen sind (sog. \emph{catastrophic forgetting} bzw. seine
+Umkehrung). Eine klassische, \"anderungsgetriebene Requalifikation ist damit
+strukturell nicht m\"oglich; de facto muss bei jeder Modell-Aktualisierung eine
+vollst\"andige Neuqualifikation erfolgen.
+
+\subsection{Tool-Qualifikation}
+\label{subsec:tool_qualifikation}
+
+ISO~26262 Teil~8, Abschnitt~11 regelt die Qualifikation von Softwareentwicklungswerkzeugen
+\cite{iso26262_8}. Der Tool Confidence Level (TCL) bestimmt den erforderlichen Nachweis,
+dass ein Werkzeug keine unentdeckten Fehler in die sicherheitsrelevante Software einbringt.
+
+Beim Einsatz von KNNs in der Seriensoftware kommen typischerweise neuartige Trainings-
+und Inferenz-Frameworks (TensorFlow, PyTorch, ONNX Runtime) zum Einsatz, die nicht f\"ur
+den sicherheitskritischen Einsatz nach ISO~26262 qualifiziert sind. Die TCL-Qualifikation
+dieser Werkzeuge ist mit einem erheblichen, kaum bezifferbaren Aufwand verbunden, da die
+Werkzeuge selbst komplexe Software mit Millionen von Codezeilen darstellen.
+
+% ============================================================
+\section{Spezifische Defizite neuronaler Netze aus Sicherheitsperspektive}
+\label{sec:knn_probleme}
+% ============================================================
+
+\subsection{Das Erkl\"arbarkeitsdefizit (Explainability Gap)}
+\label{subsec:explainability}
+
+Das wohl grunds\"atzlichste Problem neuronaler Netze im Sicherheitskontext ist ihr
+\emph{Black-Box-Charakter}: Auch wenn Eingaben und Ausgaben eines Netzes bekannt sind,
+bleibt die innere Entscheidungslogik f\"ur den Menschen im Wesentlichen undurchschaubar
+\cite{Doshi2017}. Zwar existieren Erkl\"arbarkeitsverfahren wie LIME \cite{Ribeiro2016}
+oder SHAP, diese liefern jedoch lediglich \emph{lokale Approximationen} des Netzwerkverhaltens
+in der Umgebung eines bestimmten Eingabepunkts -- keine vollst\"andige, formal verifizierbare
+Beschreibung des Gesamtverhaltens.
+
+Lipton \cite{Lipton2018} weist darauf hin, dass Interpretierbarkeit kein bin\"ares Merkmal
+ist, sondern ein Spektrum mit unterschiedlichen Qualit\"aten. F\"ur den Sicherheitsnachweis
+nach ISO~26262 ist jedoch eine \emph{vollst\"andige} Erkl\"arung des Verhaltens
+erforderlich -- partielle, statistische Erkl\"arungen reichen nicht aus. Ein
+Sicherheitspr\"ufer (Safety Assessor) kann auf Basis von LIME- oder SHAP-Erkl\"arungen
+keine sachgem\"a\ss{}e Beurteilung vornehmen.
+
+\subsection{Adversarielle Robustheit}
+\label{subsec:adversarial}
+
+Szegedy et al. \cite{Szegedy2014} entdeckten 2014 das Ph\"anomen der
+\emph{adversariellen Beispiele}: Minimale, f\"ur das menschliche Auge unsichtbare
+St\"orungen eines Eingangsbildes k\"onnen ein tiefes neuronales Netz dazu bringen,
+vollst\"andig falsche Vorhersagen mit hoher Konfidenz zu treffen. Goodfellow et al.
+\cite{Goodfellow2015} zeigten, dass diese Eigenschaft keine Ausnahme, sondern
+ein strukturelles Merkmal von KNNs ist, das sich aus der hochdimensionalen linearen
+Natur der erlernten Entscheidungsgrenzen ergibt.
+
+F\"ur sicherheitskritische Sensorapplikationen bedeutet dies: Scheinbar normale,
+aber durch Rauschen, Sensor-Drift oder Umgebungsver\"anderungen leicht ver\"anderte
+Eingangssignale k\"onnen zu abrupt falschen Sch\"atzwerten f\"uhren -- ohne dass das
+System selbst eine erh\"ohte Unsicherheit meldet. Diese Eigenschaft ist aus
+sicherheitstechnischer Sicht katastrophal, da sie bedeutet, dass das Versagen des
+Systems ohne Vorwarnung und ohne erkennbaren ausl\"osenden Defekt eintreten kann.
+
+\subsection{Out-of-Distribution-Verhalten}
+\label{subsec:ood}
+
+Neuronale Netze sind grunds\"atzlich darauf ausgelegt, innerhalb der \emph{Verteilung}
+der Trainingsdaten zuverl\"assige Sch\"atzungen zu liefern. Au\ss{}erhalb dieser
+Verteilung -- bei Eingaben, die vom Netz noch nicht gesehen wurden (Out-of-Distribution,
+OOD) -- ist das Verhalten nicht spezifiziert und h\"aufig fehlerhaft
+\cite{Amodei2016}. Dies ist \"aquivalent zum Versagen eines klassischen Software-
+moduls bei undefiniertem Eingangs-Wertebereich, mit dem entscheidenden Unterschied:
+W\"ahrend ein klassischer Sicherheits-Software-Entwickler explizit Grenzf\"alle
+spezifiziert und absichert (\emph{defensive programming}), bieten KNNs keinerlei
+Mechanismus, OOD-Situationen zu erkennen oder abzusichern -- au\ss{}er durch
+aufwendige, nachtr\"aglich hinzugef\"ugte OOD-Erkennungsmodule.
+
+Koopman und Fratrik \cite{Koopman2019} zeigen, dass die praktisch unendliche
+Vielfalt von OOD-Szenarien in der realen Welt -- ver\"anderte Wetterbedingungen,
+unbekannte Stra\ss{}enbedingungen, unerwartete Objektkonstellationen -- eine
+vollst\"andige Testabdeckung des Eingangsraums prinzipiell ausschlie\ss{}t.
+
+\subsection{Fehlende formale Spezifikation}
+\label{subsec:formale_spez}
+
+Klassische sicherheitskritische Software wird gegen eine \emph{formale Spezifikation}
+entwickelt: Das Verhalten der Software ist f\"ur alle relevanten Eingangs-
+kombinationen eindeutig definiert \cite{Seshia2018}. Dieses Grundprinzip ist in
+ISO~26262 fest verankert und bildet die Basis f\"ur jeden Verifikationsnachweis.
+
+Bei einem KNN existiert keine solche formale Spezifikation: Das Training
+maximiert eine Verlustfunktion \"uber einen endlichen Datensatz und erzeugt
+damit ein Modell, dessen Verhalten au\ss{}erhalb des Trainingsdatensatzes
+lediglich durch Generalisierungsannahmen und empirische Tests charakterisiert
+werden kann. Ein mathematisch vollst\"andiger Nachweis der Korrektheit
+f\"ur den gesamten Eingangsraum ist -- abgesehen von kleinen, niedrigdimensionalen
+Netzen -- mit dem Stand der Technik nicht m\"oglich \cite{Huang2017}.
+
+\subsection{Statistische vs.\ deterministische Korrektheit}
+\label{subsec:stat_det}
+
+Ein zentrales Missverst\"andnis beim Einsatz von KNNs in
+sicherheitskritischen Systemen ist die implizite Gleichsetzung von
+\emph{statistischer Genauigkeit} und \emph{sicherheitstechnischer Korrektheit}.
+Ein KNN, das in 99{,}9\% aller Testf\"alle korrekte Ergebnisse liefert, zeigt
+im verbleibenden 0{,}1\% ein undefiniertes Verhalten -- und k\"onnte gerade in
+diesen Randf\"allen in den kritischsten Fahrsituationen versagen. Die Norm
+ISO~26262 kennt keine statistischen Fehlerquoten f\"ur Softwarefehler (im
+Unterschied zu Hardware-Ausfallraten); Softwarekorrektheit wird als Ja/Nein-Eigenschaft
+betrachtet, die durch formale Verifikation und Testabdeckung nachzuweisen ist
+\cite{iso26262_6}.
+
+Varshney und Alemzadeh \cite{Varshney2017} verdeutlichen diesen Unterschied:
+\"In safety-critical machine learning applications, one misbehavior may be
+far more costly than one thousand correct behaviors.`` Diese Asymmetrie ist im
+Sicherheitsdenken von ISO~26262 fundamental -- und mit dem statistischen
+Qualit\"atsbegriff von KNNs unvereinbar.
+
+\subsection{Reproduzierbares Schadensversagen (Fault Reproduction)}
+\label{subsec:fault_repro}
+
+Ein wesentliches Element der funktionalen Sicherheitsentwicklung ist die F\"ahigkeit,
+im Feldversagensfall das fehlerhafte Verhalten reproduzieren und analysieren zu
+k\"onnen (\emph{fault reproduction}), um die Ursache zu identifizieren und durch
+Softwarekorrektur zu beseitigen. Bei klassischer Software ist dies m\"oglich, da
+der Code deterministisch und vollst\"andig \"uberpr\"ufbar ist.
+
+Bei einem KNN-basierten virtuellen Sensor im Feld kann ein Versagen durch nichtlineare
+Wechselwirkungen multidimensionaler Eingangssignale verursacht sein, die im
+Laborumfeld nicht reproduzierbar sind. Selbst wenn der Eingangsdatenvektor des
+Versagenszeitpunkts vollst\"andig rekonstruiert werden kann, ist eine kausale Analyse
+-- warum hat das Netz genau diesen falschen Wert ausgegeben? -- nicht m\"oglich.
+Dies untergr\"abt ein Kernprinzip des Sicherheitsprozesses, n\"amlich das
+kontinuierliche Lernen aus Feldversagensf\"allen zur Verbesserung der Systemsicherheit
+\cite{Leveson2011}.
+
+\subsection{Zertifizierungsnachweis und Safety Case}
+\label{subsec:safety_case}
+
+ISO~26262 Teil~2 verlangt die Erstellung eines \emph{Safety Cases} -- eines
+strukturierten Arguments, das auf Basis von Evidenz nachweist, dass das System
+ausreichend sicher ist \cite{iso26262_2}. Dieser Safety Case muss von einem
+unabh\"angigen Sicherheitsprüfer (Functional Safety Assessor) bewertet und
+best\"atigt werden.
+
+F\"ur ein KNN-basiertes System l\"asst sich kein vollst\"andiger Safety Case
+erstellen: Die notwendige Evidenz -- insbesondere der Nachweis der formalen
+Verifikation und der vollst\"andigen Anforderungsabdeckung -- kann f\"ur KNNs
+strukturell nicht erbracht werden \cite{AMLAS2021}. Bestehende Rahmenwerke wie
+AMLAS (Assurance of Machine Learning in Autonomous Systems) \cite{AMLAS2021}
+stellen fest, dass f\"ur ML-basierte Systeme neue, noch nicht standardisierte
+Nachweisformen erforderlich sind -- womit sie implizit einr\"aumen, dass mit den
+Mitteln der ISO~26262 allein kein vollst\"andiger Nachweis m\"oglich ist.
+
+% ============================================================
+\section{Zentrale Argumente gegen den Einsatz}
+\label{sec:argumente}
+% ============================================================
+
+Aus den vorstehenden Analysen lassen sich die folgenden zentralen Argumente
+destillieren, die konsequent gegen den Einsatz von neuronalen Netzen in
+ISO~26262-konformer, sicherheitskritischer ECU-Software sprechen:
+
+\subsection{Argument 1: Strukturelle Unvereinbarkeit mit dem Verifikationsparadigma}
+\label{subsec:arg1}
+
+ISO~26262 basiert auf einem \emph{konstruktiven Verifikationsparadigma}: Software
+wird anhand expliziter Anforderungen entwickelt und formal gegen diese Anforderungen
+verifiziert. Neuronale Netze sind das Produkt eines \emph{empirischen Optimierungsparadigmas}:
+Sie entstehen durch Minimierung einer Verlustfunktion \"uber einen endlichen Datensatz.
+Diese beiden Paradigmen sind fundamental unvertr\"aglich. Es handelt sich nicht um eine
+L\"ucke, die durch h\"oheren Aufwand oder bessere Werkzeuge geschlossen werden kann,
+sondern um eine epistemologische Grundverschiedenheit: Sicherheitsnachweis beruht
+auf \emph{Wissen}, KNN-Training erzeugt \emph{Empirie}. Wissen ist übertragbar,
+begr\"undbar und vollst\"andig; Empirie ist stets begrenzt, stichprobenabh\"angig
+und niemals vollst\"andig.
+
+\subsection{Argument 2: Vertrauensw\"urdigkeit erfordert Erkl\"arbarkeit}
+\label{subsec:arg2}
+
+Vertrauensw\"urdigkeit (\emph{trustworthiness}) ist nach Avizienis et al.
+\cite{Avizienis2004} eine zusammengesetzte Eigenschaft, die Zuverl\"assigkeit
+(\emph{reliability}), Verf\"ugbarkeit (\emph{availability}), Wartbarkeit
+(\emph{maintainability}) und Sicherheit (\emph{safety}) umfasst. F\"ur sicherheitskritische
+Systeme setzt Vertrauensw\"urdigkeit voraus, dass das System nicht nur in der
+Vergangenheit korrekt funktioniert hat, sondern dass \emph{begr\"undet werden kann},
+warum es in Zukunft korrekt funktionieren wird -- insbesondere auch in Situationen,
+die noch nicht getestet wurden.
+
+Neuronale Netze k\"onnen diesen Nachweis nicht liefern: Ihr Erfolg in
+Testszenarien belegt die vergangene Leistung, nicht die k\"unftige Korrekheit
+in unbekannten Situationen. Wing \cite{Wing2021} formuliert f\"ur vertrauensw\"urdige
+KI-Systeme explizit die Anforderungen \emph{fair, robust, explainable, private,
+safe and secure} -- und stellt fest, dass kein heutiges KNN diese Anforderungen
+vollst\"andig erf\"ullt. Im Kontext sicherheitskritischer Systeme ist fehlende
+Vertrauensw\"urdigkeit kein theoretisches Problem, sondern ein rechtlich relevanter
+Haftungsausschlussgrund.
+
+\subsection{Argument 3: Determinismusdefizienz als dauerhaftes Strukturproblem}
+\label{subsec:arg3}
+
+Der Determinismusbegriff in ISO~26262 ist nicht auf das laufzeitliche
+Ausf\"uhrungsverhalten beschr\"ankt, sondern umfasst auch die
+\emph{Vorhersagbarkeit des Verhaltens \"uber den gesamten Betriebsbereich}. Ein
+System, dessen Verhalten vollst\"andig bekannt und berechenbar ist, ist deterministisch;
+ein System, dessen Verhalten f\"ur bestimmte Eingaben unbekannt oder unvorhersehbar ist,
+ist es nicht. Da f\"ur KNNs das Verhalten au\ss{}erhalb der Trainingsverteilung
+undefiniert ist und das exakte Verhalten f\"ur beliebige Eingaben nicht
+vorausberechnet werden kann, sind KNNs im sicherheitstechnisch relevanten Sinne
+nicht deterministisch \cite{Dreossi2019}.
+
+\subsection{Argument 4: Datenqualit\"at als neue, unkontrollierbare Fehlerquelle}
+\label{subsec:arg4}
+
+Klassische sicherheitskritische Software enth\"alt keine externe Abh\"angigkeit
+zu einem Datensatz w\"ahrend der Funktionsausf\"uhrung. Das Verhalten der
+Software ist vollst\"andig durch den Quellcode bestimmt, der versioniert, auditiert
+und in seiner Vollst\"andigkeit den Entwicklernormen entsprechend spezifiziert
+ist \cite{Sommerville2016}.
+
+KNN-Modelle hingegen repr\"asentieren das implizite Wissen des Trainingsdatensatzes.
+Die Qualit\"at dieses Datensatzes -- seine Vollst\"andigkeit, seine Repr\"asentativit\"at,
+seine Fehlerfreiheit -- hat direkten Einfluss auf das Verhalten des trainierten Netzes
+im Feld. ISO~26262 enth\"alt keine Methodik f\"ur die Qualit\"atssicherung von
+Trainingsdaten, da dieses Konzept im Entwicklungszeitraum der Norm nicht relevant war.
+Damit entsteht eine neue Klasse von Fehlerquellen -- \emph{Datenfehler} -- die
+au\ss{}erhalb des normativen Rahmens liegen und damit unkontrolliert bleiben
+\cite{Gauerhof2018}. Fehlerhafte, veraltete oder nicht-repr\"asentative Trainingsdaten
+k\"onnen systematic errors im Modell erzeugen, die mit keinem der in ISO~26262
+vorgeschriebenen Verifikationsverfahren aufgedeckt werden k\"onnen.
+
+\subsection{Argument 5: Systemische \"Uberschaubarkeit}
+\label{subsec:arg5}
+
+ISO~26262 verlangt nicht nur die Sicherheit einzelner Komponenten, sondern die
+\"Uberschaubarkeit des Gesamtsystems (\emph{system comprehensibility}), die
+Voraussetzung f\"ur eine korrekte und vollst\"andige Sicherheitsanalyse (FMEA,
+FTA) ist \cite{iso26262_9}. Ein System, das ein KNN enth\"alt, dessen
+innere Funktionsweise nicht vollst\"andig durchleuchtet werden kann, ist per
+definitionem nicht vollst\"andig \"uberschaubar.
+
+Konsequenz: Eine FMEA (Fehlerm\"oglichkeits- und Einflussanalyse) f\"ur ein KNN-Modul
+kann keine vollst\"andige Fehlerliste erstellen, da die Fehlermodi eines Netzes --
+welche Eingangskonstellationen f\"uhren zu welchen Fehlausgaben? -- nicht a priori
+spezifizierbar sind. Damit ist die Vollst\"andigkeit jeder Sicherheitsanalyse,
+die KNN-Komponenten enth\"alt, grundlegend in Frage gestellt.
+
+\subsection{Argument 6: Haftungs- und Nachweisrechtliche Implikationen}
+\label{subsec:arg6}
+
+In Deutschland und der EU unterstehen Fahrzeuge dem Produkthaftungsrecht
+(ProdHaftG, EU-Produkthaftungsrichtlinie 2024/2853). Im Falle eines
+Schadensersatzanspruchs muss der Hersteller nachweisen, dass das Fahrzeug
+\emph{alle zum Zeitpunkt des Inverkehrbringens relevanten Sicherheitsstandards
+erf\"ullt hat}. ISO~26262 ist der ma\ss{}gebliche Industriestandard und wird
+von Typgenehmigungsbeh\"orden als Referenz herangezogen.
+
+Kann ein Hersteller die Normkonformit\"at seines KNN-basierten virtuellen Sensors
+nicht l\"uckenlos nachweisen -- und dieser Nachweis ist, wie in den vorstehenden
+Abschnitten gezeigt, nur partiell m\"oglich --, so tr\"agt er ein erhebliches
+Haftungsrisiko. Im schlimmsten Fall -- einem durch den KNN-Ausfall verursachten
+Personenschaden -- ist der fehlende Sicherheitsnachweis als Indiz f\"ur fahrl\"assige
+Konstruktion zu werten. Dieses Risiko ist in der \"offentlichen und industriellen
+Diskussion bislang unterbewertet.
+
+\subsection{Argument 7: Zertifizierungsrisiko bei Typgenehmigung}
+\label{subsec:arg7}
+
+Fahrzeuge, die auf europa\"aischen Stra\ss{}en betrieben werden, ben\"otigen eine
+Typgenehmigung, die zunehmend die Einhaltung funktionaler Sicherheitsstandards
+voraussetzt (UNECE WP.29, ALKS-Verordnung). Typgenehmigungsbeh\"orden wie das
+Kraftfahrtbundesamt (KBA) oder die britische DVSA bewerten zunehmend KI-basierte
+Systeme, verf\"ugen jedoch noch \"uber keine konsolidierten Leitf\"aden f\"ur deren
+Bewertung. Die resultierende Unsicherheit bedeutet: Ein Fahrzeughersteller,
+der KNNs in ASIL-relevanten Systemen einsetzt, muss mit l\"angeren, teureren und
+unsichereren Typgenehmigungsverfahren rechnen -- und l\"auft Gefahr, nach
+Markteinf\"uhrung mit Nachr\"ustungsanforderungen konfrontiert zu werden, wenn
+die Beh\"orden ihre Bewertungspraxis konsolidieren.
+
+% ============================================================
+\section{Kritische Auseinandersetzung}
+\label{sec:gegenargumente}
+% ============================================================
+
+\subsection{ASIL-Dekomposition und Monitoring-Architektur}
+\label{subsec:gegenarg1}
+
+Das am h\"aufigsten vorgebrachte Argument f\"ur die Verwendbarkeit von KNNs in
+sicherheitskritischen Systemen ist die \emph{ASIL-Dekomposition}: Das KNN wird auf
+QM oder ASIL~B eingestuft und durch einen deterministischen, ASIL~D-qualifizierten
+Monitor \"uberwacht, der die Ausgabe des KNN auf Plausibilit\"at pr\"uft und im
+Fehlerfall auf einen sicheren Zustand umschaltet.
+
+Dieser Ansatz ist prinzipiell legitim und in ISO~26262 vorgesehen
+\cite{iso26262_9}. Er hat jedoch entscheidende Grenzen:
+
+\begin{enumerate}
+  \item \textbf{Monitor-Vollst\"andigkeit:} Der Monitor kann nur Fehler erkennen,
+    die er zu erkennen in der Lage ist. F\"ur die Spezifikation des Monitors m\"ussen
+    die m\"oglichen Fehlm\"odi des KNN bekannt sein -- was, wie in
+    \cref{subsec:arg5} gezeigt, gerade nicht der Fall ist. Ein Monitor, dessen
+    Fehlermodell unvollst\"andig ist, bietet keine vollst\"andige Sicherheitsgarantie.
+
+  \item \textbf{Gemeinsam-Ursachen-Ausfall (CCF):} Wenn KNN und Monitor beide
+    auf denselben Eingangsdaten arbeiten und das KNN durch adversarielle oder
+    OOD-Eingaben gest\"ort wird, k\"onnen dieselben Eingaben auch den Monitor
+    t\"auschen, sofern dieser kein v\"ollig unabh\"angiges Funktionsprinzip verwendet.
+
+  \item \textbf{Funktionale Degradation:} Ein Monitoring-basiertes System degradiert
+    den KNN-Ansatz faktisch zum Hilfssystem mit eingeschr\"anktem ASIL. Wenn die
+    eigentliche Sicherheit ausschlie\ss{}lich durch den Monitor gew\"ahrleistet wird,
+    stellt sich die Frage, welchen Merkmalsvorteil das KNN gegen\"uber einem
+    klassischen, deterministischen Sch\"atzer noch bietet.
+\end{enumerate}
+
+\subsection{ISO/PAS~8800 und neue Normen adressieren das Problem}
+\label{subsec:gegenarg2}
+
+Die 2024 ver\"offentlichte ISO/PAS~8800 \emph{Road Vehicles -- Safety and Artificial
+Intelligence} \cite{isopas8800} wird als normative L\"osung f\"ur die Integration von
+KI in sicherheitskritische Fahrzeugsysteme beworben. In der Tat adressiert ISO/PAS~8800
+viele der in dieser Arbeit genannten Probleme und definiert ML-spezifische Work Products,
+Datenqualit\"atsanforderungen und ODD-Spezifikationen.
+
+Allerdings ist kritisch anzumerken:
+
+\begin{enumerate}
+  \item ISO/PAS~8800 ist ein \emph{Publicly Available Specification} (PAS) -- eine
+    vorl\"aufige Norm, kein vollwertiger ISO-Standard. Sie hat noch nicht den
+    Reifegrad einer mehrfach durchlaufenen Konsensent\"scheidung.
+  \item Die Norm definiert Prozessanforderungen, l\"ost jedoch nicht die
+    \emph{technischen} Grundprobleme -- sie spezifiziert lediglich, wie der
+    Nachweis organisiert werden soll. Die Frage, ob ein statistisches Modell
+    wirklich sicher agiert, wird nicht durch bessere Prozessorganisation beantwortet.
+  \item ISO/PAS~8800 muss im Zusammenspiel mit ISO~26262 gelesen werden und
+    \emph{ersetzt} diese nicht. Soweit ISO~26262 Anforderungen stellt, die
+    KNNs strukturell nicht erf\"ullen k\"onnen, \"andert ISO/PAS~8800 daran nichts.
+\end{enumerate}
+
+\subsection{MIL/SIL/PIL-Tests belegen die Sicherheit}
+\label{subsec:gegenarg3}
+
+Toolanbieter wie dSPACE (TargetLink) betonen die MIL/SIL/PIL-Testkette als Nachweis,
+dass das KNN auf der Zielhardware genauso funktioniert wie im Modell. Dies ist ein
+wichtiger, aber h\"aufig missdeuteter Beitrag:
+
+MIL/SIL/PIL-Tests belegen \emph{Implementierungskonsistenz} -- das hei\ss{}t,
+das trainierte Modell wird durch den Codegenerierungsprozess nicht verf\"alscht.
+Sie sagen jedoch \emph{nichts} \"uber die Korrektheit des trainierten Modells
+selbst aus. Das korrekte Deployment eines fehlerhaften Modells ist kein
+Sicherheitsgewinn.
+
+\subsection{Akzeptiertes Restrisiko (Acceptable Residual Risk)}
+\label{subsec:gegenarg4}
+
+Ein pragmatisches Argument lautet: ISO~26262 verlangt nicht null Fehler, sondern
+nur eine Reduzierung des Risikos auf ein akzeptables Ma\ss{} (\emph{ALARP:
+As Low As Reasonably Practicable}). Neuronale Netze als solche seien akzeptabel,
+solange das Gesamtrisiko unterhalb des Schwellenwerts bleibt.
+
+Dieses Argument verkennt, dass ALARP unter ISO~26262 keine statistische Abw\"agung
+von Fehlerraten ist, sondern einen \emph{Entwicklungsprozessnachweis} erfordert:
+Das Risiko gilt als ausreichend reduziert, wenn alle normativen Anforderungen an
+den Entwicklungsprozess erf\"ullt wurden. Da diese Anforderungen f\"ur KNNs nicht
+vollst\"andig erf\"ullt werden k\"onnen, kann ALARP nicht beansprucht werden --
+unabh\"angig von der empirisch gemessenen Fehlerrate des Netzes.
+
+% ============================================================
+\section{Sichere Alternativen zu KNN-basierten Sensorl\"osungen}
+\label{sec:alternativen}
+% ============================================================
+
+Die Ablehnung von KNNs f\"ur sicherheitskritische Funktionen schlie\ss{}t den
+Einsatz moderner, leistungsf\"ahiger Technik nicht aus. Folgende Alternativen sind
+mit ISO~26262 vereinbar und bieten f\"ur viele Anwendungsbereiche gleichwertige
+oder \"uberlegene L\"osungen:
+
+\subsection{Modellbasierte Beobachter und Kalman-Filter}
+\label{subsec:alt_kalman}
+
+F\"ur die Sch\"atzung physikalischer Gr\"o\ss{}en aus Messdaten sind
+\emph{Kalman-Filter} und deren nichtlineare Erweiterungen (Extended Kalman Filter,
+Unscented Kalman Filter) seit Jahrzehnten der Stand der Technik in
+sicherheitskritischen Systemen \cite{Leveson2011}. Sie basieren auf einem expliziten
+physikalischen Systemmodell, sind linear in den Zustandsgr\"o\ss{}en (bzw. lokal
+linearisiert), haben eine bekannte, analytisch berechenbare Fehlerkovarianz und
+erm\"oglichen eine vollst\"andige formale Analyse. Die Anforderungsverfolgbarkeit
+ist l\"uckenlos: jeder Parameter des Filters leitet sich aus dem zugrundeliegenden
+physikalischen Modell ab.
+
+\subsection{Polynomiale Approximationen und Look-up-Tabellen}
+\label{subsec:alt_lut}
+
+F\"ur nichtlineare Kennlinien und Kennfelder -- h\"aufige Anwendungsf\"alle f\"ur
+virtuelle Sensoren -- sind stufenweise polynomiale Approximationen und
+Look-up-Tabellen mit Interpolation eine bew\"ahrte, sicherheitstechnisch
+unproblematische L\"osung. Das Verhalten ist vollst\"andig durch explizite Werte
+definiert, \"uberpr\"ufbar und formal verifizierbar.
+
+\subsection{Physikalisch-motivierte Modelle}
+\label{subsec:alt_phys}
+
+In vielen F\"allen, in denen ein neuronales Netz als virtueller Sensor vorgeschlagen
+wird, liegt hinreichendes physikalisches Wissen vor, um ein parametrisches Modell
+abzuleiten. Der Einsatz von KNNs wird dann h\"aufig mit geringerem Modellierungsaufwand
+begr\"undet. Dieser Aufwand ist jedoch eine Investition in Sicherheit und
+Nachvollziehbarkeit -- er ist im Sicherheitsentwicklungsprozess nicht wegoptimierbar.
+
+\subsection{Fuzzy-Logik und Expertensysteme}
+\label{subsec:alt_fuzzy}
+
+F\"ur qualitative, wissensbasierte Entscheidungsfunktionen boten Fuzzy-Logik-Systeme
+und Expertensysteme schon l\"ange erkl\"arbare, formal analysierbare Alternativen
+zu KNNs, die mit ISO~26262 vereinbar sind \cite{Kurd2003}. Sie sind in
+eingebetteten Systemen effizient implementierbar und bieten eine h\"ohere
+Erkl\"arbarkeit.
+
+\subsection{Formale Methoden und Model Checking}
+\label{subsec:alt_formal}
+
+F\"ur die Verifikation kritischer Systemeigenschaften -- Sicherheitsinvarianten,
+zeitliche Eigenschaften -- stehen formale Methoden (Model Checking, Theorem
+Proving) zur Verf\"ugung, die in ISO~26262 ASIL~D explizit empfohlen werden
+\cite{iso26262_6}. Diese Methoden sind auf klassisch programmierten Code gut
+anwendbar und liefern mathematisch gesicherte Nachweise.
+
+% ============================================================
+\section{Diskussion: Kumuliertes Defizit und Normative L\"ucke}
+\label{sec:diskussion}
+% ============================================================
+
+Die in dieser Arbeit analysierten Probleme sind keine isolierten technischen
+Einzelprobleme, die durch spezifische Abhilfe\-ma\ss{}nahmen behebbar w\"aren.
+Sie repr\"asentieren ein \emph{kumuliertes, strukturelles Defizit}, das aus der
+fundamentalen Unvereinbarkeit zweier Designphilosophien resultiert:
+
+Die sicherheitstechnische Entwicklungsphilosophie der ISO~26262 beruht auf dem
+Prinzip: \emph{Alles, was nicht explizit spezifiziert und verifiziert wurde,
+ist als unsicher zu betrachten.} Die maschinelle Lernphilosophie neuronaler Netze beruht auf dem Prinzip: \emph{Was empirisch gut genug funktioniert, kann eingesetzt werden.} Diese beiden Prinzipien sind nicht kompatibel. Sie k\"onnen durch keinen technischen Trick oder normativen Workaround in \"Ubereinstimmung gebracht werden.
+
+\subsection{Die normative L\"ucke}
+\label{subsec:normative_luecke}
+
+Die Gemeinschaft der Sicherheitsnormierer erkennt dieses Dilemma zunehmend an.
+ISO~21448 (SOTIF) \cite{iso21448} adressiert Versagen durch unzureichende
+Spezifikation oder Leistung -- deckt aber nicht die strukturellen
+Verifikationsdefizite von KNNs ab. ISO/PAS~8800 \cite{isopas8800} definiert
+ML-spezifische Prozessanforderungen, ersetzt jedoch nicht die formalen
+Verifikationsanforderungen der ISO~26262. AMLAS \cite{AMLAS2021} bietet
+einen Argumentationsrahmen f\"ur ML-Safety-Cases, r\"aumt aber selbst ein,
+dass wesentliche Nachweisformen noch nicht standardisiert sind.
+
+In Summe besteht eine \emph{normative L\"ucke}: Es gibt keinen anerkannten, vollst\"andigen
+Sicherheitsnachweis f\"ur KNN-Komponenten in ASIL-relevanten Steuerger\"atefunktionen.
+Diese L\"ucke schlie\ss{}t Werkzeugketten (TargetLink, ONNX-Deployment) nicht:
+Das korrekte Deployment eines Modells bedeutet nicht dessen Sicherheitsnachweis.
+
+\subsection{Das Pr\"azedenzargument der Luft- und Raumfahrt}
+\label{subsec:praezedenz}
+
+Interessant ist der Blick auf die Luft- und Raumfahrt, wo funktionale Sicherheit
+\"ahnlich streng gehandhabt wird wie im Automobil (DO-178C als Pendant zu ISO~26262).
+Das Neural Network Certification Advisory Circular der FAA (FAA-AC) hat explizit
+festgestellt, dass neuronale Netze f\"ur sicherheitskritische Flugsteuerungssysteme
+nicht zertifizierbar sind und begr\"undet dies mit denselben Argumenten wie diese
+Arbeit: fehlende Erkl\"arbarkeit, nicht anwendbare Coverage-Metriken und
+unvollst\"andige Fehlermodelle. Erst in j\"ungster Zeit (2023-2024) werden erste
+Pilotprojekte unter eng umrissenen Einschr\"ankungen und mit aufwendigen
+Kompensationsma\ss{}nahmen zugelassen -- und dies nach Jahren intensiver
+Standardisierungsarbeit, die im Automobil noch nicht abgeschlossen ist.
+
+\subsection{Das Tempo des technologischen Wandels vs.\ normative Reife}
+\label{subsec:tempo}
+
+Ein oft unterschlager Aspekt der Diskussion ist die zeitliche Dimension: KI und
+Deep Learning entwickeln sich in einem Tempo, das weit \"uber die Entwicklungszyklen
+von Sicherheitsnormen hinausgeht. ISO~26262:2018 wurde nach einem Jahrzehnt
+internationaler Konsensfindung ver\"offentlicht. ISO/PAS~8800:2024 ist noch nicht
+in die ISO~26262 integriert. Bis ein konsolidiertes, internationales Regelwerk
+f\"ur KI in sicherheitskritischen Automobil\-systemen existiert, das alle hier
+diskutierten Defizite adressiert, werden weitere Jahre vergehen -- Jahre, in denen
+Fahrzeuge mit KNN-basierten Funktionen bereits auf den Stra\ss{}en fahren k\"onnten.
+
+Die Verantwortung, in dieser Unsicherheitsphase konservativ zu handeln -- also
+KNNs aus sicherheitskritischen Funktionen fernzuhalten oder auf gut begr\"undete,
+eng beschr\"ankte Ausnahmen zu reduzieren --, liegt bei den Fahrzeugherstellern
+und Tier-1-Zulieferern. Das Argument des Wettbewerbsdrucks ist dabei kein
+Sicherheitsargument.
+
+% ============================================================
+\section{Fazit und Empfehlungen}
+\label{sec:fazit}
+% ============================================================
+
+Die vorliegende Arbeit hat eine systematische Analyse der Vereinbarkeit von
+neuronalen Netzen mit den Anforderungen des Sicherheitsstandards ISO~26262
+vorgenommen. Das Ergebnis ist eindeutig: Neuronale Netze in ihrer gegenw\"artigen
+Form erf\"ullen die Kernanforderungen der ISO~26262 an ASIL-relevante Software
+strukturell nicht. Die identifizierten Defizite betreffen:
+
+\begin{itemize}[itemsep=2pt]
+  \item fehlenden Determinismus im sicherheitstechnisch relevanten Sinne,
+  \item unm\"ogliche Anforderungsverfolgbarkeit innerhalb der Netzwerkstruktur,
+  \item Nicht-Anwendbarkeit der vorgeschriebenen Verifikationsverfahren (MC/DC),
+  \item unbeweisbare Abwesenheit unbeabsichtigter Funktionalit\"at,
+  \item strukturell unkontrolliertes OOD- und adversarielle Verhalten,
+  \item unvollst\"andige Fehlermodelle und damit unvollst\"andige Sicherheitsanalysen,
+  \item fehlende normative und werkzeugm\"a\ss{}ige Grundlage f\"ur vollst\"andige
+    Safety Cases.
+\end{itemize}
+
+Diese Defizite k\"onnen durch systemarchitektonische Kompensationsma\ss{}nahmen
+(Monitoring, ASIL-Dekomposition) teilweise abgemildert werden, verschwinden jedoch
+nicht. Die \"ubergeordnete epistemische Grenze bleibt: Ein statistisch erlerntes
+Modell kann nie mit derselben Sicherheitsevidenz versehen werden wie ein formal
+spezifiziertes, deterministisch implementiertes und vollst\"andig verifiziertes
+Softwaremodul.
+
+\bigskip
+\noindent\textbf{Empfehlungen:}
+
+\begin{enumerate}[itemsep=4pt]
+  \item \textbf{Keine KNN-Nutzung in ASIL~C/D-Funktionen:} F\"ur sicherheitskritische
+    Funktionen mit ASIL~C- oder ASIL~D-Einstufung sollten ausschlie\ss{}lich klassische,
+    formal verifizierbare Algorithmen eingesetzt werden, bis ein verabschiedeter,
+    vollst\"andiger normativer Rahmen f\"ur KI in sicherheitskritischen Systemen vorliegt.
+
+  \item \textbf{Beschr\"ankung auf QM / unkritische Hilfsf\"unktionen:} KNNs k\"onnen
+    sinnvoll in der Vorverarbeitung von Rohdaten, in der Kalibrierung von
+    Diagnosealgorithen oder in der ASIL-QM-Komfortfunktionalit\"at eingesetzt werden,
+    wo keine direkten Sicherheitsziele betroffen sind.
+
+  \item \textbf{Normative Grundlage abwarten und mitgestalten:} Fahrzeughersteller
+    und Zulieferer sollten aktiv an der Weiterentwicklung von ISO/PAS~8800,
+    ISO~21448 und verwandten Normen mitwirken, anstatt bestehende normative L\"ucken
+    als implizite Erlaubnis zu interpretieren.
+
+  \item \textbf{Investition in erkl\"arbare und verifizierbare KI (XAI):} Die
+    Forschung zu formal verifizierbaren, erkl\"arbaren KI-Systemen (z.\,B.
+    neurosymbolische Systeme, formale Verifikation kleiner Netze) sollte
+    intensiviert und mit der Normarbeit verzahnt werden, bevor ein breiter
+    Einsatz in ASIL-relevanten Funktionen erfolgt.
+
+  \item \textbf{Werkzeugkettenqualifikation:} Wer KNNs trotz der genannten
+    Einschr\"ankungen einsetzt, muss die vollst\"andige TCL-Qualifikation der
+    verwendeten KI-Frameworks sicherstellen -- ein Aufwand, der in der Praxis
+    h\"aufig unterschätzt wird und in die Kosten-Nutzen-Bewertung einzubeziehen ist.
+\end{enumerate}
+
+\bigskip
+\noindent Diese Arbeit tritt nicht f\"ur eine pauschale Ablehnung von KI im
+Fahrzeug ein. In zahlreichen Anwendungsgebieten -- Komfortfunktionen, Infotainment,
+lernende Fahrerassistenz ohne direkten Sicherheits\-bezug -- kann und soll KI ihr
+Potenzial entfalten. F\"ur sicherheitskritische Steuerger\"atef\"unktionen aber
+gilt: Die Last des Sicherheitsnachweises liegt beim Entwickler, nicht beim Pr\"ufer.
+Solange dieser Nachweis f\"ur neuronale Netze nicht vollst\"andig und konform zu
+ISO~26262 erbracht werden kann, verbietet sich ihr Einsatz in solchen Funktionen
+aus Gr\"unden der technischen Vernunft, der Rechtssicherheit und -- zuvorderst --
+des Schutzes von Menschenleben.
+
+\begin{thebibliography}{99}
+\addcontentsline{toc}{section}{Literaturverzeichnis}
+
+\bibitem{iso26262_1}
+International Organization for Standardization (ISO):
+\textit{ISO~26262-1: Road vehicles -- Functional safety -- Part~1: Vocabulary}.
+2.~Ausgabe. Genf: ISO, 2018.
+
+\bibitem{iso26262_2}
+International Organization for Standardization (ISO):
+\textit{ISO~26262-2: Road vehicles -- Functional safety -- Part~2: Management of functional safety}.
+2.~Ausgabe. Genf: ISO, 2018.
+
+\bibitem{iso26262_4}
+International Organization for Standardization (ISO):
+\textit{ISO~26262-4: Road vehicles -- Functional safety -- Part~4: Product development at the system level}.
+2.~Ausgabe. Genf: ISO, 2018.
+
+\bibitem{iso26262_6}
+International Organization for Standardization (ISO):
+\textit{ISO~26262-6: Road vehicles -- Functional safety -- Part~6: Product development at the software level}.
+2.~Ausgabe. Genf: ISO, 2018.
+
+\bibitem{iso26262_8}
+International Organization for Standardization (ISO):
+\textit{ISO~26262-8: Road vehicles -- Functional safety -- Part~8: Supporting processes}.
+2.~Ausgabe. Genf: ISO, 2018.
+
+\bibitem{iso26262_9}
+International Organization for Standardization (ISO):
+\textit{ISO~26262-9: Road vehicles -- Functional safety -- Part~9: ASIL-oriented and safety-oriented analyses}.
+2.~Ausgabe. Genf: ISO, 2018.
+
+\bibitem{iso21448}
+International Organization for Standardization (ISO):
+\textit{ISO~21448: Road vehicles -- Safety of the intended functionality (SOTIF)}.
+Genf: ISO, 2022.
+
+\bibitem{isopas8800}
+International Organization for Standardization (ISO):
+\textit{ISO/PAS~8800: Road vehicles -- Safety and artificial intelligence}.
+Genf: ISO, 2024.
+
+\bibitem{iec61508}
+International Electrotechnical Commission (IEC):
+\textit{IEC~61508: Functional Safety of Electrical/Electronic/Programmable Electronic Safety-related Systems}.
+2.~Ausgabe. Genf: IEC, 2010.
+
+\bibitem{AMLAS2021}
+Hawkins, R.; Paterson, C.; Picardi, C.; Jia, Y.; Calinescu, R.; Habli, I.:
+\textit{AMLAS: A Methodology for the Assurance of Machine Learning in Autonomous Systems}.
+University of York, 2021.
+arXiv:2102.10020.
+
+\bibitem{Salay2018}
+Salay, R.; Khastgir, S.; Czarnecki, K.:
+An Analysis of ISO~26262: Using Machine Learning Safely in Automotive Software.
+\textit{arXiv preprint arXiv:1709.02435}, 2018.
+
+\bibitem{Koopman2016}
+Koopman, P.; Wagner, M.:
+Challenges in Autonomous Vehicle Testing and Validation.
+In: \textit{SAE World Congress}. SAE International, 2016.
+
+\bibitem{Amodei2016}
+Amodei, D.; Olah, C.; Steinhardt, J.; Christiano, P.; Schulman, J.; Man\'e, D.:
+Concrete Problems in AI Safety.
+\textit{arXiv preprint arXiv:1606.06565}, 2016.
+
+\bibitem{Goodfellow2015}
+Goodfellow, I.; Shlens, J.; Szegedy, C.:
+Explaining and Harnessing Adversarial Examples.
+In: \textit{International Conference on Learning Representations (ICLR)}, 2015.
+
+\bibitem{Szegedy2014}
+Szegedy, C.; Zaremba, W.; Sutskever, I.; Bruna, J.; Erhan, D.; Goodfellow, I.; Fergus, R.:
+Intriguing Properties of Neural Networks.
+In: \textit{International Conference on Learning Representations (ICLR)}, 2014.
+
+\bibitem{Ribeiro2016}
+Ribeiro, M.\,T.; Singh, S.; Guestrin, C.:
+``Why Should I Trust You?'': Explaining the Predictions of Any Classifier.
+In: \textit{Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
+S.~1135--1144, 2016.
+
+\bibitem{Lipton2018}
+Lipton, Z.\,C.:
+The Mythos of Model Interpretability.
+\textit{Queue}, 16(3), S.~31--57, 2018.
+
+\bibitem{Marcus2018}
+Marcus, G.:
+Deep Learning: A Critical Appraisal.
+\textit{arXiv preprint arXiv:1801.00631}, 2018.
+
+\bibitem{Seshia2018}
+Seshia, S.\,A.; Sadigh, D.; Sastry, S.\,S.:
+Formal Specification for Deep Neural Networks.
+\textit{arXiv preprint arXiv:1802.03023}, 2018.
+
+\bibitem{Avizienis2004}
+Avizienis, A.; Laprie, J.-C.; Randell, B.; Landwehr, C.:
+Basic Concepts and Taxonomy of Dependable and Secure Computing.
+\textit{IEEE Transactions on Dependable and Secure Computing}, 1(1), S.~11--33, 2004.
+
+\bibitem{Leveson2011}
+Leveson, N.\,G.:
+\textit{Engineering a Safer World: Systems Thinking Applied to Safety}.
+Cambridge, MA: MIT Press, 2011.
+
+\bibitem{Varshney2017}
+Varshney, K.\,R.; Alemzadeh, H.:
+On the Safety of Machine Learning: Cyber-Physical Systems, Decision Sciences, and Data Products.
+\textit{Big Data}, 5(3), S.~246--255, 2017.
+
+\bibitem{Burton2017}
+Burton, S.; Gauerhof, L.; Heinzemann, C.:
+Making the Case for Safety of Machine Learning in Highly Automated Driving.
+In: \textit{Computer Safety, Reliability, and Security (SAFECOMP)}.
+Springer, 2017.
+
+\bibitem{Huang2017}
+Huang, X.; Kwiatkowska, M.; Wang, S.; Wu, M.:
+Safety Verification of Deep Neural Networks.
+In: \textit{Computer Aided Verification (CAV)}, S.~3--29, 2017.
+
+\bibitem{Rumelhart1986}
+Rumelhart, D.\,E.; Hinton, G.\,E.; Williams, R.\,J.:
+Learning Representations by Back-propagating Errors.
+\textit{Nature}, 323, S.~533--536, 1986.
+
+\bibitem{LeCun2015}
+LeCun, Y.; Bengio, Y.; Hinton, G.:
+Deep Learning.
+\textit{Nature}, 521, S.~436--444, 2015.
+
+\bibitem{Goodfellow2016}
+Goodfellow, I.; Bengio, Y.; Courville, A.:
+\textit{Deep Learning}.
+Cambridge, MA: MIT Press, 2016.
+
+\bibitem{Dreossi2019}
+Dreossi, T.; Donze, A.; Seshia, S.\,A.:
+Compositional Falsification of Cyber-Physical Systems with Machine Learning Components.
+\textit{Journal of Automated Reasoning}, 63, S.~1031--1053, 2019.
+
+\bibitem{EUAI2019}
+High-Level Expert Group on AI (Europäische Kommission):
+\textit{Ethics Guidelines for Trustworthy AI}.
+Brüssel: Europäische Kommission, 2019.
+
+\bibitem{Zhao2020}
+Zhao, X.; Nguyen, H.-D.; Bhatt, D.; Zulkernine, M.:
+Assessing Safety of Machine Learning for Use in Safety-Critical Domains.
+\textit{IEEE Transactions on Reliability}, 69(3), S.~1036--1056, 2020.
+
+\bibitem{Kurd2003}
+Kurd, Z.; Kelly, T.:
+Establishing Safety Criteria for Artificial Neural Networks.
+In: \textit{International Conference on Knowledge-Based Intelligent Information and Engineering Systems (KES)}.
+Springer, 2003.
+
+\bibitem{Koopman2019}
+Koopman, P.; Fratrik, F.:
+How Many Operational Design Domains, Objects, and Events?
+In: \textit{Safety and Artificial Intelligence Workshop (AAAI)}, 2019.
+
+\bibitem{Stocco2020}
+Stocco, A.; Weiss, M.; Calzana, M.; Tonella, P.:
+Misbehaviour Prediction for Autonomous Driving Systems.
+In: \textit{42nd International Conference on Software Engineering (ICSE)}, 2020.
+
+\bibitem{Pfeifer2021}
+Pfeifer, H.; Herber, P.:
+Challenges for Assuring AI-Based Safety Functions in Compliance with ISO~26262.
+\textit{Proceedings of the 9th European Congress on Embedded Real Time Software and Systems (ERTS)}, 2021.
+
+\bibitem{Doshi2017}
+Doshi-Velez, F.; Kim, B.:
+Towards a Rigorous Science of Interpretable Machine Learning.
+\textit{arXiv preprint arXiv:1702.08608}, 2017.
+
+\bibitem{Gauerhof2018}
+Gauerhof, L.; Munk, P.; Burton, S.:
+Structuring Validation Targets of a Machine Learning Function Applied to Automated Driving.
+In: \textit{Computer Safety, Reliability, and Security (SAFECOMP)}.
+Springer, 2018.
+
+\bibitem{Sommerville2016}
+Sommerville, I.:
+\textit{Software Engineering}.
+10.~Ausgabe. Harlow, UK: Pearson, 2016.
+
+\bibitem{Wing2021}
+Wing, J.\,M.:
+Trustworthy AI.
+\textit{Communications of the ACM}, 64(10), S.~64--71, 2021.
+
+\bibitem{Tonella2022}
+Tonella, P.:
+When Testing AI Is (Not) Different.
+\textit{arXiv preprint arXiv:2202.10524}, 2022.
+
+\bibitem{Myllyaho2021}
+Myllyaho, L.; Raatikainen, M.; M\"annis\"o, T.; Lepp\"anen, V.; Honkola, J.:
+Systematic Literature Review of Validation Methods for AI Systems.
+\textit{Journal of Systems and Software}, 181, 2021.
+
+\end{thebibliography}
+
+\end{document}
+

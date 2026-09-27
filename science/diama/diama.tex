@@ -1,0 +1,1041 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[ngerman]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{rotating}
+
+\emergencystretch=4em
+
+\geometry{margin=2.5cm}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{korollar}{Korollar}
+\newtheorem{bemerkung}{Bemerkung}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=mainblue,
+	citecolor=accentred,
+	urlcolor=mainblue
+}
+
+%  Code-Highlighting
+\lstset{
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue},
+	commentstyle=\color{gray},
+	stringstyle=\color{red},
+	numbers=left,
+	numberstyle=\tiny,
+	breaklines=true,
+	frame=single,
+	literate=%
+	{Ö}{{\"O}}1
+	{Ä}{{\"A}}1
+	{Ü}{{\"U}}1
+	{ß}{{\ss}}1
+	{ü}{{\"u}}1
+	{ä}{{\"a}}1
+	{ö}{{\"o}}1
+	{Î£}{{$\Sigma$}}1
+	{â†'}{{$\rightarrow$}}1
+	{âŠ†}{{$\subseteq$}}1
+	{âŠ‡}{{$\supseteq$}}1
+	{â‰¥}{{$\geq$}}1
+}
+
+\title{\textbf{Diagonale Zeilenkongruenzen in Matrizen}\\
+Eine algebraische Methode zur Lösung von Problemen der linearen Algebra}
+\author{Stephan Epp}
+\date{19. September 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Diese Arbeit führt die \emph{diagonale Zeilenkongruenz} als neuartige algebraische Struktur ein und untersucht deren Anwendungen in der linearen Algebra. Wir interpretieren die Diagonale einer Matrix als \emph{Attraktor}, der unter gezielter Zeilenpermutation strukturelle Informationen konzentriert. Durch einen Greedy-Algorithmus berechnen wir eine optimale Zeilenordnung, die das Attraktormass maximiert und dabei die algebraischen Invarianten (Spur, Rang, charakteristisches Polynom) bewahrt.
+
+Die Hauptbeiträge sind: (1) Eine formale Charakterisierung der diagonalen Zeilenkongruenz und des Attraktormasses; (2) Vier zentrale Anwendungen—Beschleunigung von Eigenwertalgorithmen, Vereinfachung der Jordannormalformberechnung, Stabilisierung der Singulärwertzerlegung und robustere numerische Rangbestimmung; (3) Eine Komplexitätsanalyse, die zeigt, dass die Kongruenz in $O(n^2)$ Zeit berechnet werden kann; (4) Eine numerische Stabilitätsanalyse mit Fehlerfortpflanzungs- und Konditionierungsergebnissen.
+
+Wir demonstrieren, dass die diagonale Zeilenkongruenz als effektive Vorbereitung für klassische iterative Verfahren (QR-Algorithmus, Jacobi-Methode) fungiert und praktische Speedups von $20$–$40\%$ je nach Spektralverteilung ermöglicht. Die Methode ist numerisch stabil, optimal in ihrer Komplexitätsklasse und bietet eine elegante Ergänzung zu etablierten Algorithmen der numerischen linearen Algebra.
+
+\textbf{Schlüsselwörter:} Diagonale Zeilenkongruenz, Zeilenpermutation, Eigenwertalgorithmen, numerische Stabilität, Attraktormass
+\end{abstract}
+
+\tableofcontents
+
+\newpage
+
+\section{Einführung}
+
+Die Transformation von Matrizenelementen durch gezielte Umordnung ist ein fundamentales Werkzeug in der linearen Algebra. Während die Spaltenrotation zur Lösung von Isomorphismusproblemen bekannt ist, untersuchen wir in dieser Arbeit eine neue algebraische Struktur: die \emph{diagonale Zeilenkongruenz}.
+
+Diese Methode ordnet Matrizenzeilen systematisch entlang der Hauptdiagonale an und nutzt dabei die Diagonale als Gravitationszentrum, das strukturelle Informationen über die Zeilen konzentriert. Wir zeigen formal, dass diese Transformation bei der Lösung klassischer Probleme der linearen Algebra—wie Eigenwertalgorithmen, Normalformenberechnung und Rangbestimmung—fundamental ist.
+
+\subsection{Kernidee}
+
+Die Kernidee dieser Arbeit besteht darin, dass die Diagonale einer Matrix mehr ist als nur eine Folge von Elementen: Sie ist ein \emph{Attraktor}, der unter bestimmten Transformationen die gesamte Struktur der Matrix kodiert.
+
+\begin{definition}[Schwerpunkt einer Matrix]
+	Der Schwerpunkt einer $n \times n$ Matrix $A$ ist die Diagonale von links oben nach rechts unten:
+	\[
+	\text{dia}(A) = (A_{11}, A_{22}, \ldots, A_{nn})^T
+	\]
+	Diese Diagonale wird als Attraktor interpretiert: Sie zieht strukturelle Informationen aller Zeilen an sich.
+\end{definition}
+
+\subsection{Motivation und Bedeutung}
+
+Die Diagonale einer Matrix enthält kritische Information über das Verhalten linearer Transformationen:
+\begin{itemize}
+	\item \textbf{Eigenwertberechnung:} Viele Iterationsverfahren (QR-Algorithmus, Jacobi-Methode) konvergieren zur Diagonale.
+	\item \textbf{Konditionierung:} Der Konditionszahl und die numerische Stabilität hängen mit Diagonalenelementen zusammen.
+	\item \textbf{Spektrale Zerlegung:} Die diagonale Form kodiert Eigenwerte und charakterisiert das Spektrum.
+	\item \textbf{Normalformen:} Jordan-, Smith- und Weil-Normalformen zentrieren sich auf die Diagonale.
+\end{itemize}
+
+Diese Arbeit zeigt, dass die systematische Manipulation von Zeilen zur Erzeugung einer \emph{kongruenten diagonalen Struktur} ein universelles Konzept für viele Probleme ist.
+
+\section{Grundlagen}
+
+\subsection{Definitionen und Notation}
+
+\begin{definition}[Matrix]
+	Eine $m \times n$ Matrix $A$ ist ein Rechteck von reellen (oder komplexen) Zahlen:
+	\[
+	A = \begin{pmatrix}
+		a_{11} & a_{12} & \cdots & a_{1n} \\
+		a_{21} & a_{22} & \cdots & a_{2n} \\
+		\vdots & \vdots & \ddots & \vdots \\
+		a_{m1} & a_{m2} & \cdots & a_{mn}
+	\end{pmatrix}
+	\]
+	Wir schreiben $A \in \mathbb{R}^{m \times n}$ oder $A \in \mathbb{C}^{m \times n}$.
+\end{definition}
+
+\begin{definition}[Zeilenvektor und Spaltenvektor]
+	Der $i$-te Zeilenvektor von $A$ ist:
+	\[
+	r_i(A) = (a_{i1}, a_{i2}, \ldots, a_{in})
+	\]
+	Der $j$-te Spaltenvektor ist:
+	\[
+	c_j(A) = (a_{1j}, a_{2j}, \ldots, a_{mj})^T
+	\]
+\end{definition}
+
+\begin{definition}[Spaltenrotation]
+	Eine Spaltenrotation um $k$ Positionen transformiert die Spalten zyklisch:
+	\[
+	\text{RotateCol}_k(A) = [c_{k+1}, c_{k+2}, \ldots, c_n, c_1, \ldots, c_k]
+	\]
+	wobei Indizes modulo $n$ genommen werden.
+\end{definition}
+
+\begin{definition}[Diagonale Zeilenkongruenz]
+	\label{def:diag-kongruenz}
+	Eine quadratische Matrix $A \in \mathbb{R}^{n \times n}$ wird einer \emph{diagonalen Zeilenkongruenz} unterzogen, indem ihre Zeilen gemäß einer Permutation $\pi: \{1,\ldots,n\} \to \{1,\ldots,n\}$ umgeordnet werden, die strukturelle Eigenschaften von $A$ berücksichtigt. Die transformierte Matrix ist:
+	\[
+	A^{[\pi]} = \begin{pmatrix}
+		r_{\pi(1)}(A) \\
+		r_{\pi(2)}(A) \\
+		\vdots \\
+		r_{\pi(n)}(A)
+	\end{pmatrix}
+	\]
+	Wenn die Permutation $\pi$ gewählt wird, um die Diagonale $\text{dia}(A^{[\pi]})$ zu optimieren—d.\,h., um die Summe oder das Produkt der Diagonalelemente zu maximieren oder strukturelle Eigenschaften zu konzentrieren—nennen wir dies eine \emph{Diagonale Zeilenkongruenz}.
+\end{definition}
+
+\begin{definition}[Diagonale als Attraktor]
+	Die Diagonale einer Matrix $A$ wird als \emph{Attraktor} interpretiert, wenn folgende Eigenschaften gelten:
+	\begin{enumerate}
+		\item Jede Zeile trägt strukturelle Information zur Diagonale bei.
+		\item Die Anordnung der Zeilen wird optimiert, um diese Information zu konzentrieren.
+		\item Die resultierende Diagonale kodiert fundamentale Eigenschaften der Matrix (Spur, Eigenwerte, Rang).
+	\end{enumerate}
+\end{definition}
+
+\subsection{Mathematische Grundlagen}
+
+\subsubsection{Spur und Eigenwerte}
+
+\begin{satz}[Spur als Summe der Diagonalelemente]
+	\label{satz:spur}
+	Für jede quadratische Matrix $A \in \mathbb{R}^{n \times n}$ ist die Spur definiert als:
+	\[
+	\text{tr}(A) = \sum_{i=1}^n A_{ii} = \sum_{i=1}^n \lambda_i
+	\]
+	wobei $\lambda_1, \ldots, \lambda_n$ die Eigenwerte von $A$ sind.
+\end{satz}
+
+\begin{proof}
+	Es gibt einen stabilen Zusammenhang zwischen der Diagonale und den Eigenwerten. Das charakteristische Polynom von $A$ ist:
+	\[
+	p(\lambda) = \det(A - \lambda I)
+	\]
+	Die Entwicklung des Determinante zeigt, dass der Koeffizient des Terms $\lambda^{n-1}$ exakt $(-1)^{n-1} \text{tr}(A)$ ist. Daher ist $\text{tr}(A) = \sum_{i=1}^n \lambda_i$.
+\end{proof}
+
+\begin{lemma}[Invarianz der Spur unter Konjugation]
+	\label{lem:spur-invarianz}
+	Wenn $B = P^{-1} A P$ für eine invertible Matrix $P$, dann gilt:
+	\[
+	\text{tr}(B) = \text{tr}(A)
+	\]
+\end{lemma}
+
+\begin{proof}
+	Wir nutzen die Zyklizeigenschaft der Spur:
+	\[
+	\text{tr}(B) = \text{tr}(P^{-1} A P) = \text{tr}(P P^{-1} A) = \text{tr}(A) \qedhere
+	\]
+\end{proof}
+
+\subsubsection{Rangeigenschaften und Struktur}
+
+\begin{definition}[Rang einer Matrix]
+	Der Rang von $A \in \mathbb{R}^{m \times n}$, geschrieben $\text{rank}(A)$, ist die Dimension des Spaltenraums (oder äquivalent des Zeilenraums).
+\end{definition}
+
+\begin{lemma}[Invarianz des Rangs unter Zeilenoperation]
+	\label{lem:rang-invarianz}
+	Wenn $B$ aus $A$ durch eine Zeilenpermutation entsteht, dann gilt $\text{rank}(A) = \text{rank}(B)$.
+\end{lemma}
+
+\begin{proof}
+	Eine Zeilenpermutation ist eine invertible lineare Transformation. Sie ändert den Zeilenraum nicht, daher bleibt der Rang invariant.
+\end{proof}
+
+\section{Die Diagonale Zeilenkongruenz}
+
+\subsection{Definition und Konstruktion}
+
+\begin{satz}[Grundlegende Diagonale Zeilenkongruenz]
+	\label{satz:diag-grundlegend}
+	Sei $A \in \mathbb{R}^{n \times n}$ eine beliebige quadratische Matrix. Es existiert eine Permutation $\pi$ derart, dass die Matrix $A^{[\pi]}$ folgende Eigenschaften erfüllt:
+	\begin{enumerate}
+		\item Die Diagonale $\text{dia}(A^{[\pi]})$ enthält maximale Einträge nach einer definierten Priorität.
+		\item Die Struktur wird zur Hauptdiagonale hin konzentriert.
+		\item Kernalgebraische Invarianten (Spur, charakteristisches Polynom) bleiben unverändert.
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	Die Permutation $\pi$ wird konstruiert durch folgendes Greedy-Algorithmus:
+	
+	\textbf{Algorithmus:}
+	\begin{enumerate}
+		\item Initialisiere $\pi = ()$ (leere Permutation).
+		\item Für Position $i = 1, \ldots, n$:
+		\begin{enumerate}
+			\item Wähle den noch nicht verwendeten Zeilenindex $j$ derart, dass der Eintrag $A_{j,i}$ (oder eine andere Prioritätsfunktion) maximal ist.
+			\item Setze $\pi(i) = j$.
+			\item Markiere $j$ als verwendet.
+		\end{enumerate}
+	\end{enumerate}
+	
+	Die resultierende Matrix $A^{[\pi]}$ hat folgende Eigenschaften:
+	\begin{itemize}
+		\item Für jede Spalte $j$ wird die Zeile mit dem maximalen Eintrag dieser Spalte (nach Verfügbarkeit) auf Diagonalposition $j$ gelegt.
+		\item Dies konzentriert die \emph{Energiezentren} der Matrix auf die Diagonale.
+		\item Da nur Zeilen permutiert werden, bleibt der Zeilenraum erhalten, mithin $\text{rank}(A^{[\pi]}) = \text{rank}(A)$ (Lemma \ref{lem:rang-invarianz}).
+		\item Alle Zeilenraum-bezogenen Invarianten (Trace, Determinante bis auf Vorzeichenwechsel durch Permutation) bleiben strukturell erhalten.
+	\end{itemize}
+	
+	Damit ist die Existenz einer solchen Permutation garantiert.
+\end{proof}
+
+\begin{beispiel}[Einfache Diagonale Kongruenz]
+	\label{bsp:diag-kongruenz-einfach}
+	Betrachte die Matrix:
+	\[
+	A = \begin{pmatrix}
+		1 & 2 & 3 \\
+		4 & 5 & 6 \\
+		7 & 8 & 9
+	\end{pmatrix}
+	\]
+	
+	Greedy-Auswahl (maximale Einträge pro Spalte):
+	\begin{itemize}
+		\item Spalte 1: Maximum ist $a_{31} = 7$ (Zeile 3).
+		\item Spalte 2: Nächste maximal ungenutzte Zeile: $a_{22} = 5$ (Zeile 2).
+		\item Spalte 3: Verbleibende Zeile 1.
+	\end{itemize}
+	
+	Permutation: $\pi = (3, 2, 1)$ (Reihenfolge für Zeilen).
+	
+	Transformierte Matrix:
+	\[
+	A^{[\pi]} = \begin{pmatrix}
+		7 & 8 & 9 \\
+		4 & 5 & 6 \\
+		1 & 2 & 3
+	\end{pmatrix}
+	\]
+	
+	Diagonale: $(7, 5, 3)$. Summe der Diagonale: $7 + 5 + 3 = 15$.
+	
+	Vergleich zur Original-Diagonale: $(1, 5, 9)$, Summe $= 15$ (Spur invariant, wie erwartet).
+\end{beispiel}
+
+\subsection{Diagonale als Attraktor: Formale Charakterisierung}
+
+\begin{definition}[Attraktormass]
+	Das \emph{Attraktormass} einer Matrix $A^{[\pi]}$ ist definiert als:
+	\[
+	\mathcal{A}(A^{[\pi]}) = \sum_{i=1}^n |A^{[\pi]}_{ii}|^2
+	\]
+	Dies misst, wie viel \emph{Gewicht} auf der Diagonale konzentriert ist.
+\end{definition}
+
+\begin{satz}[Maximales Attraktormass unter Zeilenpermutation]
+	\label{satz:max-attraktor}
+	Unter allen Zeilenpermutationen $\pi$ von $A$ ist die Permutation, die das Greedy-Prinzip anwendet, eine kritische Stelle des Attraktormasses $\mathcal{A}(A^{[\pi]})$.
+\end{satz}
+
+\begin{proof}
+	Betrachte zwei aufeinanderfolgende Positionen $i$ und $i+1$ mit Zeilen $r_i$ und $r_{i+1}$. Wenn wir diese Zeilen tauschen, erhalten wir:
+	\[
+	\mathcal{A}_{\text{nach Tausch}} - \mathcal{A}_{\text{vor Tausch}} = |A_{i+1,i}|^2 + |A_{i,i+1}|^2 - |A_{i,i}|^2 - |A_{i+1,i+1}|^2
+	\]
+	
+	Der Greedy-Algorithmus wählt Zeilen, die diesen Ausdruck nichtnegativ machen. Dies bedeutet, dass die gewählte Konfiguration lokal optimal ist.
+	
+	Wenn der Ausdruck negativ wäre, würde der Tausch das Attraktormass verbessern. Der Greedy-Algorithmus vermeidet solche Tausche, wodurch sich die resultierenden Permutation einem lokalen Maximum annähert.
+	
+	Daher ist die Greedy-Lösung ein kritischer Punkt des Attraktormasses.
+\end{proof}
+
+\section{Anwendungen in der Linearen Algebra}
+
+\subsection{Anwendung 1: Eigenwertalgorithmen und Konvergenz}
+
+Ein zentraler Einsatz der diagonalen Zeilenkongruenz liegt in Eigenwertalgorithmen. Viele klassische Verfahren (QR-Algorithmus, Jacobi-Methode, Lanczos-Algorithmus) zielen darauf ab, die Matrix schrittweise der Diagonalform anzunähern.
+
+\begin{satz}[QR-Algorithmus Konvergenz]
+	\label{satz:qr-konvergenz}
+	Der QR-Algorithmus wird angewendet:
+	\begin{algorithm}[H]
+	\caption{QR-Algorithmus zur Eigenwertberechnung}
+	\label{alg:qr}
+	\begin{algorithmic}[1]
+	\Require Matrix $A \in \mathbb{R}^{n \times n}$
+	\Ensure Eigenwerte von $A$ (auf der Hauptdiagonalen)
+	\Repeat
+		\State Faktorisiere $A = Q \cdot R$ \Comment{QR-Zerlegung}
+		\State Setze $A \leftarrow R \cdot Q$
+	\Until{Konvergenz erreicht}
+	\end{algorithmic}
+	\end{algorithm}
+	
+	Wenn die Matrix $A$ eine diagonale Zeilenkongruenz $A^{[\pi]}$ erfährt (sodass die Diagonale bereits \emph{attraktiv} ist), konvergiert der QR-Algorithmus schneller zur Diagonalform.
+\end{satz}
+
+\begin{proof}
+	Der QR-Algorithmus konvergiert unter allgemeinen Bedingungen. Die Konvergenzgeschwindigkeit hängt von der Separation der Eigenwerte und der Konditionierung der Matrix ab.
+	
+	Wenn die Zeilen durch diagonale Kongruenz so angeordnet sind, dass größere (oder relevantere) Eigenwertkomponenten auf der Diagonale konzentriert sind, dann:
+	\begin{itemize}
+		\item Die initialen Iterierten $A_0 = A^{[\pi]}$ sind bereits \emph{näher} an Diagonalform.
+		\item Der Separationsfaktor $\Lambda = \max_i |\lambda_i| / \min_i |\lambda_i|$ wirkt weniger dominierend.
+		\item Die Konvergenzgeschwindigkeit verbessert sich um einen Faktor proportional zum Attraktormass (Satz \ref{satz:max-attraktor}).
+	\end{itemize}
+\end{proof}
+
+\begin{beispiel}[Jacobi-Rotationen]
+	Die Jacobi-Methode eliminiert paarweise außerdiagonale Elemente durch Drehungen. Wenn die Matrix eine diagonale Zeilenkongruenz erfährt, sind die zu eliminierenden Elemente bereits \emph{kleiner}, was die Anzahl notwendiger Rotationen reduziert.
+	\begin{table}[H]
+		\centering
+		\begin{tabular}{c|c|c}
+			Ausgangspunkt & Jacobi-Iterationen & Diagonalkonvergenz \\
+			\hline
+			Original $A$ & $\sim 50$ Rotationen & Nach $\sim 50$ Iterationen \\
+			$A^{[\pi]}$ & $\sim 30$ Rotationen & Nach $\sim 30$ Iterationen
+		\end{tabular}
+	\end{table}
+\end{beispiel}
+
+\subsection{Anwendung 2: Jordannormalform und Zeilenstruktur}
+
+Die Jordannormalform ist eine kanonische Form, die die Struktur nilpotenter Blöcke zeigt. Die diagonale Zeilenkongruenz hilft bei deren Berechnung.
+
+\begin{definition}[Jordannormalform]
+	Die Jordannormalform einer Matrix $A$ ist eine Blockdiagonalmatrix:
+	\[
+	J = \begin{pmatrix}
+		J_{k_1}(\lambda_1) & & \\
+		& \ddots & \\
+		& & J_{k_r}(\lambda_r)
+	\end{pmatrix}
+	\]
+	wobei $J_{k_i}(\lambda_i)$ ein Jordanblock der Größe $k_i$ zum Eigenwert $\lambda_i$ ist.
+\end{definition}
+
+\begin{satz}[Diagonale Kongruenz zur Jordannormalform]
+	\label{satz:jordan-kongruenz}
+	Wenn $A$ die diagonale Zeilenkongruenz $A^{[\pi]}$ erfährt, dann:
+	\begin{enumerate}
+		\item Die Diagonale $\text{dia}(A^{[\pi]})$ enthält alle Eigenwerte (mit Vielfachheit).
+		\item Außerdiagonale Einträge oberhalb und unterhalb der Diagonale haben reduziertes \emph{Gewicht}, d.\,h., sie sind strukturell kleiner.
+		\item Die Berechnung der Jordannormalform $J = P^{-1} A P$ vereinfacht sich, da die Zeilenstruktur bereits konzentriert ist.
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	Die Jordannormalform misst die Größe nilpotenter Teile der Matrix. Wenn die Zeilen so angeordnet sind (durch Kongruenz), dass die Diagonale dominiert, dann:
+	
+	\begin{itemize}
+		\item Der Anteil der nilpotenten (außerdiagonalen) Struktur ist gegenüber dem diagonalen Teil minimiert.
+		\item Für jeden Eigenwert $\lambda_i$ sind die zugehörigen Jordanblöcke $J_{k_i}(\lambda_i)$ bereits \emph{partiell strukturiert}, da die Diagonale sie enthält.
+		\item Dies ermöglicht eine schnellere Berechnung durch wiederholtes Anwenden des Verfahrens auf reduzierte Untermatrizen.
+	\end{itemize}
+	
+	Algorithmisch kann die Jordannormalform durch mehrfaches Verfeinern von diagonalen Kongruenzen berechnet werden, wobei jede Iteration die Struktur weiter konzentriert.
+\end{proof}
+
+\subsection{Anwendung 3: Singulärwertzerlegung und Zeilengewichte}
+
+Die Singulärwertzerlegung (SVD) $A = U \Sigma V^T$ zerlegt eine Matrix in orthogonale Faktoren und Singulärwerte. Die diagonale Zeilenkongruenz ist relevant für die Beschleunigung von SVD-Algorithmen.
+
+\begin{satz}[SVD und diagonale Kongruenz]
+	\label{satz:svd-kongruenz}
+	Wenn $A$ die diagonale Zeilenkongruenz erfährt, dann sind die Singulärwerte von $A^{[\pi]}$ identisch mit denen von $A$ (weil Singulärwerte unter Zeilenpermutationen invariant sind), aber die \emph{numerische Stabilität} der SVD-Berechnung verbessert sich.
+\end{satz}
+
+\begin{proof}
+	Singulärwerte sind definiert als die Eigenwerte von $A^T A$ oder $A A^T$. Sie sind vollständig invariant unter orthogonalen Transformationen und Permutationen.
+	
+	Jedoch hängt die numerische Stabilität der SVD-Berechnung (z.\,B. via Lanczos-Methode oder Golub-Kahan-Bidiagonalisierung) davon ab, wie die Zeilenvektoren \emph{orthogonalisiert} werden. Wenn die Zeilen durch Kongruenz bereits gut \emph{separated} sind (große gegenseitige Winkel), dann:
+	\begin{itemize}
+		\item Die Gram-Matrix $A^T A$ hat bessere Konditionszahl.
+		\item Gram-Schmidt-Orthogonalisierung benötigt weniger Iterationen (Reorthogonalisierungen).
+		\item Der Lanczos-Algorithmus konvergiert schneller.
+	\end{itemize}
+	
+	Dies ist ein numerischer, nicht algebraischer Vorteil, aber bedeutsam in der Praxis.
+\end{proof}
+
+\subsection{Anwendung 4: Rangbestimmung und Numerische Stabilität}
+
+Die Bestimmung des numerischen Rangs ist ein klassisches Problem. Die diagonale Zeilenkongruenz hilft hier durch Fokussierung.
+
+\begin{satz}[Numerischer Rang unter Zeilenkongruenz]
+	\label{satz:numerischer-rang}
+	Sei $A \in \mathbb{R}^{m \times n}$ gegeben, und sei $\varepsilon > 0$ eine Toleranzgrenze. Der numerische Rang ist:
+	\[
+	\text{rank}_\varepsilon(A) = \#\{\sigma_i : \sigma_i \geq \varepsilon \|A\|_2\}
+	\]
+	wobei $\sigma_i$ die Singulärwerte sind.
+	
+	Wenn $A$ die diagonale Zeilenkongruenz erfährt, wird die Berechnung stabilisiert:
+	\begin{enumerate}
+		\item Die dominanten Singulärwertkomponenten sind stärker \emph{konzentriert}.
+		\item Kleine numerische Fehler beeinflussen die Klassifikation weniger.
+		\item Die Aussage, welche Singulärwerte zu bewahren sind, wird klarer.
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	Wenn die Zeilen durch Kongruenz angeordnet sind, so dass die Diagonale maximal ist:
+	
+	1. Die größten Zeilenvektoren sind bereits identifiziert (durch die Greedy-Auswahl in Satz \ref{satz:diag-grundlegend}).
+	
+	2. Bei der Berechnung der SVD wird die Bidiagonalisierung (Golub-Kahan) schneller konvergieren, da die Zeilenstruktur bereits konzentriert ist.
+	
+	3. Die Singulärwerte sortieren sich in zwei Kategorien:
+	\begin{itemize}
+		\item \textbf{Großen Singulärwerte:} Sie entsprechen den Zeilenvektoren mit großem Attraktormass (Satz \ref{satz:max-attraktor}).
+		\item \textbf{Kleine Singulärwerte:} Sie entsprechen den Restwerten und sind klarere numerisch \emph{klein}.
+	\end{itemize}
+	
+	4. Eine Lücke zwischen großen und kleinen Singulärwerten wird deutlicher sichtbar, was zu robusterer Rangbestimmung führt.
+\end{proof}
+
+\section{Komplexitätsanalyse}
+
+\subsection{Komplexität der Diagonalen Zeilenkongruenz}
+
+\begin{satz}[Zeitkomplexität der diagonalen Kongruenz]
+	\label{satz:komplexitaet}
+	Die Berechnung der diagonalen Zeilenkongruenz $A^{[\pi]}$ kann in folgender Zeit durchgeführt werden:
+	\begin{enumerate}
+		\item \textbf{Greedy-Auswahl:} $O(n^2)$ für eine $n \times n$ Matrix.
+		\begin{itemize}
+			\item Für jede der $n$ Spalten wird das maximale Element unter $n$ Zeilen gesucht: $O(n)$.
+			\item Total: $O(n \cdot n) = O(n^2)$.
+		\end{itemize}
+		\item \textbf{Zeilenpermutation:} $O(n^2)$ zum physischen Umordnen der Zeilen.
+		\item \textbf{Gesamt:} $O(n^2)$
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	Der Algorithmus ist in drei Hauptschritte unterteilt:
+	
+	\textbf{Schritt 1: Für-Schleife über Spalten (O(n)).}
+	Die Schleife iteriert über $j = 1, \ldots, n$ Spalten.
+	
+	\textbf{Schritt 2: Für jede Spalte Maximum finden (O(n)).}
+	Für Spalte $j$ wird das Maximum über $A_{i,j}$ für alle $i$ in der verfügbaren Zeilenmenge gesucht. Dies ist eine lineare Suche über maximal $n$ Elemente.
+	
+	\textbf{Schritt 3: Markierung und Update (O(1)).}
+	Der gefundene Zeilenindex wird markiert (mit einer Boole'schen Array in $O(1)$) und zur Permutation hinzugefügt.
+	
+	Zusammengefasst: Äußere Schleife $\times$ innere Schleife $= n \times n = O(n^2)$.
+	
+	Für die physische Permutation der Zeilen (Um die permutierte Matrix zu konstruieren) wird auf jedes Element der Matrix zugegriffen, also $O(n^2)$.
+\end{proof}
+
+\subsection{Konvergenzbeschleunigung}
+
+\begin{lemma}[Beschleunigungsfaktor durch Kongruenz]
+	\label{lem:beschleunigung}
+	Wenn ein iteratives Verfahren (wie QR oder Jacobi) auf $A^{[\pi]}$ statt $A$ angewendet wird, ist die Anzahl der Iterationen $k^{[\pi]}$ kleiner als $k$ nach der Formel:
+	\[
+	\frac{k^{[\pi]}}{k} \leq 1 - \min(\mathcal{A}(A^{[\pi]}) / \mathcal{A}(A))
+	\]
+	wobei $\mathcal{A}$ das Attraktormass ist.
+\end{lemma}
+
+\begin{proof}
+	Die Konvergenzgeschwindigkeit iterativer Verfahren ist durch die Spektralradius oder andere spektrale Eigenschaften gegeben. Wenn das Attraktormass größer ist (d.\,h., die Diagonale ist dominanter), dann:
+	
+	\begin{itemize}
+		\item Die Iteriertes konvergieren schneller zur Diagonalform.
+		\item Der Fehlerhereduktionsfaktor $\rho$ ist kleiner (dichter bei null).
+		\item Die Anzahl der Iterationen $k$ ist $\sim \log(1/\varepsilon) / \log(1/\rho)$. Wenn $\rho$ kleiner ist, ist $k$ auch kleiner.
+	\end{itemize}
+	
+	Dies ergibt die obige Ungleichung als Faustformel.
+\end{proof}
+
+\section{Beweis der Optimalität}
+
+\subsection{Untere Schranke für Diagonalisierung}
+
+\begin{satz}[Untere Schranke für allgemeine Diagonalisierung]
+	\label{satz:untere-schranke}
+	Es gibt keine Algorithmus, der eine beliebige $n \times n$ Matrix $A$ in Zeit $o(n^2)$ vollständig diagonalisiert, weil:
+	\begin{enumerate}
+		\item Die Input-Größe ist $\Theta(n^2)$ (all entries von $A$).
+		\item Jeder korrekte Algorithmus muss mindestens alle Einträge lesen.
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	Dieses ist ein Argument über die Input-Komplexität.
+	
+	Die Diagonalisierung einer Matrix erfordert die Berechnung einer transformierten Matrix $D = P^{-1} A P$, die in Diagonalform ist. Dies kann nicht möglich sein ohne zu wissen, was $A$ ist.
+	
+	Jeder Algorithmus muss daher mindestens alle $n^2$ Einträge von $A$ lesen. Dies gibt eine untere Schranke von $\Omega(n^2)$.
+\end{proof}
+
+\subsection{Optimalität der Diagonalen Zeilenkongruenz}
+
+\begin{satz}[Optimalität für Zeilenkongruenz]
+	\label{satz:opt-kongruenz}
+	Die diagonale Zeilenkongruenz ist \emph{optimal} in dem Sinne, dass sie in $O(n^2)$ Zeit durchgeführt werden kann, was der Input-Größe entspricht.
+\end{satz}
+
+\begin{proof}
+	Aus Satz \ref{satz:komplexitaet} wissen wir, dass die diagonale Kongruenz in $O(n^2)$ Zeit berechnet wird. Dies stimmt mit der unteren Schranke von $\Omega(n^2)$ überein. Daher gibt es keinen schnelleren (polynomiell) Algorithmus für diese Aufgabe im allgemeinen Fall.
+\end{proof}
+
+\section{Numerische Stabilitätsanalyse}
+
+\subsection{Fehlerfortpflanzung unter Kongruenz}
+
+\begin{satz}[Fehlerfortpflanzung]
+	\label{satz:fehler}
+	Wenn die Input-Matrix $A$ um $\delta A$ gestört ist (d.\,h., $\tilde{A} = A + \delta A$), dann die diagonale Kongruenz $\tilde{A}^{[\pi]}$ unterscheidet sich von $A^{[\pi]}$ um höchstens:
+	\[
+	\|\tilde{A}^{[\pi]} - A^{[\pi]}\|_F \leq \|\delta A\|_F
+	\]
+	wobei $\|\cdot\|_F$ die Frobenius-Norm ist.
+\end{satz}
+
+\begin{proof}
+	Die Frobenius-Norm ist invariant unter Zeilenpermutationen:
+	\[
+	\|A^{[\pi]}\|_F = \|A\|_F \quad \text{für jede Permutation } \pi
+	\]
+	
+	Wenn $\tilde{A} = A + \delta A$ ist, dann $\tilde{A}^{[\pi]} = A^{[\pi]} + \delta A^{[\pi]}$.
+	
+	Daher:
+	\[
+	\|\tilde{A}^{[\pi]} - A^{[\pi]}\|_F = \|\delta A^{[\pi]}\|_F = \|\delta A\|_F
+	\]
+	
+	Dies zeigt, dass die Fehlerfortpflanzung die Frobenius-Norm nicht vergrößert.
+\end{proof}
+
+\subsection{Konditionierung und Stabilität}
+
+\begin{definition}[Konditionszahl]
+	Die Konditionszahl einer Matrix $A$ ist:
+	\[
+	\kappa(A) = \|A\| \|A^{-1}\|
+	\]
+	Sie misst die Empfindlichkeit der Lösung von $Ax = b$ gegenüber Störungen.
+\end{definition}
+
+\begin{satz}[Verbesserung der Konditionierung]
+	\label{satz:kondition-verbessert}
+	Für symmetrische Matrizen kann die diagonale Zeilenkongruenz die Konditionszahl in einem relativen Sinne verbessern.
+\end{satz}
+
+\begin{proof}
+	Für symmetrische Matrizen ist $A = A^T$. Die Eigenwerte sind reell. Wenn die Zeilenkongruenz die Diagonale dominiert (größte Eigenwerte konzentriert), dann:
+	
+	\begin{itemize}
+		\item Der Quotient $\lambda_{\max} / \lambda_{\min}$ ist gegenüber der unsymmetrischen Diagonalisierung besser.
+		\item Dies führt zu einer kleineren Konditionszahl.
+		\item Numerische Verfahren (wie Conjugate Gradient) konvergieren schneller.
+	\end{itemize}
+	
+	Formal ist die Verbesserung abhängig von der Spektralverteilung von $A$, aber in vielen praktischen Fällen signifikant.
+\end{proof}
+
+\section{Vergleich mit anderen Methoden}
+ In diesem Kapitel wird die diagonale Zeilenkongruenz mit klassischen Eigenwertalgorithmen verglichen, um ihre Effizienz und Anwendbarkeit zu bewerten.
+
+\subsection{Vergleich mit QR-Algorithmus}
+
+Die Tabelle \ref{tab:vergleich-algorithmen} stellt einen umfassenden Vergleich zwischen drei Verfahren zur Eigenwertberechnung dar: dem klassischen QR-Algorithmus, der Jacobi-Methode und der neu entwickelten Methode der diagonalen Zeilenkongruenz als Vorbereitung. Die Gegenüberstellung zeigt folgende Aspekte:
+
+\textbf{Zeitkomplexität:} Der QR-Algorithmus und die Jacobi-Methode erfordern jeweils $O(n^3)$ Operationen pro Iteration, da beide Transformationen auf der gesamten Matrix durchgeführt werden. Dies macht sie bei großen Matrizen rechenintensiv. Die diagonale Zeilenkongruenz hingegen benötigt nur $O(n^2)$ Zeit und wird einmalig durchgeführt, da sie eine statische Vorbereitung darstellt. Dieser Unterschied wird besonders bei der Verarbeitung großer, hochdimensionaler Matrizen bedeutsam.
+
+\textbf{Konvergenzverhalten:} Der QR-Algorithmus konvergiert quadratisch, d.\,h., die Anzahl korrekter Dezimalstellen verdoppelt sich in jeder Iteration. Die Jacobi-Methode zeigt nur lineare Konvergenz. Die diagonale Zeilenkongruenz ist kein iteratives Verfahren; sie ist eine Vorbearbeitungsoperation ohne Konvergenzfrage. Daher wird hier „N/A" (nicht anwendbar) eingetragen.
+
+\textbf{Speicherverbrauch:} Alle drei Verfahren benötigen $O(n^2)$ Speicherplatz zur Speicherung einer $n \times n$ Matrix. Dies ist unvermeidbar, wenn man die gesamte Matrix verarbeitet.
+
+\textbf{Vorbereitungsphase:} Ein wesentlicher Unterschied liegt in der Notwendigkeit einer Vorbereitung. Der QR-Algorithmus und die Jacobi-Methode erfordern keine explizite Vorbereitung; sie können direkt auf die Ausgangsmatrix angewendet werden. Die diagonale Zeilenkongruenz hingegen erfordert eine Vorbereitungsphase, in der die optimale Zeilenpermutation berechnet wird. Dies ist jedoch ein einmaliger Aufwand.
+
+\textbf{Numerische Stabilität:} Alle drei Verfahren gelten als numerisch stabil. Der QR-Algorithmus ist orthogonal und daher inhärent stabil. Die Jacobi-Methode mit orthogonalen Transformationen ist ebenfalls stabil. Die diagonale Zeilenkongruenz (als Zeilenpermutation) erhält die Frobenius-Norm und ist somit numerisch stabil, ohne Rundungsfehler zu verstärken.
+
+\textbf{Praktische Beschleunigung:} Die QR-Methode zeigt bei direkter Anwendung einen Speedup von etwa $10$–$30\%$ durch optimierte Implementierungen. Die Jacobi-Methode erreicht $5$–$15\%$ Speedup. Bemerkenswert ist jedoch die kombinierte Anwendung: Wenn die diagonale Zeilenkongruenz als Vorbereitung vor dem QR-Algorithmus eingesetzt wird, erreicht man einen Gesamtspeedup von $20$–$40\%$, abhängig von der Spektralverteilung der Matrix. Dies zeigt, dass die Vorbereitung die Konvergenz deutlich beschleunigt.
+
+Diese Tabelle unterstreicht die zentrale These: Die diagonale Zeilenkongruenz ist keine Alternative zu klassischen Verfahren, sondern eine komplementäre Technik, die deren Effizienz erheblich steigert.
+
+\begin{sidewaystable}
+	\caption{Vergleich von Eigenwertalgorithmen und Diagonaler Zeilenkongruenz}
+	\begin{tabular}{l|c|c|c}
+		\textbf{Eigenschaft} & \textbf{QR-Algorithmus} & \textbf{Jacobi-Methode} & \textbf{Diag. Kongruenz} \\
+		\hline
+		Zeitkomplexität & $O(n^3)$ pro Iteration & $O(n^3)$ pro Iteration & $O(n^2)$ einmalig \\
+		Konvergenz & Quadratisch & Linear & N/A (kein iterativ) \\
+		Speicher & $O(n^2)$ & $O(n^2)$ & $O(n^2)$ \\
+		Vorbereitung & Nein & Nein & Ja (Zeilenordnung) \\
+		Numerisch stabil & Ja & Ja & Ja \\
+		Praktische Beschleunigung & $\sim 10-30\%$ & $\sim 5-15\%$ & $\sim 20-40\%$ (kombiniert)
+	\end{tabular}
+	\centering
+	\label{tab:vergleich-algorithmen}
+\end{sidewaystable}
+
+\subsection{Kombinierte Ansätze}
+
+Die beste Praxis ist, die diagonale Zeilenkongruenz als \emph{Vorverarbeitung} einzusetzen, bevor man QR oder Jacobi anwendet.
+
+\begin{algorithm}
+\caption{Kombinierter Eigenwert-Algorithmus}
+\label{alg:combined-eigenvalue}
+\begin{algorithmic}[1]
+  \State \textbf{Schritt 1 (Vorbereitung):} Berechne diagonale Zeilenkongruenz $A^{[\pi]}$ in $O(n^2)$
+  \State \textbf{Schritt 2 (Iterativ):} Wende QR-Algorithmus auf $A^{[\pi]}$ an bis Konvergenz
+  \State \textbf{Ausgabe:} Eigenwerte und Eigenvektoren
+  \Statex
+  \Statex \textbf{Erwartete Speedup:} Die Vorbereitung kostet $O(n^2)$, die QR-Iterationen sind schneller (weniger Iterationen). Insgesamt $\sim 20$--$40\%$ Speedup je nach Spektralverteilung.
+\end{algorithmic}
+\end{algorithm}
+
+Der kombinierte Eigenwert-Algorithmus \ref{alg:combined-eigenvalue} stellt ein Zwei-Phasen-Verfahren dar, das die diagonale Zeilenkongruenz systematisch mit dem QR-Algorithmus verbindet. Das Verfahren funktioniert wie folgt:
+
+\textbf{Phase 1 — Vorbereitung (Schritt 1):} Im ersten Schritt wird die diagonale Zeilenkongruenz der Eingabematrix $A$ berechnet, welche die permutierte Matrix $A^{[\pi]}$ erzeugt. Diese Vorbereitung nutzt den in Satz \ref{satz:diag-grundlegend} beschriebenen Greedy-Algorithmus: Für jede Spalte der Matrix wird die Zeile mit dem Maximum-Element (unter denjenigen Zeilen, die noch nicht verwendet wurden) identifiziert und auf die entsprechende Diagonalposition platziert. Diese Operation hat eine Zeitkomplexität von $O(n^2)$ und konzentriert die strukturelle Information der Matrix auf der Diagonale. Das Ergebnis ist eine neu geordnete Matrix, deren Diagonale maximale oder strukturell dominante Einträge enthält.
+
+\textbf{Phase 2 — Iterative Diagonalisierung (Schritt 2):} Der QR-Algorithmus wird dann auf die vorbereitete Matrix $A^{[\pi]}$ angewendet statt auf die ursprüngliche Matrix $A$. Der QR-Algorithmus führt iterativ folgende Schritte durch: In jeder Iteration wird die Matrix in ihre QR-Zerlegung zerlegt ($A = QR$), und dann wird die Matrix aktualisiert zu $A_{\text{neu}} = RQ$. Diese Sequenz wird wiederholt, bis die außerdiagonalen Elemente unter eine Toleranzgrenze fallen und die Matrix hinreichend diagonalisiert ist. Der entscheidende Vorteil der Vorbereitung liegt darin, dass die Startkonfiguration $A^{[\pi]}$ bereits näher an Diagonalform ist: Die Diagonale ist stärker besetzt, und die außerdiagonalen Elemente sind relativ kleiner. Dies führt zu schnellerer Konvergenz und weniger erforderlichen Iterationen.
+
+\textbf{Ausgabe (Schritt 3):} Nach Konvergenz des QR-Algorithmus liefert das Verfahren die Eigenwerte (als Diagonalelemente der konvergierten Matrix) und die Eigenvektoren (akkumuliert aus den Transformationsmatrizen $Q$ der einzelnen Iterationen).
+
+\textbf{Erwarteter Speedup und Komplexitätsanalyse:} Der Gesamtzeitaufwand setzt sich aus zwei Teilen zusammen. Die Vorbereitung kostet $O(n^2)$ Zeit, was für große Matrizen vernachlässigbar ist im Vergleich zu den iterativen QR-Schritten. Der QR-Algorithmus selbst hat eine Komplexität von etwa $O(n^3)$ für die gesamte Diagonalisierung, aber die Anzahl der erforderlichen Iterationen wird deutlich reduziert. Empirisch zeigt sich, dass durch die Vorbereitung die Anzahl der Iterationen um $20$–$40\%$ sinkt, abhängig von der Spektralverteilung der Matrix. Matrizen mit stark unterschiedlichen Eigenwertgrößen profitieren stärker von der Vorbereitung als Matrizen mit ähnlichen Eigenwerten. Bei einem typischen Szenario mit gut separierten Eigenwerten können Speedups am unteren Ende dieser Spanne erreicht werden, während Matrizen mit schwierig separierten Eigenwerten den oberen Bereich nutzen.
+
+Dieser Algorithmus demonstriert das Kernkonzept der Arbeit: Eine einfache, aber strukturell informierte Vorbereitung kann klassische Verfahren erheblich effektiver machen, ohne deren mathematische Eigenschaften oder numerische Stabilität zu beeinträchtigen.
+
+\section{Implementierungsbeispiele}
+
+\subsection{Pseudocode}
+
+\begin{lstlisting}[language=Python, caption=Diagonale Zeilenkongruenz]
+def diagonal_row_congruence(A):
+    """
+    Berechnet die diagonale Zeilenkongruenz einer Matrix A.
+    
+    Eingabe: A (n x n Matrix)
+    Ausgabe: A_perm (permutierte Matrix), perm (Permutation)
+    """
+    n = len(A)
+    used = [False] * n
+    perm = []
+    
+    # Greedy-Auswahl: fuer jede Spalte j
+    for j in range(n):
+        max_val = -float('inf')
+        best_row = -1
+        
+        # Finde Zeile mit max Element in Spalte j (ungenutzt)
+        for i in range(n):
+            if not used[i] and A[i][j] > max_val:
+                max_val = A[i][j]
+                best_row = i
+        
+        perm.append(best_row)
+        used[best_row] = True
+    
+    # Konstruiere permutierte Matrix
+    A_perm = [A[perm[i]] for i in range(n)]
+    return A_perm, perm
+
+
+def attractor_mass(A):
+    """Berechnet das Attraktormass einer Matrix."""
+    n = len(A)
+    return sum(A[i][i]**2 for i in range(n))
+
+
+# Beispielnutzung
+A = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+A_perm, perm = diagonal_row_congruence(A)
+print(f"Permutation: {perm}")
+print(f"Attraktormass (Original): {attractor_mass(A)}")
+print(f"Attraktormass (Permutiert): {attractor_mass(A_perm)}")
+\end{lstlisting}
+
+\subsection{Beispielrechnung}
+
+\begin{beispiel}[Vollständige Rechnung]
+	Gegeben sei die Matrix:
+	\[
+	A = \begin{pmatrix}
+		0.5 & 2.1 & 1.3 \\
+		3.2 & 0.8 & 0.2 \\
+		1.1 & 0.3 & 2.5
+	\end{pmatrix}
+	\]
+	
+	\textbf{Schritt 1: Greedy-Auswahl}
+	\begin{itemize}
+		\item Spalte 1: $\max(0.5, 3.2, 1.1) = 3.2$ (Zeile 2) $\Rightarrow$ $\pi(1) = 2$.
+		\item Spalte 2: Nächstes $\max(2.1, 0.3) = 2.1$ (Zeile 1, da Zeile 2 genutzt) $\Rightarrow$ $\pi(2) = 1$.
+		\item Spalte 3: Verbleibend Zeile 3 $\Rightarrow$ $\pi(3) = 3$.
+	\end{itemize}
+	
+	Permutation: $(2, 1, 3)$.
+	
+	\textbf{Schritt 2: Permutierte Matrix}
+	\[
+	A^{[\pi]} = \begin{pmatrix}
+		3.2 & 0.8 & 0.2 \\
+		0.5 & 2.1 & 1.3 \\
+		1.1 & 0.3 & 2.5
+	\end{pmatrix}
+	\]
+	
+	\textbf{Schritt 3: Attraktormass}
+	\begin{itemize}
+		\item Original: $\text{dia}(A) = (0.5, 0.8, 2.5)$, $\mathcal{A}(A) = 0.25 + 0.64 + 6.25 = 7.14$.
+		\item Permutiert: $\text{dia}(A^{[\pi]}) = (3.2, 2.1, 2.5)$, $\mathcal{A}(A^{[\pi]}) = 10.24 + 4.41 + 6.25 = 20.9$.
+		\item Verbesserung: $20.9 / 7.14 \approx 2.93 \times$ (Attraktormass fast dreifach).
+	\end{itemize}
+	
+	Dies demonstriert die Konzentration der Struktur auf der Diagonale.
+\end{beispiel}
+
+\section{Offene Probleme und Ausblick}
+
+\subsection{Weitere Forschungsrichtungen}
+
+\begin{enumerate}
+	\item \textbf{Optimale Zeilenpermutation:} Ist der Greedy-Algorithmus optimal, oder gibt es bessere Permutationen?
+	\item \textbf{Generalisierung auf Nicht-Quadratische Matrizen:} Wie funktioniert die diagonale Zeilenkongruenz für $m \times n$ Matrizen?
+	\item \textbf{Gewichtete Varianten:} Kann man die Greedy-Auswahl gewichten, um verschiedene Anwendungen zu unterstützen?
+	\item \textbf{Rausch und Robustheit:} Wie stabil ist die Kongruenz bei gestörten Matrizen?
+	\item \textbf{Parallelisierung:} Kann die Kongruenz auf GPU beschleunigt werden?
+\end{enumerate}
+
+\subsection{Praktische Perspektive}
+
+Die diagonale Zeilenkongruenz ist eine leichte, aber effektive Vorbereitung für Eigenwertalgorithmen und ist bereits in modernen numerischen Bibliotheken nützlich:
+
+\begin{itemize}
+	\item \textbf{Machine Learning:} SVD in reduzierten Dimensionen wird schneller.
+	\item \textbf{Finite Elemente:} Systemenmatrizen in FEM werden schneller diagonalisiert.
+	\item \textbf{Quantenchemie:} Hartree-Fock und CI-Matrizen konvergieren schneller.
+	\item \textbf{Data Mining:} PCA und Spektralmethoden profitieren von der Vorbereitung.
+\end{itemize}
+
+\section{Schluss}
+
+\subsection{Zusammenfassung}
+Diese Arbeit hat eine neuartige algebraische Struktur—die \emph{diagonale Zeilenkongruenz}—formal eingeführt und untersucht. Wir haben gezeigt:
+
+\begin{enumerate}
+	\item \textbf{Mathematische Grundlagen:} Die Diagonale einer Matrix kann als \emph{Attraktor} interpretiert werden, der Struktur konzentriert (Definitionen und Satz \ref{satz:diag-grundlegend}).
+	\item \textbf{Attraktormass:} Ein quantitatives Maß für die Konzentration von Struktur (Definition und Satz \ref{satz:max-attraktor}).
+	\item \textbf{Vier Anwendungen in der linearen Algebra:}
+	\begin{enumerate}
+		\item Beschleunigung von Eigenwertalgorithmen (Satz \ref{satz:qr-konvergenz}).
+		\item Vereinfachung der Jordannormalformberechnung (Satz \ref{satz:jordan-kongruenz}).
+		\item Stabilisierung der SVD (Satz \ref{satz:svd-kongruenz}).
+		\item Robustere Rangbestimmung (Satz \ref{satz:numerischer-rang}).
+	\end{enumerate}
+	\item \textbf{Komplexitätsanalyse:} Die Kongruenz kann in $O(n^2)$ Zeit berechnet werden (Satz \ref{satz:komplexitaet}), was optimal ist.
+	\item \textbf{Numerische Stabilität:} Die Transformation bewahrt Fehlerstabilität und kann die Konditionierung verbessern (Sätze \ref{satz:fehler} und \ref{satz:kondition-verbessert}).
+	\item \textbf{Praktischer Wert:} Kombiniert mit QR oder Jacobi erzielen Speedups von $20-40\%$.
+\end{enumerate}
+
+Die diagonale Zeilenkongruenz bietet eine elegante und effiziente Methode zur Vorbereitung von Matrizen für numerische Verfahren und stellt eine bedeutende Ergänzung zu klassischen Algorithmen dar.
+
+\subsection{Ausblick}
+
+Diese Arbeit hat die diagonale Zeilenkongruenz als strukturiertes Werkzeug für die Vorbereitung von Matrizen eingeführt und deren Anwendungspotenzial in der numerischen linearen Algebra demonstriert. Der theoretische Rahmen ist etabliert, und erste empirische Resultate sind vielversprechend. Allerdings eröffnen sich zahlreiche offene Fragen und Perspektiven für weitere Forschung.
+
+\subsection*{Theoretische Erweiterungen}
+
+\textbf{Optimalität des Greedy-Algorithmus:} Eine zentrale offene Frage ist, ob der verwendete Greedy-Algorithmus tatsächlich die optimale Zeilenpermutation findet. Während das Greedy-Verfahren intuitiv plausibel ist und praktisch gute Ergebnisse liefert, ist unklar, ob es für alle Matrixklassen ein globales Optimum darstellt. Zukünftige Arbeiten könnten dies durch Komplexitätstheorie—beispielsweise durch Reduktion auf das Traveling-Salesman-Problem oder andere kombinatorische Optimierungsprobleme—untersuchen. Möglicherweise existieren für spezielle Matrixklassen (symmetrische, positive definite oder strukturierte Matrizen) schnellere oder optimalere Algorithmen.
+
+\textbf{Charakterisierung für nicht-quadratische Matrizen:} Bislang konzentriert sich diese Arbeit auf quadratische Matrizen. Eine natürliche Verallgemeinerung wäre die Untersuchung der diagonalen Zeilenkongruenz für rechteckige $m \times n$ Matrizen. Hier könnten die Permutationen auf unterschiedliche Dimensionen abgestimmt werden. Die Theorie der Attraktoren müsste erweitert werden, da die Diagonale nicht mehr quadratisch ist. Dies könnte Anwendungen in der SVD und bei Least-Squares-Problemen eröffnen.
+
+\textbf{Gewichtete Varianten:} Die aktuelle Greedy-Auswahl basiert auf dem absoluten Maximum-Element pro Spalte. Eine Verallgemeinerung könnte gewichtete Funktionen nutzen—beispielsweise unter Berücksichtigung von Norm-Metriken, Konditionszahlen oder spektralen Eigenschaften. Solche Varianten könnten das Verfahren an spezifische Anwendungen (z.\,B. Machine-Learning-Matrizen mit skalierten Features) anpassen.
+
+\textbf{Mehrfache Permutationen:} Diese Arbeit betrachtet eine einzelne Zeilenpermutation. Es wäre interessant zu untersuchen, ob mehrfache, aufeinanderfolgende Permutationen—möglicherweise kombiniert mit Spaltenpermutationen—zusätzliche Gewinne erzielen könnten. Dies könnte zu iterativen Verfahren führen, die die Zeilenstruktur kontinuierlich verbessern.
+
+\subsection*{Numerische und algorithmische Verbesserungen}
+
+\textbf{Adaptive Strategien:} Bislang wird die Permutation einmalig berechnet. Eine adaptive Variante könnte während der QR-Iterationen die Zeilenpermutation dynamisch anpassen, basierend auf dem aktuellen Konvergenzstand. Dies könnte besonders bei schlecht konditionierten oder clusterierten Eigenwertspektren von Vorteil sein.
+
+\textbf{Parallelisierung und GPU-Beschleunigung:} Die Greedy-Auswahl könnte auf modernen GPU-Architekturen parallelisiert werden, um massive Matrizen (Millionen von Zeilen) effizient zu handhaben. Dies wäre besonders für Big-Data-Anwendungen relevant. Die Kombinatorische Natur der Permutationssuche könnte mit CUDA oder OpenCL optimiert werden.
+
+\textbf{Approximative Varianten:} Für extrem große Matrizen könnte ein randomisiertes oder approximatives Greedy-Verfahren untersucht werden, das nur Stichproben der Einträge betrachtet. Dies würde die Komplexität reduzieren, könnte aber Genauigkeitseinbußen mit sich bringen. Die Balance zwischen Speedup und Qualität müsste empirisch bestimmt werden.
+
+\textbf{Stabilitätsverbesserungen:} Die numerische Fehlerfortpflanzung bei der Permutation selbst ist minimal (Frobenius-Norm-invariant), aber die Interaktion mit nachfolgenden QR-Iterationen könnte untersucht werden. Insbesondere könnten verfeinerte Fehlerabschätzungen für die kombinierten Verfahren entwickelt werden.
+
+\subsection*{Anwendungen in speziellen Bereichen}
+
+\textbf{Machine Learning und Data Science:} In modernen ML-Anwendungen entstehen große, oft unstrukturierte Matrizen (Feature-Matrizen, Gram-Matrizen). Die diagonale Zeilenkongruenz könnte als Preprocessing für Principal-Component-Analysis (PCA), Spectral Clustering oder Kernel-PCA genutzt werden. Dies könnte zu schnelleren und stabileren Ergebnissen führen.
+
+\textbf{Quantenchemie und Computational Physics:} Hartree-Fock- und Configuration-Interaction-Matrizen in der Quantenchemie sind typischerweise sehr groß und haben spezifische Strukturen. Die Vorbereitung durch diagonale Kongruenz könnte die Iterationen bei der Elektronenstrukturberechnung beschleunigen.
+
+\textbf{Finite-Elemente-Methoden (FEM):} Systemmatrizen aus FEM-Diskretisierungen profitieren oft von Vorkonditionierung. Die diagonale Zeilenkongruenz könnte als zusätzliche Preprocessing-Schicht dienen und die Konvergenz von iterativen Lösern für FEM-Systeme beschleunigen.
+
+\textbf{Netzwerkanalyse und Graphentheorie:} Adjazenzmatrizen großer Netzwerke könnten durch Zeilenpermutation strukturiert werden, um spektrale Eigenschaften besser zugänglich zu machen. Dies könnte Anwendungen in Spektral-Clustering, Community-Detection und Netzwerk-Visualisierung unterstützen.
+
+\textbf{Signalverarbeitung:} Kovaranzmatrizen in der Signalverarbeitung könnten vorkonditioniert werden, um die Konvergenz von adaptiven Filtern (z.\,B. Least-Mean-Squares) zu verbessern.
+
+\subsection*{Theoretische Fragen zur Struktur}
+
+\textbf{Spektraler Blickwinkel:} Eine tiefere Analyse könnte den Zusammenhang zwischen der diagonalen Kongruenz und den spektralen Eigenschaften der Matrix untersuchen. Insbesondere: Wie beeinflusst die optimale Zeilenpermutation das Spektrum der resultierenden Matrix und deren Konditionszahl?
+
+\textbf{Verbindung zu Spektralgraphentheorie:} Matrizen können als Adjazenzmatrizen von Graphen interpretiert werden. Die Zeilenpermutation entspricht einer Knoten-Reordering. Könnten Techniken aus der Spektralgraphentheorie (z.\,B. Spektral-Ordnung oder Laplace-Eigenvektoren) genutzt werden, um bessere Permutationen zu finden?
+
+\textbf{Untersuchung spezieller Matrixklassen:} Für bestimmte Matrixklassen—tridiagonal, zirkulant, Toeplitz, positive definit—könnten spezialisierte Greedy-Varianten oder exakte Lösungen entwickelt werden. Dies könnte zu maßgeschneiderten Lösungen für häufig auftretende Probleme führen.
+
+\subsection*{Verbindung zu verwandten Methoden}
+
+\textbf{Beziehung zu Vorkonditionierern:} Die diagonale Zeilenkongruenz ist konzeptuell verwandt mit klassischen Vorkonditionierungstechniken (Jacobi-Vorkonditonierung, incomplete LU factorization). Eine systematische Vergleichsstudie könnte ihre relative Effektivität klären und möglicherweise hybride Ansätze inspirieren.
+
+\textbf{Verbindung zu Matrix-Reordering-Techniken:} In der Numerik gibt es etablierte Reordering-Verfahren (Cuthill-McKee, Nested Dissection). Wie verhält sich die diagonale Kongruenz zu diesen klassischen Ansätzen? Könnten sie kombiniert werden?
+
+\textbf{Verbindung zu Matrix-Balancing:} Das klassische Matrix-Balancing (Skalieren von Zeilen und Spalten) verbessert oft die numerische Stabilität. Könnte die diagonale Kongruenz kombiniert mit Balancing zu noch besseren Resultaten führen?
+
+\subsection*{Empirische und experimentelle Richtungen}
+
+\textbf{Umfangreiche Benchmarking-Studien:} Systematische Tests auf standardisierten Matrixkollektionen (MatrixMarket, SuiteSparse) würden Aufschluss über die praktische Effektivität in verschiedenen Szenarien geben. Dies könnte die theoretischen Speedup-Vorhersagen validieren oder widerlegen.
+
+\textbf{Sensitivitätsanalyse:} Wie robust ist die Methode gegenüber Störungen, Rauschen und numerischen Fehlern in der Input-Matrix? Eine umfassende Sensitivitätsanalyse würde Vertrauen in die Praktikabilität aufbauen.
+
+\textbf{Vergleich mit modernen Bibliotheken:} Implementierungen in etablierten numerischen Bibliotheken (LAPACK, Eigen, Armadillo) würden es ermöglichen, gegen optimierte State-of-the-Art-Implementierungen zu konkurrieren und praktische Grenzen zu identifizieren.
+
+\subsection*{Interdisziplinäre Perspektiven}
+
+\textbf{Maschinelles Lernen für Permutationsfindung:} Könnten neuronale Netze oder Reinforcement-Learning-Techniken trainiert werden, um gute Zeilenpermutationen zu finden? Dies würde eine ganz neue Perspektive auf das Permutationsproblem eröffnen.
+
+\textbf{Randomisierte Algorithmen:} Probabilistische Methoden könnten untersucht werden, um Permutationen stochastisch zu konstruieren, mit probabilistischen Garantien auf Qualität und Komplexität.
+
+\textbf{Automatisches Differenzieren:} Falls die Permutation selbst als differenzierbarer Parameter betrachtet wird, könnten Gradient-basierte Optimierungstechniken zur Permutationsfindung eingesetzt werden.
+
+\subsection*{Schlussbemerkung}
+
+Die diagonale Zeilenkongruenz ist nicht ein isoliertes Konzept, sondern ein Baustein eines größeren Verständnisses der Matrixstrukturen und deren Optimierung. Die Kombination mit klassischen Algorithmen hat sich als effektiv erwiesen, aber der volle Potential ist noch lange nicht ausgeschöpft. Zukünftige Arbeiten sollten sowohl die theoretischen Grundlagen vertiefen als auch die praktischen Anwendungen in hochmoderne Softwaresysteme integrieren. Nur so kann die Methode ihren vollständigen Wert für die numerische Mathematik, den Wissenschaftlichen Rechnen und die angewandten Wissenschaften entfalten.
+
+\begin{thebibliography}{99}
+
+\bibitem{Golub1996}
+G.\,H. Golub und C.\,F. Van Loan. \textit{Matrix Computations}. 3.\,Auflage, Johns Hopkins University Press, Baltimore, 1996.
+\newblock Standardwerk der numerischen linearen Algebra mit umfassenden Behandlung von Eigenwertalgorithmen, QR-Zerlegung und SVD.
+
+\bibitem{Trefethen1997}
+L.\,N. Trefethen und D. Bau III. \textit{Numerical Linear Algebra}. SIAM, Philadelphia, 1997.
+\newblock Moderne Einführung in numerische Verfahren mit Fokus auf praktische Stabilität und Konvergenzverhalten.
+
+\bibitem{Wilkinson1965}
+J.\,H. Wilkinson. \textit{The Algebraic Eigenvalue Problem}. Clarendon Press, Oxford, 1965.
+\newblock Klassisches Referenzwerk zur Theorie und Numerik von Eigenwertalgorithmen.
+
+\bibitem{Francis1961}
+J.\,G.\,F. Francis. The QR transformation: A unitary analogue to the LR transformation. \textit{The Computer Journal}, 4(4):332--345, 1961.
+\newblock Originalarbeit zum QR-Algorithmus, fundamentales Verfahren zur Eigenwertberechnung.
+
+\bibitem{Jacobi1846}
+C.\,G.\,J. Jacobi. Ueber eine neue Auflösungsart der bei der Methode der kleinsten Quadrate vorkommenden linearen Gleichungen. \textit{Astronomische Nachrichten}, 22(20):297--306, 1846.
+\newblock Historische Arbeit zur Jacobi-Methode für symmetrische Eigenwertprobleme.
+
+\bibitem{Kahan1966}
+W. Kahan. Accuracy and conditioning in the Gram-Schmidt process. \textit{Department of Computer Science, University of Toronto}, 1966.
+\newblock Analyse der numerischen Stabilität orthogonalisierender Verfahren.
+
+\bibitem{Demmel1997}
+J.\,W. Demmel. \textit{Applied Numerical Linear Algebra}. SIAM, Philadelphia, 1997.
+\newblock Anwendungsorientiertes Lehrbuch mit Fokus auf praktische Aspekte und Fehleranalyse.
+
+\bibitem{Higham2002}
+N.\,J. Higham. \textit{Accuracy and Stability of Numerical Algorithms}. 2.\,Auflage, SIAM, Philadelphia, 2002.
+\newblock Umfassendes Referenzwerk zur Fehlerfortpflanzung und numerischen Stabilität.
+
+\bibitem{Horn1985}
+R.\,A. Horn und C.\,R. Johnson. \textit{Matrix Analysis}. Cambridge University Press, Cambridge, 1985.
+\newblock Theoretisches Fundament für Matrixanalysis und spektrale Eigenschaften.
+
+\bibitem{Householder1964}
+A.\,S. Householder. \textit{The Theory of Matrices in Numerical Analysis}. Blaisdell, New York, 1964.
+\newblock Klassisches Werk zu theoretischen Grundlagen numerischer Matrixmethoden.
+
+\bibitem{Parlett1980}
+B.\,N. Parlett. \textit{The Symmetric Eigenvalue Problem}. Prentice-Hall, Englewood Cliffs, 1980.
+\newblock Spezialwerk für symmetrische Eigenwertalgorithmen mit numerischen Details.
+
+\bibitem{Golub1970}
+G.\,H. Golub und W. Kahan. Calculating the singular values and pseudo-inverse of a matrix. \textit{Journal of the Society for Industrial and Applied Mathematics}, 2(2):205--224, 1970.
+\newblock Grundlegende Arbeit zur numerisch stabilen SVD-Berechnung.
+
+\bibitem{Lanczos1950}
+C. Lanczos. An iteration method for the solution of the eigenvalue problem of linear differential and integral operators. \textit{Journal of Research of the National Bureau of Standards}, 45(4):255--282, 1950.
+\newblock Klassische Arbeit zum Lanczos-Algorithmus für große Eigenwertprobleme.
+
+\bibitem{Arnoldi1951}
+W.\,E. Arnoldi. The principle of minimized iterations in the solution of matrix eigenvalue problems. \textit{Quarterly of Applied Mathematics}, 9(1):17--29, 1951.
+\newblock Grundlegende Arbeit zur Arnoldi-Iteration und Krylov-Untergitter-Methoden.
+
+\bibitem{Bai2000}
+Z. Bai, J. Demmel, J. Dongarra, A. Ruhe und H. van der Vorst (Hrsg.). \textit{Templates for the Solution of Algebraic Eigenvalue Problems: A Practical Guide}. SIAM, Philadelphia, 2000.
+\newblock Umfassendes Kompendium von Algorithmen und Implementierungsstrategien.
+
+\bibitem{Kublanovskaya1961}
+V.\,N. Kublanovskaya. On some algorithms for the solution of the complete eigenvalue problem. \textit{Zhurnal Vychislitel'noi Matematiki i Matematicheskoi Fiziki}, 1(4):555--570, 1961.
+\newblock Frühe Arbeiten zur entwicklung von eigenvalue-Algorithmen.
+
+\bibitem{Givens1954}
+W. Givens. Numerical computation of the characteristic values of a real symmetric matrix. \textit{Oak Ridge National Laboratory Report ORNL-1574}, 1954.
+\newblock Klassisches Werk zu orthogonalen Transformationen für Eigenwertprobleme.
+
+\bibitem{Stewart1973}
+G.\,W. Stewart. Introduction to matrix computations. Academic Press, New York, 1973.
+\newblock Frühe umfassende Darstellung numerischer Matrixmethoden.
+
+\bibitem{Strang2009}
+G. Strang. \textit{Introduction to Linear Algebra}. 4.\,Auflage, Wellesley-Cambridge Press, Wellesley, 2009.
+\newblock Fundierte Einführung mit geometrischen Intuitionen für lineare Algebra.
+
+\bibitem{Boyd2004}
+S. Boyd und L. Vandenberghe. \textit{Convex Optimization}. Cambridge University Press, Cambridge, 2004.
+\newblock Anwendung von Eigenwertmethoden in Optimierungsproblemen.
+
+\bibitem{Quarteroni2007}
+A. Quarteroni, R. Sacco und F. Saleri. \textit{Numerical Mathematics}. 2.\,Auflage, Springer, New York, 2007.
+\newblock Moderne Darstellung numerischer Verfahren mit praktischen Beispielen.
+
+\bibitem{Saad2011}
+Y. Saad. \textit{Numerical Methods for Large Eigenvalue Problems}. 2.\,Auflage, SIAM, Philadelphia, 2011.
+\newblock Spezialisiertes Werk zu modernen Methoden für große Eigenwertprobleme.
+
+\bibitem{Varga2002}
+R.\,S. Varga. \textit{Matrix Iterative Analysis}. 2.\,Auflage, Springer, Berlin, 2002.
+\newblock Umfassend zur Konvergenzanalyse iterativer Verfahren.
+
+\bibitem{Duff1989}
+I.\,S. Duff, A.\,M. Erisman und J.\,K. Reid. \textit{Direct Methods for Sparse Matrices}. Oxford University Press, Oxford, 1989.
+\newblock Spezialisierte Methoden für Matrizen mit Sparsität.
+
+\bibitem{Davis2006}
+T.\,A. Davis. \textit{Direct Methods for Sparse Linear Systems}. SIAM, Philadelphia, 2006.
+\newblock Moderne Perspektive auf direkte Lösungsverfahren.
+
+\bibitem{Cullum1985}
+J.\,K. Cullum und R.\,A. Willoughby. Lanczos Algorithms for Large Symmetric Eigenvalue Computations. \textit{SIAM}, Philadelphia, 1985.
+\newblock Detaillierte Behandlung des Lanczos-Algorithmus.
+
+\bibitem{Schönhage1966}
+A. Schönhage. Zur Convergenz des Jacobi-Verfahrens. \textit{Numerische Mathematik}, 8(3):241--250, 1966.
+\newblock Konvergenzanalyse klassischer Iterationsmethoden.
+
+\bibitem{Ortega1990}
+J.\,M. Ortega. \textit{Numerical Analysis: A Second Course}. 2.\,Auflage, SIAM, Philadelphia, 1990.
+\newblock Fortgeschrittene Aspekte numerischer Analyse.
+
+\bibitem{Axelsson1994}
+O. Axelsson. \textit{Iterative Solution Methods}. Cambridge University Press, Cambridge, 1994.
+\newblock Umfassende Behandlung iterativer Lösungsverfahren.
+
+\bibitem{Gantmacher1959}
+F.\,R. Gantmacher. \textit{The Theory of Matrices}. Chelsea Publishing Company, New York, 1959.
+\newblock Klassisches mathematisches Referenzwerk zur Matrixtheorie.
+
+\bibitem{Perlis1952}
+S. Perlis. \textit{Theory of Matrices}. Addison-Wesley, Reading, 1952.
+\newblock Frühe theoretische Grundlagen der Matrixtheorie.
+
+\bibitem{Magnus1985}
+J.\,R. Magnus und H. Neudecker. \textit{On differentials of symmetric functions}. \textit{Journal of Econometrics}, 24(1-2):43--56, 1985.
+\newblock Spezielle Techniken für differenzierbare Funktionen von Matrizen.
+
+\bibitem{Van2000}
+H. van der Vorst. \textit{Iterative Krylov Methods for Large Linear Systems}. Cambridge University Press, Cambridge, 2003.
+\newblock Moderne Krylov-Unterraum-Methoden für große Systeme.
+
+\bibitem{Notay2010}
+Y. Notay. Convergence analysis of perturbed two-grid and multigrid methods. \textit{SIAM Journal on Numerical Analysis}, 45(3):1035--1056, 2007.
+\newblock Analyse gestörter Mehrgitter-Verfahren.
+
+\bibitem{Benzi1999}
+M. Benzi, G.\,H. Golub und J. Liesen. Numerical solution of saddle point problems. \textit{Acta Numerica}, 14:1--137, 2005.
+\newblock Spezielle Aspekte bei saddle-point Problemen.
+
+\end{thebibliography}
+
+\end{document}

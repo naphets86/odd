@@ -1,0 +1,3198 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[provide=*,german]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage[protrusion=true,expansion=true,final]{microtype}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{mathtools}
+
+\geometry{margin=2.5cm}
+\emergencystretch=3em
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{beispiel}{Beispiel}[section]
+\theoremstyle{plain}
+\newtheorem{satz}{Satz}[section]
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{korollar}{Korollar}[section]
+\newtheorem{proposition}{Proposition}[section]
+\theoremstyle{remark}
+\newtheorem{bemerkung}{Bemerkung}[section]
+
+\setlist[itemize,1]{label=--}
+
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=mainblue,
+  citecolor=accentred,
+  urlcolor=mainblue
+}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  stringstyle=\color{red},
+  numbers=left,
+  numberstyle=\tiny,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  literate=%
+    {ae}{{\"{a}}}1
+    {oe}{{\"{o}}}1
+    {ue}{{\"{u}}}1
+    {Ae}{{\"{A}}}1
+    {Oe}{{\"{O}}}1
+    {Ue}{{\"{U}}}1
+    {ss}{{\ss{}}}1
+}
+
+\newcommand{\Tbox}{\ensuremath{\mathcal{T}}}
+\newcommand{\Abox}{\ensuremath{\mathcal{A}}}
+\newcommand{\KB}{\ensuremath{\mathcal{K}}}
+\newcommand{\interp}[1]{\ensuremath{\mathcal{#1}}}
+\newcommand{\ext}[2]{\ensuremath{#1^{\interp{#2}}}}
+\newcommand{\Dom}[1]{\ensuremath{\Delta^{\interp{#1}}}}
+
+\title{\textbf{Beschreibungslogiken: Semantik, Schlussfolgern und Lernen}\\
+\large Eine formale Einf{\"{u}}hrung mit vollst{\"{a}}ndigen Beweisen}
+\author{Stephan Epp\\
+Institut f{\"{u}}r Informatik, Universit{\"{a}}t Bielefeld}
+\date{8. Juni 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Diese Arbeit gibt eine umfassende formale Einf{\"{u}}hrung in Beschreibungslogiken
+(Description Logics, DL), die das logische Fundament des Semantic Web
+und des OWL-2-Standards bilden.
+Wir entwickeln die Semantik der wichtigsten DL-Familien
+(\textsf{EL}, \textsf{ALC}, \textsf{SHIQ}, \textsf{SROIQ})
+von Grund auf, beweisen alle zentralen Ergebnisse vollst{\"{a}}ndig und formal,
+darunter die Polynomialzeit-Komplexit{\"{a}}t der Subsumtion in \textsf{EL},
+die \textsc{PSpace}-Vollst{\"{a}}ndigkeit von \textsf{ALC},
+die Korrektheit des Tableau-Verfahrens sowie Existenz und Berechnung
+von LCS und MSC f{\"{u}}r das symbolische Konzeptlernen.
+Abgerundet wird die Darstellung durch ausf{\"{u}}hrliche Analysen zu
+nicht-monotonem Schlussfolgern, relaxierter Anfragebeantwortung und
+einem weitreichenden Ausblick auf offene Forschungsfragen.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% =======================================================================
+\section{Einf{\"{u}}hrung und Motivation}
+% =======================================================================
+
+\subsection{Wissensrepr{\"{a}}sentation als Forschungsgebiet}
+
+Ein fundamentales Ziel der K{\"{u}}nstlichen Intelligenz ist es, Wissen
+maschinell nutzbar zu machen. Wissensrepr{\"{a}}sentation (Knowledge
+Representation, KR) ist das Teilgebiet, das sich mit der Frage
+besch{\"{a}}ftigt: \emph{Wie kann Wissen so formalisiert werden, dass ein
+Computer damit schlussfolgern kann?}
+
+Historisch wurden verschiedene Formalismen entwickelt: Produktionsregeln
+(z.\,B.\ MYCIN~\cite{Buchanan1984}), semantische Netze~\cite{Quillian1968},
+Frames~\cite{Minsky1975} und schlie{\ss}lich
+logikbasierte Ans{\"{a}}tze~\cite{McCarthy1963}. Beschreibungslogiken
+vereinen die intuitive Struktur semantischer Netze mit der
+formalen Pr{\"{a}}zision der Pr{\"{a}}dikatenlogik und entscheidbaren
+Inferenzverfahren~\cite{Baader2007}.
+
+\subsection{Was sind Beschreibungslogiken?}
+
+\begin{definition}[Beschreibungslogik (informal)]
+Eine \emph{Beschreibungslogik} ist eine Familie formaler Sprachen
+zur Beschreibung von:
+\begin{itemize}
+  \item \textbf{Konzepten} (Klassen von Objekten), z.\,B.\ $\mathit{Arzt}$,
+        $\mathit{Patient}$,
+  \item \textbf{Rollen} (bin{\"{a}}re Beziehungen zwischen Objekten),
+        z.\,B.\ $\mathit{behandelt}$,
+  \item \textbf{Individuen} (konkrete Objekte), z.\,B.\ $\mathit{alice}$,
+\end{itemize}
+zusammen mit einer wohldefinierten modelltheoretischen Semantik und
+entscheidbaren Inferenzverfahren.
+\end{definition}
+
+Beschreibungslogiken sind \emph{Fragmente der Pr{\"{a}}dikatenlogik erster Stufe}.
+Sie verzichten auf volle Ausdrucksst{\"{a}}rke zugunsten von Entscheidbarkeit
+und praktischer Effizienz. Je nach Ausdrucksst{\"{a}}rke unterscheidet man
+verschiedene DL-Familien, die sich in einem Spektrum zwischen
+dem einfachen \textsf{EL} (polynomielle Komplexit{\"{a}}t) und dem
+ausdrucksstarken \textsf{SROIQ} (\textsc{NExpTime}) bewegen.
+
+\subsection{Historische Entwicklung}
+
+Die Wurzeln der Beschreibungslogiken liegen in der Arbeit von
+\textsc{Brachman} und \textsc{Levesque}~\cite{Brachman1985},
+die 1985 zeigten, dass semantische Netze implizit logische
+Schlussfolgerungen erfordern, die im schlimmsten Fall \textsc{PSpace}-schwer sind.
+Das System \textsc{Kl-One}~\cite{Brachman1979} war das erste strukturierte
+Wissensrepr{\"{a}}sentationssystem mit einer zumindest teilweise formalen Semantik.
+
+In den sp{\"{a}}ten 1980er- und 1990er-Jahren wurden umfangreiche
+Komplexit{\"{a}}tsanalysen durchgef{\"{u}}hrt~\cite{Donini1997, Schmidt1991}.
+Eine Schl{\"{u}}sselbeobachtung war, dass \textsf{ALC} {\"{a}}quivalent zur
+multimodalen Logik $K_m$ ist~\cite{Schmidt1991}, was eine Br{\"{u}}cke
+zur Modallogiktheorie schl{\"{a}}gt.
+
+Mit dem Aufkommen des World Wide Web und dem Ziel des Semantic Web
+wurden DL zur Grundlage von Ontologiebeschreibungssprachen:
+OWL (basierend auf \textsf{SHOIN(D)})~\cite{OWL1} und
+OWL~2 (basierend auf \textsf{SROIQ(D)})~\cite{OWL2Primer}
+sind W3C-Standards.
+
+\subsection{Kernbeitr{\"{a}}ge dieses Dokuments}
+
+Wir beweisen folgende zentrale Resultate vollst{\"{a}}ndig und formal:
+\begin{enumerate}[label=(\Roman*)]
+  \item \textbf{Injektivit{\"{a}}t der Signaturberechnung und Eindeutigkeit
+        kanonischer Normalformen} (Abschnitt~\ref{sec:grundlagen}).
+  \item \textbf{Korrektheit und Vollst{\"{a}}ndigkeit der ALC-Semantik}
+        mit vollst{\"{a}}ndiger Induktionsbeweisf{\"{u}}hrung (Abschnitt~\ref{sec:alc}).
+  \item \textbf{Polynomialzeit-Subsumtion in EL} mit vollst{\"{a}}ndiger
+        Analyse des Normalisierungs- und Regelanwendungsalgorithmus
+        (Abschnitt~\ref{sec:el}).
+  \item \textbf{PSpace-Vollst{\"{a}}ndigkeit von ALC} durch explizite
+        Reduktionen (Abschnitt~\ref{sec:alc-kompl}).
+  \item \textbf{Korrektheit des Tableau-Verfahrens} f{\"{u}}r ALC,
+        formal in beiden Richtungen (Abschnitt~\ref{sec:tableau}).
+  \item \textbf{Existenz und Berechenbarkeit von LCS in EL}
+        mit vollst{\"{a}}ndiger Produktkonstruktion (Abschnitt~\ref{sec:lernen}).
+  \item \textbf{Korrektheit der repair-basierten Anfragebeantwortung}
+        (Abschnitt~\ref{sec:anfragen}).
+\end{enumerate}
+
+% =======================================================================
+\section{Formale Grundlagen}
+\label{sec:grundlagen}
+% =======================================================================
+
+\subsection{Signaturen und syntaktische Grundbegriffe}
+
+\begin{definition}[Signatur]
+\label{def:signatur}
+Eine \emph{Signatur} $\Sigma = (N_C, N_R, N_I)$ ist ein Tripel,
+bestehend aus einer abz{\"{a}}hlbaren Menge von \emph{Konzeptnamen} $N_C$,
+einer abz{\"{a}}hlbaren Menge von \emph{Rollennamen} $N_R$ und
+einer abz{\"{a}}hlbaren Menge von \emph{Individuennamen} $N_I$,
+wobei $N_C$, $N_R$ und $N_I$ paarweise disjunkt sind:
+\[
+  N_C \cap N_R = \emptyset, \quad
+  N_C \cap N_I = \emptyset, \quad
+  N_R \cap N_I = \emptyset.
+\]
+\end{definition}
+
+\begin{definition}[ALC-Konzeptausdr{\"{u}}cke]
+\label{def:alc-syntax}
+Sei $\Sigma = (N_C, N_R, N_I)$ eine Signatur.
+Die Menge $\mathcal{C}_{\textsf{ALC}}(\Sigma)$ der
+\emph{\textsf{ALC}-Konzeptausdr{\"{u}}cke} {\"{u}}ber $\Sigma$
+ist die kleinste Menge $\mathcal{C}$, f{\"{u}}r die gilt:
+\begin{enumerate}[label=(\roman*)]
+  \item $A \in \mathcal{C}$ f{\"{u}}r alle $A \in N_C$
+        (\emph{Konzeptnamen});
+  \item $\top \in \mathcal{C}$ und $\bot \in \mathcal{C}$
+        (\emph{universelles und leeres Konzept});
+  \item Wenn $C, D \in \mathcal{C}$, dann auch
+        $\neg C \in \mathcal{C}$,
+        $C \sqcap D \in \mathcal{C}$,
+        $C \sqcup D \in \mathcal{C}$;
+  \item Wenn $C \in \mathcal{C}$ und $r \in N_R$, dann auch
+        $\exists r.C \in \mathcal{C}$ und
+        $\forall r.C \in \mathcal{C}$.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[Gr{\"{o}}{\ss}e eines Konzeptausdrucks]
+Die \emph{Gr{\"{o}}{\ss}e} $|C|$ eines Konzeptausdrucks $C$ ist induktiv
+definiert:
+\[
+\begin{array}{rclrcl}
+  |A| &=& 1, &
+  |\top| = |\bot| &=& 1, \\
+  |\neg C| &=& |C| + 1, &
+  |C \sqcap D| = |C \sqcup D| &=& |C| + |D| + 1, \\
+  |\exists r.C| &=& |C| + 2, &
+  |\forall r.C| &=& |C| + 2.
+\end{array}
+\]
+\end{definition}
+
+\begin{definition}[Teilkonzepte]
+Die Menge $\mathrm{sub}(C)$ der \emph{Teilkonzepte} (sub-concepts)
+eines Konzeptausdrucks $C$ ist induktiv definiert:
+\begin{align*}
+  \mathrm{sub}(A) &= \{A\}, \\
+  \mathrm{sub}(\top) &= \{\top\}, \quad
+  \mathrm{sub}(\bot) = \{\bot\}, \\
+  \mathrm{sub}(\neg D) &= \{\neg D\} \cup \mathrm{sub}(D), \\
+  \mathrm{sub}(C_1 \sqcap C_2) &=
+    \{C_1 \sqcap C_2\} \cup \mathrm{sub}(C_1) \cup \mathrm{sub}(C_2), \\
+  \mathrm{sub}(C_1 \sqcup C_2) &=
+    \{C_1 \sqcup C_2\} \cup \mathrm{sub}(C_1) \cup \mathrm{sub}(C_2), \\
+  \mathrm{sub}(\exists r.D) &= \{\exists r.D\} \cup \mathrm{sub}(D), \\
+  \mathrm{sub}(\forall r.D) &= \{\forall r.D\} \cup \mathrm{sub}(D).
+\end{align*}
+\end{definition}
+
+\begin{lemma}[Schranke f{\"{u}}r Teilkonzepte]
+\label{lem:subcon-bound}
+F{\"{u}}r jeden Konzeptausdruck $C$ gilt $|\mathrm{sub}(C)| \leq |C|$.
+\end{lemma}
+
+\begin{proof}
+Wir beweisen dies durch strukturelle Induktion {\"{u}}ber den Aufbau von $C$.
+
+\textbf{Basisfall:} F{\"{u}}r $C = A$, $C = \top$ oder $C = \bot$ gilt
+$\mathrm{sub}(C) = \{C\}$, also $|\mathrm{sub}(C)| = 1 = |C|$. \checkmark
+
+\textbf{Induktionsschritt $\neg D$:}
+Nach Induktionshypothese gilt $|\mathrm{sub}(D)| \leq |D|$.
+Dann:
+\[
+  |\mathrm{sub}(\neg D)| = 1 + |\mathrm{sub}(D)| \leq 1 + |D| = |\neg D|.
+\]
+
+\textbf{Induktionsschritt $C_1 \sqcap C_2$:}
+Nach Induktionshypothese $|\mathrm{sub}(C_i)| \leq |C_i|$ f{\"{u}}r $i=1,2$.
+Da $\mathrm{sub}(C_1) \cap \mathrm{sub}(C_2)$ m{\"{o}}glicherweise
+nichtleer ist, gilt:
+\[
+  |\mathrm{sub}(C_1 \sqcap C_2)|
+  \leq 1 + |\mathrm{sub}(C_1)| + |\mathrm{sub}(C_2)|
+  \leq 1 + |C_1| + |C_2|
+  = |C_1 \sqcap C_2|.
+\]
+Der Fall $C_1 \sqcup C_2$ ist analog.
+
+\textbf{Induktionsschritt $\exists r.D$:}
+\[
+  |\mathrm{sub}(\exists r.D)|
+  = 1 + |\mathrm{sub}(D)|
+  \leq 1 + |D|
+  < |D| + 2
+  = |\exists r.D|.
+\]
+Der Fall $\forall r.D$ ist analog. \qedhere
+\end{proof}
+
+\subsection{Interpretationen und Semantik}
+
+\begin{definition}[Interpretation]
+\label{def:interpretation}
+Eine \emph{Interpretation} $\interp{I} = (\Dom{I}, \cdot^\interp{I})$
+besteht aus:
+\begin{itemize}
+  \item einem nichtleeren \emph{Interpretationsbereich}
+        (Domain) $\Dom{I} \neq \emptyset$,
+  \item einer \emph{Interpretationsfunktion} $\cdot^\interp{I}$, die
+        \begin{itemize}
+          \item jedem $A \in N_C$ eine Menge
+                $A^\interp{I} \subseteq \Dom{I}$ zuordnet,
+          \item jedem $r \in N_R$ eine Relation
+                $r^\interp{I} \subseteq \Dom{I} \times \Dom{I}$
+                zuordnet,
+          \item jedem $a \in N_I$ ein Element
+                $a^\interp{I} \in \Dom{I}$ zuordnet.
+        \end{itemize}
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Semantik der ALC-Konstruktoren]
+\label{def:alc-sem}
+Die Interpretationsfunktion wird auf komplexe Konzeptausdr{\"{u}}cke durch
+folgende Gleichungen erweitert:
+\[
+\renewcommand{\arraystretch}{1.5}
+\begin{array}{rcl}
+  \top^\interp{I} &=& \Dom{I}, \\
+  \bot^\interp{I} &=& \emptyset, \\
+  (\neg C)^\interp{I} &=& \Dom{I} \setminus C^\interp{I}, \\
+  (C \sqcap D)^\interp{I} &=& C^\interp{I} \cap D^\interp{I}, \\
+  (C \sqcup D)^\interp{I} &=& C^\interp{I} \cup D^\interp{I}, \\
+  (\exists r.C)^\interp{I} &=&
+    \{d \in \Dom{I} \mid
+    \exists e \in \Dom{I}.\,(d,e) \in r^\interp{I} \wedge e \in C^\interp{I}\}, \\
+  (\forall r.C)^\interp{I} &=&
+    \{d \in \Dom{I} \mid
+    \forall e \in \Dom{I}.\,(d,e) \in r^\interp{I} \Rightarrow e \in C^\interp{I}\}.
+\end{array}
+\]
+\end{definition}
+
+\begin{lemma}[Dualit{\"{a}}t von $\exists$ und $\forall$]
+\label{lem:duality}
+F{\"{u}}r jede Interpretation $\interp{I}$, jeden Rollennamen $r$
+und jeden Konzeptausdruck $C$ gilt:
+\[
+  (\exists r.C)^\interp{I} = \Dom{I} \setminus (\forall r.\neg C)^\interp{I}.
+\]
+\end{lemma}
+
+\begin{proof}
+Wir zeigen Mengengleichheit durch gegenseitige Inklusion.
+
+\textbf{($\subseteq$):}
+Sei $d \in (\exists r.C)^\interp{I}$.
+Dann existiert $e \in \Dom{I}$ mit $(d,e) \in r^\interp{I}$ und
+$e \in C^\interp{I}$, also $e \notin (\neg C)^\interp{I}$.
+Daher gilt $d \notin (\forall r.\neg C)^\interp{I}$
+(da die Allaussage verletzt ist), also
+$d \in \Dom{I} \setminus (\forall r.\neg C)^\interp{I}$.
+
+\textbf{($\supseteq$):}
+Sei $d \in \Dom{I} \setminus (\forall r.\neg C)^\interp{I}$.
+Dann gilt $d \notin (\forall r.\neg C)^\interp{I}$, d.\,h.\
+es gibt $e \in \Dom{I}$ mit $(d,e) \in r^\interp{I}$ und
+$e \notin (\neg C)^\interp{I}$, also $e \in C^\interp{I}$.
+Damit gilt $d \in (\exists r.C)^\interp{I}$. \qedhere
+\end{proof}
+
+\begin{korollar}[Pushdown von Negation]
+\label{kor:negation}
+F{\"{u}}r \textsf{ALC}-Konzepte gilt semantische {\"{A}}quivalenz:
+\begin{align*}
+  \neg(C \sqcap D) &\equiv \neg C \sqcup \neg D, \\
+  \neg(C \sqcup D) &\equiv \neg C \sqcap \neg D, \\
+  \neg(\exists r.C) &\equiv \forall r.\neg C, \\
+  \neg(\forall r.C) &\equiv \exists r.\neg C.
+\end{align*}
+\end{korollar}
+
+\begin{proof}
+Alle vier {\"{A}}quivalenzen folgen direkt aus der mengenlehre (De Morgan)
+und Lemma~\ref{lem:duality}.
+Wir zeigen exemplarisch die dritte Gleichheit:
+\begin{align*}
+  (\neg(\exists r.C))^\interp{I}
+  &= \Dom{I} \setminus (\exists r.C)^\interp{I} \\
+  &= \Dom{I} \setminus (\Dom{I} \setminus (\forall r.\neg C)^\interp{I})
+  \quad \text{(Lemma~\ref{lem:duality})} \\
+  &= (\forall r.\neg C)^\interp{I}. \qedhere
+\end{align*}
+\end{proof}
+
+\begin{definition}[Negationsnormalform]
+Ein \textsf{ALC}-Konzept $C$ ist in \emph{Negationsnormalform (NNF)},
+wenn alle Negationssymbole nur direkt vor Konzeptnamen stehen,
+also wenn $C$ keine Teilkonzepte der Form $\neg(D_1 \sqcap D_2)$,
+$\neg(D_1 \sqcup D_2)$, $\neg \exists r.D$ oder $\neg \forall r.D$ enth{\"{a}}lt.
+\end{definition}
+
+\begin{satz}[NNF-Transformation]
+\label{satz:nnf}
+Jeder \textsf{ALC}-Konzeptausdruck $C$ l{\"{a}}sst sich in Polynomialzeit
+in eine {\"{a}}quivalente Negationsnormalform $\mathrm{nnf}(C)$ transformieren,
+wobei $|\mathrm{nnf}(C)| \leq 2|C|$.
+\end{satz}
+
+\begin{proof}
+Wir definieren $\mathrm{nnf}(C)$ induktiv und zeigen
+gleichzeitig (a) die {\"{A}}quivalenz $C \equiv \mathrm{nnf}(C)$
+und (b) die Gr{\"{o}}{\ss}enschranke $|\mathrm{nnf}(C)| \leq 2|C|$.
+
+Die Transformation wendet Korollar~\ref{kor:negation} ersch{\"{o}}pfend an:
+\begin{align*}
+  \mathrm{nnf}(A) &= A, \\
+  \mathrm{nnf}(\top) &= \top, \quad
+  \mathrm{nnf}(\bot) = \bot, \\
+  \mathrm{nnf}(\neg A) &= \neg A, \\
+  \mathrm{nnf}(\neg\neg C) &= \mathrm{nnf}(C), \\
+  \mathrm{nnf}(\neg(C_1 \sqcap C_2)) &=
+    \mathrm{nnf}(\neg C_1) \sqcup \mathrm{nnf}(\neg C_2), \\
+  \mathrm{nnf}(\neg(C_1 \sqcup C_2)) &=
+    \mathrm{nnf}(\neg C_1) \sqcap \mathrm{nnf}(\neg C_2), \\
+  \mathrm{nnf}(\neg \exists r.C) &=
+    \forall r.\mathrm{nnf}(\neg C), \\
+  \mathrm{nnf}(\neg \forall r.C) &=
+    \exists r.\mathrm{nnf}(\neg C), \\
+  \mathrm{nnf}(C_1 \sqcap C_2) &=
+    \mathrm{nnf}(C_1) \sqcap \mathrm{nnf}(C_2), \\
+  \mathrm{nnf}(\exists r.C) &= \exists r.\mathrm{nnf}(C), \\
+  \mathrm{nnf}(\forall r.C) &= \forall r.\mathrm{nnf}(C).
+\end{align*}
+
+\textbf{{\"{A}}quivalenz (a):}
+Jede Regel ersetzt einen Teilausdruck durch einen {\"{a}}quivalenten
+Ausdruck (Korollar~\ref{kor:negation}, Doppelnegationnorm).
+Die Ersetzung erh{\"{a}}lt semantische {\"{A}}quivalenz.
+
+\textbf{Gr{\"{o}}{\ss}enschranke (b):}
+Im schlimmsten Fall wird jede Negation durch doppelte Verwendung
+des NNF-Arguments der Teilkonzepte verdoppelt.
+Genauer gilt: Bei jedem Aufruf $\mathrm{nnf}(\neg C)$ wird
+die Gr{\"{o}}{\ss}e von $C$ genau einmal gez{\"{a}}hlt, nie mehr als zweimal.
+Formal zeigt man $|\mathrm{nnf}(\neg C)| \leq 2|C|$
+und $|\mathrm{nnf}(C)| \leq |C|$ durch gleichzeitige Induktion,
+was die Schranke $|\mathrm{nnf}(C)| \leq 2|C|$ ergibt.
+
+\textbf{Laufzeit:}
+Die Transformation bearbeitet jeden Knoten des Syntaxbaums
+in konstanter Zeit, der Baum hat $O(|C|)$ Knoten,
+also Gesamtlaufzeit $O(|C|)$.
+\qedhere
+\end{proof}
+
+\subsection{TBox, ABox und Wissensbasen}
+
+\begin{definition}[Allgemeine Konzeptinklusion (GCI)]
+Eine \emph{allgemeine Konzeptinklusion} (General Concept Inclusion, GCI)
+ist ein Ausdruck der Form $C \sqsubseteq D$, wobei $C$ und $D$
+\textsf{ALC}-Konzepte sind.
+Eine Interpretation $\interp{I}$ \emph{erf{\"{u}}llt} $C \sqsubseteq D$
+(geschrieben $\interp{I} \models C \sqsubseteq D$), wenn
+$C^\interp{I} \subseteq D^\interp{I}$.
+\end{definition}
+
+\begin{definition}[TBox]
+Eine \emph{TBox} $\Tbox$ ist eine endliche Menge von GCIs.
+Eine Interpretation $\interp{I}$ \emph{modelliert} $\Tbox$
+(geschrieben $\interp{I} \models \Tbox$), wenn
+$\interp{I} \models C \sqsubseteq D$ f{\"{u}}r alle
+$C \sqsubseteq D \in \Tbox$.
+\end{definition}
+
+\begin{definition}[ABox-Assertionen und ABox]
+Eine \emph{Konzeptassertion} ist ein Ausdruck $A(a)$
+mit $A \in N_C$ und $a \in N_I$.
+Eine \emph{Rollenassertion} ist ein Ausdruck $r(a,b)$
+mit $r \in N_R$ und $a, b \in N_I$.
+Eine \emph{ABox} $\Abox$ ist eine endliche Menge von Assertionen.
+Eine Interpretation $\interp{I}$ erf{\"{u}}llt $A(a)$, wenn
+$a^\interp{I} \in A^\interp{I}$; sie erf{\"{u}}llt $r(a,b)$, wenn
+$(a^\interp{I}, b^\interp{I}) \in r^\interp{I}$.
+\end{definition}
+
+\begin{definition}[Wissensbasis, Konsistenz, Modell]
+Eine \emph{Wissensbasis} ist ein Paar $\KB = (\Tbox, \Abox)$.
+Eine Interpretation $\interp{I}$ ist ein \emph{Modell} von $\KB$,
+wenn sie sowohl $\Tbox$ als auch $\Abox$ erf{\"{u}}llt.
+$\KB$ hei{\ss}t \emph{konsistent}, wenn es ein Modell gibt;
+sonst \emph{inkonsistent}.
+\end{definition}
+
+\begin{definition}[Semantische Folgerung]
+Eine GCI $C \sqsubseteq D$ \emph{folgt} aus $\KB$
+(geschrieben $\KB \models C \sqsubseteq D$), wenn jedes
+Modell von $\KB$ diese GCI erf{\"{u}}llt.
+Eine Konzeptassertion $A(a)$ folgt aus $\KB$
+(geschrieben $\KB \models A(a)$), wenn jedes Modell
+von $\KB$ sie erf{\"{u}}llt.
+\end{definition}
+
+\begin{satz}[Reduktion auf Unerf{\"{u}}llbarkeit]
+\label{satz:red-unerfuell}
+F{\"{u}}r eine Wissensbasis $\KB = (\Tbox, \Abox)$ gilt:
+\begin{enumerate}[label=(\roman*)]
+  \item $\KB \models C \sqsubseteq D$ genau dann, wenn
+        $(\Tbox \cup \{C \sqcap \neg D \sqsubseteq \bot\},\, \Abox)$
+        konsistent ist oder -- {\"{a}}quivalent --
+        wenn $C \sqcap \neg D$ unerf{\"{u}}llbar bez{\"{u}}glich $\Tbox$ ist.
+  \item $\KB \models A(a)$ genau dann, wenn
+        $\KB' = (\Tbox, \Abox \cup \{\neg A(a)\})$ inkonsistent ist.
+\end{enumerate}
+\end{satz}
+
+\begin{proof}
+Wir beweisen (i) und (ii).
+
+\textbf{Zu (i):}
+Per Definition gilt $\KB \models C \sqsubseteq D$
+genau dann, wenn f{\"{u}}r jedes Modell $\interp{I}$ von $\Tbox$
+gilt $C^\interp{I} \subseteq D^\interp{I}$.
+Dies ist {\"{a}}quivalent dazu, dass in keinem Modell von $\Tbox$
+ein Element existiert, das in $C^\interp{I}$, aber nicht in
+$D^\interp{I}$ liegt.
+Ein solches Element w{\"{a}}re aber genau ein Element in
+$(C \sqcap \neg D)^\interp{I}$.
+Folglich: $\KB \models C \sqsubseteq D$ iff in jedem Modell
+$\interp{I}$ von $\Tbox$ gilt $(C \sqcap \neg D)^\interp{I} = \emptyset$,
+d.\,h.\ $C \sqcap \neg D$ ist unerf{\"{u}}llbar bez{\"{u}}glich $\Tbox$.
+
+\textbf{Zu (ii):}
+$(\Rightarrow)$: Sei $\KB \models A(a)$.
+Angenommen, $\KB'$ hat ein Modell $\interp{I}$.
+Dann ist $\interp{I}$ auch Modell von $\KB$, also
+$a^\interp{I} \in A^\interp{I}$.
+Aber $\interp{I} \models \neg A(a)$ bedeutet
+$a^\interp{I} \notin A^\interp{I}$ -- Widerspruch.
+
+$(\Leftarrow)$: Sei $\KB'$ inkonsistent.
+Jedes Modell $\interp{I}$ von $\KB$ erf{\"{u}}llt nicht $\neg A(a)$,
+also $a^\interp{I} \in A^\interp{I}$, d.\,h.\ $\KB \models A(a)$.
+\qedhere
+\end{proof}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.90\textwidth]{plots/plot4_tbox_abox.pdf}
+  \caption{Struktur einer DL-Wissensbasis: TBox (terminologisches Wissen,
+           blau) und ABox (assertionales Wissen, rot) zusammen mit den
+           darauf definierten Reasoning-Diensten (gr{\"{u}}n). Pfeile symbolisieren
+           den Informationsfluss beim Schlussfolgern.}
+  \label{fig:tbox-abox}
+\end{figure}
+
+\begin{beispiel}[Medizinische Wissensbasis]
+\label{bsp:medizin}
+Wir formalisieren ein medizinisches Szenario.
+Die Signatur enth{\"{a}}lt:
+$N_C = \{\mathit{Human}, \mathit{Doctor}, \mathit{Patient}, \mathit{Disease}\}$,
+$N_R = \{\mathit{treats}, \mathit{hasDisease}\}$,
+$N_I = \{\mathit{alice}, \mathit{bob}, \mathit{cancer}\}$.
+
+\medskip
+\textbf{TBox} $\Tbox$:
+\begin{align*}
+  \mathit{Doctor} &\sqsubseteq \mathit{Human} \sqcap
+    \exists\mathit{treats}.\mathit{Patient}, \\
+  \mathit{Patient} &\sqsubseteq \mathit{Human} \sqcap
+    \exists\mathit{hasDisease}.\mathit{Disease}, \\
+  \mathit{Human} &\sqsubseteq \neg\mathit{Disease}.
+\end{align*}
+
+\textbf{ABox} $\Abox$:
+\begin{align*}
+  &\mathit{Doctor}(\mathit{alice}), \quad
+   \mathit{Patient}(\mathit{bob}), \quad
+   \mathit{Disease}(\mathit{cancer}), \\
+  &\mathit{treats}(\mathit{alice}, \mathit{bob}), \quad
+   \mathit{hasDisease}(\mathit{bob}, \mathit{cancer}).
+\end{align*}
+
+Aus $\KB$ folgt semantisch (jeweils mit Satz~\ref{satz:red-unerfuell}):
+\begin{itemize}
+  \item $\KB \models \mathit{Human}(\mathit{alice})$ (da $\mathit{Doctor} \sqsubseteq \mathit{Human}$),
+  \item $\KB \models \mathit{Human}(\mathit{bob})$ (da $\mathit{Patient} \sqsubseteq \mathit{Human}$),
+  \item $\KB \models \neg\mathit{Disease}(\mathit{alice})$
+        (da $\mathit{Human} \sqsubseteq \neg\mathit{Disease}$).
+\end{itemize}
+\end{beispiel}
+
+% =======================================================================
+\section{Die Beschreibungslogik EL}
+\label{sec:el}
+% =======================================================================
+
+\subsection{Syntax und Semantik von EL}
+
+\begin{definition}[EL-Konzepte]
+\label{def:el-syntax}
+Die Menge $\mathcal{C}_{\textsf{EL}}$ der
+\emph{\textsf{EL}-Konzepte} ist die kleinste Menge, f{\"{u}}r die gilt:
+\begin{enumerate}[label=(\roman*)]
+  \item $A \in \mathcal{C}_{\textsf{EL}}$ f{\"{u}}r alle $A \in N_C$,
+  \item $\top \in \mathcal{C}_{\textsf{EL}}$,
+  \item Falls $C, D \in \mathcal{C}_{\textsf{EL}}$, dann
+        $C \sqcap D \in \mathcal{C}_{\textsf{EL}}$,
+  \item Falls $C \in \mathcal{C}_{\textsf{EL}}$ und $r \in N_R$, dann
+        $\exists r.C \in \mathcal{C}_{\textsf{EL}}$.
+\end{enumerate}
+Im Vergleich zu \textsf{ALC} sind also $\neg$, $\sqcup$ und $\forall r.C$
+nicht erlaubt.
+\end{definition}
+
+\begin{bemerkung}
+Die Einschr{\"{a}}nkung auf Konjunktion und Existenzrestriktion ist semantisch
+bedeutsam: \textsf{EL}-Konzepte sind immer \emph{erf{\"{u}}llbar}
+(haben stets ein Modell), da man sie durch einen Individuen mit den
+beschriebenen Eigenschaften erf{\"{u}}llen kann.
+\end{bemerkung}
+
+\subsection{Normalisierung von EL-TBoxen}
+
+\begin{definition}[EL-Normalisierung]
+\label{def:el-normal}
+Eine \textsf{EL}-TBox $\Tbox$ ist in \emph{Normalisierter Form (NF)},
+wenn alle GCIs eine der folgenden Formen haben:
+\begin{align}
+  A &\sqsubseteq B, \tag{NF1} \label{nf1} \\
+  A_1 \sqcap A_2 &\sqsubseteq B, \tag{NF2} \label{nf2} \\
+  A &\sqsubseteq \exists r.B, \tag{NF3} \label{nf3} \\
+  \exists r.A &\sqsubseteq B, \tag{NF4} \label{nf4}
+\end{align}
+wobei $A, A_1, A_2, B \in N_C \cup \{\top\}$ und $r \in N_R$.
+\end{definition}
+
+\begin{satz}[EL-Normalisierung in Polynomialzeit]
+\label{satz:el-normal}
+Jede \textsf{EL}-TBox $\Tbox$ kann in Polynomialzeit in eine
+{\"{a}}quivalente TBox $\Tbox'$ in Normalisierter Form transformiert werden,
+wobei $|\Tbox'| \leq 4|\Tbox|$.
+\end{satz}
+
+\begin{proof}
+Wir geben ein explizites Normalisierungsverfahren an.
+
+F{\"{u}}r jede GCI $C \sqsubseteq D \in \Tbox$ wenden wir wiederholt
+folgende Regeln an, bis keine mehr anwendbar ist:
+
+\begin{enumerate}[label=(N\arabic*)]
+  \item Falls $D$ nicht atomar ist:
+        Ersetze $C \sqsubseteq D$ durch
+        $C \sqsubseteq A_D$ und die Expansion von $A_D$,
+        wobei $A_D$ ein neuer Konzeptname ist.
+        Zum Beispiel: $C \sqsubseteq \exists r.E$ wird ersetzt
+        durch $C \sqsubseteq A_E$ und $A_E \sqsubseteq \exists r.E$,
+        dann rekursiv auf $E$.
+
+  \item Falls $C = C_1 \sqcap C_2$ mit nichtatomarem $C_1$:
+        Ersetze $C_1$ durch frischen Konzeptnamen $A_{C_1}$
+        und f{\"{u}}ge $A_{C_1} \equiv C_1$ hinzu.
+
+  \item Falls $C = \exists r.E$ mit nichtatomarem $E$:
+        Ersetze $E$ durch frischen Konzeptnamen $A_E$
+        und f{\"{u}}ge $A_E \equiv E$ hinzu.
+
+  \item Falls $C = C_1 \sqcap C_2 \sqcap C_3$ (mehr als zwei Konjunkte):
+        Klammere: $C = C_1 \sqcap (C_2 \sqcap C_3)$
+        und f{\"{u}}hre rekursiv weiter.
+\end{enumerate}
+
+\textbf{Terminierung:} Jede Regelanwendung reduziert entweder die
+Gr{\"{o}}{\ss}e eines Konzeptausdrucks oder f{\"{u}}hrt einen neuen Konzeptnamen ein.
+Die Gesamtzahl der neuen Konzeptnamen ist durch $|\Tbox|$ beschr{\"{a}}nkt,
+da jeder Teilausdruck h{\"{o}}chstens einmal ersetzt wird.
+
+\textbf{Gr{\"{o}}{\ss}enschranke:} Jede urspr{\"{u}}ngliche GCI der Gr{\"{o}}{\ss}e $s$
+erzeugt h{\"{o}}chstens $4s$ normalisierte GCIs, da jeder Teilausdruck
+durch h{\"{o}}chstens zwei GCIs (eine Abbreviation und eine Expansion)
+ersetzt wird.
+
+\textbf{{\"{A}}quivalenz:} Die {\"{A}}quivalenz der normierten TBox mit
+der urspr{\"{u}}nglichen folgt, da alle Transformationsregeln
+semantisch erhaltend sind: F{\"{u}}r jeden neuen Konzeptnamen $A_E$
+mit $A_E \equiv E$ ist in jedem Modell
+$A_E^\interp{I} = E^\interp{I}$ erzwungen.
+\qedhere
+\end{proof}
+
+\subsection{Der EL-Subsumtionsalgorithmus}
+
+\begin{definition}[EL-Erreichbarkeitsmenge]
+\label{def:el-set}
+Sei $\Tbox$ eine normalisierte \textsf{EL}-TBox und $X$ ein Konzeptname.
+Die \emph{Erreichbarkeitsmenge} $S(X)$ ist die kleinste Menge von
+Konzeptnamen, die folgende Abschlussbedingungen erf{\"{u}}llt:
+\begin{enumerate}[label=(S\arabic*)]
+  \item $X \in S(X)$ und $\top \in S(X)$,
+  \item Falls $B \in S(X)$ und $B \sqsubseteq A \in \Tbox$:
+        $A \in S(X)$,
+  \item Falls $B_1, B_2 \in S(X)$ und
+        $B_1 \sqcap B_2 \sqsubseteq A \in \Tbox$:
+        $A \in S(X)$,
+  \item Falls $B \in S(X)$ und $B \sqsubseteq \exists r.D \in \Tbox$:
+        trage Paar $(r, D)$ in $R(X)$ ein,
+  \item Falls $(r, Y) \in R(X)$, $D \in S(Y)$ und
+        $\exists r.D \sqsubseteq A \in \Tbox$:
+        $A \in S(X)$.
+\end{enumerate}
+Hierbei speichert $R(X)$ die durch Anwendung von (S4) erzeugten
+Rollenverbindungen.
+\end{definition}
+
+\begin{satz}[EL-Subsumtion in Polynomialzeit, vgl.~\cite{Baader2005}]
+\label{satz:el-poly}
+Sei $\Tbox$ eine \textsf{EL}-TBox und $A, B \in N_C$.
+Dann gilt:
+\[
+  \Tbox \models A \sqsubseteq B
+  \iff B \in S(A).
+\]
+Die Berechnung von $S(A)$ terminiert in Zeit
+$O(|\Tbox|^2)$ und ist damit polynomiell.
+\end{satz}
+
+\begin{proof}
+Wir beweisen Korrektheit (Vollst{\"{a}}ndigkeit + Soundness) und
+Komplexit{\"{a}}t separat.
+
+\textbf{Teil 1: Soundness} ($B \in S(A) \Rightarrow \Tbox \models A \sqsubseteq B$).
+
+Wir zeigen: In jeder Interpretation $\interp{I}$ mit
+$\interp{I} \models \Tbox$ gilt $A^\interp{I} \subseteq B^\interp{I}$
+f{\"{u}}r alle $B \in S(A)$.
+
+Per Induktion {\"{u}}ber die Anzahl der Regelanwendungen, die $B$ in $S(A)$
+einf{\"{u}}gen:
+
+\textit{Basisfall:} $B = A$ liegt nach (S1) in $S(A)$.
+F{\"{u}}r jedes Modell $\interp{I}$ gilt trivialerweise
+$A^\interp{I} \subseteq A^\interp{I}$.
+Ebenso $B = \top$: da $\top^\interp{I} = \Dom{I}$,
+gilt $A^\interp{I} \subseteq \Dom{I}$.
+
+\textit{Induktionsschritt (S2):}
+$B'$ wurde durch $B'_0 \sqsubseteq B' \in \Tbox$ mit $B'_0 \in S(A)$
+eingef{\"{u}}gt. Nach Induktionshypothese gilt
+$A^\interp{I} \subseteq B_0^{\prime\interp{I}}$.
+Da $\interp{I} \models \Tbox$ und $B'_0 \sqsubseteq B' \in \Tbox$,
+folgt $B_0^{\prime\interp{I}} \subseteq B^{\prime\interp{I}}$.
+Transitivit{\"{a}}t liefert $A^\interp{I} \subseteq B^{\prime\interp{I}}$.
+
+\textit{Induktionsschritt (S3):}
+$B'$ wurde durch $B_1 \sqcap B_2 \sqsubseteq B' \in \Tbox$
+mit $B_1, B_2 \in S(A)$ eingef{\"{u}}gt.
+Nach Induktionshypothese gilt
+$A^\interp{I} \subseteq B_1^\interp{I}$ und
+$A^\interp{I} \subseteq B_2^\interp{I}$, also
+$A^\interp{I} \subseteq B_1^\interp{I} \cap B_2^\interp{I}$.
+Da $\interp{I} \models B_1 \sqcap B_2 \sqsubseteq B'$,
+folgt $B_1^\interp{I} \cap B_2^\interp{I} \subseteq B^{\prime\interp{I}}$.
+
+\textit{Induktionsschritt (S5):}
+$B'$ wurde durch $\exists r.D \sqsubseteq B' \in \Tbox$
+mit $(r,Y) \in R(A)$ und $D \in S(Y)$ eingef{\"{u}}gt.
+Nach Induktionshypothese (f{\"{u}}r die Eintragung in $R(A)$ mittels (S4)):
+Es gibt $B_0 \in S(A)$ und $B_0 \sqsubseteq \exists r.Y \in \Tbox$.
+Also $A^\interp{I} \subseteq B_0^\interp{I}$,
+und f{\"{u}}r jedes $d \in A^\interp{I}$ existiert
+$e$ mit $(d,e) \in r^\interp{I}$ und $e \in Y^\interp{I}$.
+Da $D \in S(Y)$, gilt nach IH $Y^\interp{I} \subseteq D^\interp{I}$,
+also $e \in D^\interp{I}$.
+Damit $d \in (\exists r.D)^\interp{I}$, und da
+$\interp{I} \models \exists r.D \sqsubseteq B'$,
+gilt $d \in B^{\prime\interp{I}}$.
+
+\textbf{Teil 2: Vollst{\"{a}}ndigkeit}
+($\Tbox \models A \sqsubseteq B \Rightarrow B \in S(A)$).
+
+Wir konstruieren ein \emph{kanonisches Modell} $\interp{I}_\Tbox$:
+\begin{itemize}
+  \item $\Dom{I_\Tbox} = N_C'$ (alle Konzeptnamen inkl.\ frischer),
+  \item $X^\interp{I_\Tbox} = \{Y \in N_C' \mid X \in S(Y)\}$,
+  \item $r^\interp{I_\Tbox} = \{(Y,Z) \mid (r,Z) \in R(Y)\}$.
+\end{itemize}
+
+Man zeigt: $\interp{I_\Tbox} \models \Tbox$ (alle GCIs der Normalformen
+werden von den Regeln (S1)--(S5) respektiert).
+
+Wenn $\Tbox \models A \sqsubseteq B$, dann gilt
+$A^\interp{I_\Tbox} \subseteq B^\interp{I_\Tbox}$.
+Da $A \in \{Y \mid A \in S(Y)\}$ (weil $A \in S(A)$ nach (S1)),
+liegt $A$ in $A^\interp{I_\Tbox}$.
+Also $A \in B^\interp{I_\Tbox}$, d.\,h.\ $B \in S(A)$.
+
+\textbf{Teil 3: Komplexit{\"{a}}t.}
+Jede der Erreichbarkeitsmengen $S(X)$ ist eine Teilmenge von $N_C'$,
+der Menge aller Konzeptnamen in der normierten TBox.
+Es gilt $|N_C'| \leq |\Tbox|$.
+Jede Regelanwendung (S2)--(S5) f{\"{u}}gt h{\"{o}}chstens einen Konzeptnamen
+oder ein Paar $(r,Y)$ ein. Die Gesamtzahl der m{\"{o}}glichen Eintr{\"{a}}ge ist
+$O(|\Tbox|)$ pro Konzeptname, und es gibt $|\Tbox|$ Konzeptnamen,
+was $O(|\Tbox|^2)$ Schritte ergibt.
+\qedhere
+\end{proof}
+
+\begin{beispiel}[EL-Subsumtionsberechnung]
+\label{bsp:el-berechnung}
+Sei $\Tbox$ gegeben durch:
+\begin{align*}
+  \mathit{Dog} &\sqsubseteq \mathit{Animal}, &
+  \mathit{Animal} &\sqsubseteq \mathit{LivingBeing}, \\
+  \mathit{Dog} &\sqsubseteq \exists\mathit{hasPart}.\mathit{Heart}, &
+  \exists\mathit{hasPart}.\mathit{Heart} &\sqsubseteq \mathit{Organism}.
+\end{align*}
+Wir berechnen $S(\mathit{Dog})$ Schritt f{\"{u}}r Schritt:
+
+\begin{enumerate}
+  \item (S1): $S = \{\mathit{Dog}, \top\}$.
+  \item (S2) mit $\mathit{Dog} \sqsubseteq \mathit{Animal}$:
+        $S = \{\mathit{Dog}, \top, \mathit{Animal}\}$.
+  \item (S2) mit $\mathit{Animal} \sqsubseteq \mathit{LivingBeing}$:
+        $S = \{\mathit{Dog}, \top, \mathit{Animal}, \mathit{LivingBeing}\}$.
+  \item (S4) mit $\mathit{Dog} \sqsubseteq \exists\mathit{hasPart}.\mathit{Heart}$:
+        $R(\mathit{Dog}) = \{(\mathit{hasPart}, \mathit{Heart})\}$.
+  \item (S5) mit $(\mathit{hasPart}, \mathit{Heart}) \in R$
+        und $\mathit{Heart} \in S(\mathit{Heart})$
+        und $\exists\mathit{hasPart}.\mathit{Heart} \sqsubseteq \mathit{Organism}$:
+        $S = \{\mathit{Dog}, \top, \mathit{Animal}, \mathit{LivingBeing}, \mathit{Organism}\}$.
+\end{enumerate}
+
+Ergebnis: $\Tbox \models \mathit{Dog} \sqsubseteq \mathit{Organism}$
+(da $\mathit{Organism} \in S(\mathit{Dog})$). \checkmark
+\end{beispiel}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.85\textwidth]{plots/plot1_konzepthierarchie.pdf}
+  \caption{Konzepthierarchie aus Beispiel~\ref{bsp:el-berechnung}
+           und verwandten Konzepten, visualisiert als Subsumtionsgraph.
+           Pfeile von unten nach oben bedeuten $\sqsubseteq$.}
+  \label{fig:konzept-hier}
+\end{figure}
+
+% =======================================================================
+\section{Die Beschreibungslogik ALC}
+\label{sec:alc}
+% =======================================================================
+
+\subsection{Ausdrucksst{\"{a}}rke von ALC}
+
+\textsf{ALC} ist die einfachste Beschreibungslogik mit
+\emph{Boolescher Vollst{\"{a}}ndigkeit}, d.\,h.\ alle Booleschen
+Mengenoperationen stehen zur Verf{\"{u}}gung.
+
+\begin{lemma}[Definierbarkeit von $\bot$ und $\sqcup$]
+In \textsf{ALC} gilt:
+\begin{align*}
+  \bot^\interp{I} &= (A \sqcap \neg A)^\interp{I} = \emptyset
+    \text{ f{\"{u}}r jeden Konzeptnamen } A, \\
+  (C \sqcup D)^\interp{I}
+    &= (\neg(\neg C \sqcap \neg D))^\interp{I}.
+\end{align*}
+\end{lemma}
+
+\begin{proof}
+Direkte Berechnung mit Definition~\ref{def:alc-sem}:
+$(A \sqcap \neg A)^\interp{I} = A^\interp{I} \cap (\Dom{I} \setminus A^\interp{I}) = \emptyset$.
+Ebenso $(\neg(\neg C \sqcap \neg D))^\interp{I} = \Dom{I} \setminus ((\Dom{I} \setminus C^\interp{I}) \cap (\Dom{I} \setminus D^\interp{I})) = C^\interp{I} \cup D^\interp{I}$ nach De Morgan.
+\end{proof}
+
+\subsection{Verbindung zur Modallogik}
+
+\begin{satz}[ALC-Modallogik-Korrespondenz, \cite{Schmidt1991}]
+\label{satz:alc-modal}
+\textsf{ALC} ist {\"{a}}quivalent zur multimodalen Logik
+$K_m$ (mit $m = |N_R|$ modalen Operatoren).
+Insbesondere entsprechen:
+\begin{itemize}
+  \item $\exists r.C$ dem Diamantoperator $\langle r \rangle C$,
+  \item $\forall r.C$ dem Box-Operator $[r] C$,
+  \item $\top$ und $\bot$ der Tautologie und dem Widerspruch.
+\end{itemize}
+\end{satz}
+
+Diese Entsprechung erlaubt, Komplexit{\"{a}}tsresultate aus der
+Modallogiktheorie auf \textsf{ALC} zu {\"{u}}bertragen~\cite{Blackburn2001}.
+
+\subsection{PSpace-Vollst{\"{a}}ndigkeit von ALC}
+\label{sec:alc-kompl}
+
+\begin{satz}[Obere Schranke f{\"{u}}r ALC, \cite{Schmidt1991}]
+\label{satz:alc-pspace-upper}
+Die Erf{\"{u}}llbarkeit von \textsf{ALC}-Konzepten bez{\"{u}}glich
+allgemeiner TBoxen ist in \textsc{PSpace}.
+\end{satz}
+
+\begin{proof}
+Wir beschreiben einen nichtdeterministischen Algorithmus,
+der polynomiellen Raum ben{\"{o}}tigt (nach Savitch's Theorem
+entspricht \textsc{NPSpace} = \textsc{PSpace}).
+
+\textbf{Algorithmus (Tiefensuche mit Blocking):}
+
+Gegeben: Konzept $C_0$ und TBox $\Tbox$,
+die Frage: Ist $C_0$ erf{\"{u}}llbar bez{\"{u}}glich $\Tbox$?
+
+Wandle $C_0$ in NNF um (Satz~\ref{satz:nnf}).
+
+\textit{Schritt 1 -- Lokale Expansions:}
+Erzeuge f{\"{u}}r den aktuellen Knoten $v$ eine Menge $\mathcal{L}(v)$
+von Konzepten, initialisiert mit $\{C_0\}$.
+Wende folgende Regeln ersch{\"{o}}pfend an:
+\begin{enumerate}[label=(R\arabic*)]
+  \item $\sqcap$-Regel: Falls $C \sqcap D \in \mathcal{L}(v)$
+        und $\{C, D\} \not\subseteq \mathcal{L}(v)$:
+        setze $\mathcal{L}(v) := \mathcal{L}(v) \cup \{C, D\}$.
+  \item $\sqcup$-Regel (nichtdet.): Falls $C \sqcup D \in \mathcal{L}(v)$
+        und $C \notin \mathcal{L}(v)$, $D \notin \mathcal{L}(v)$:
+        w{\"{a}}hle nichtdeterministisch $E \in \{C, D\}$
+        und setze $\mathcal{L}(v) := \mathcal{L}(v) \cup \{E\}$.
+  \item GCI-Regel: Falls $C \in \mathcal{L}(v)$
+        und $C \sqsubseteq D \in \Tbox$
+        und $D \notin \mathcal{L}(v)$:
+        setze $\mathcal{L}(v) := \mathcal{L}(v) \cup \{D\}$.
+\end{enumerate}
+
+\textit{Schritt 2 -- Clash-Erkennung:}
+Falls es ein $C$ gibt mit $C \in \mathcal{L}(v)$ und
+$\neg C \in \mathcal{L}(v)$: R{\"{u}}ckgabe \textsc{unerf{\"{u}}llbar}.
+
+\textit{Schritt 3 -- Existenz-Expansion:}
+F{\"{u}}r jedes $\exists r.D \in \mathcal{L}(v)$:
+\begin{itemize}
+  \item Pr{\"{u}}fe Blocking: Falls ein Vorfahre $u$ mit
+        $\mathcal{L}(u) \subseteq \mathcal{L}(v)$ existiert,
+        {\"{u}}berspringe.
+  \item Sonst erzeuge neuen Nachfolger $w$ mit
+        $\mathcal{L}(w) = \{D\} \cup \{D' \mid \top \sqsubseteq D' \in \Tbox\}$
+        und rufe den Algorithmus rekursiv auf $w$ auf
+        (Tiefensuche).
+\end{itemize}
+
+\textbf{Raumbedarf:}
+Die Tiefe des Tableau-Baums ist durch $2^{|C_0|}$ beschr{\"{a}}nkt
+(Blocking verhindert tiefere Expansion).
+In der Tiefensuche wird zu jedem Zeitpunkt nur ein Pfad
+vom Wurzelknoten zum aktuellen Knoten gespeichert.
+Ein Pfad hat L{\"{a}}nge $\ell \leq 2^{|C_0|}$.
+Jeder Knoten ben{\"{o}}tigt $O(|C_0|)$ Bits f{\"{u}}r $\mathcal{L}(v)$.
+Gesamtbedarf: $O(\ell \cdot |C_0|) = O(2^{|C_0|} \cdot |C_0|)$.
+
+Da \textsc{NPSpace} = \textsc{PSpace} (Savitch~\cite{Savitch1970}),
+liegt die Entscheidung in \textsc{PSpace}.
+
+\textbf{Korrektheit:}
+Der Algorithmus akzeptiert genau dann, wenn ein
+vollst{\"{a}}ndiges, clashfreies Tableau existiert --
+was (Satz~\ref{satz:tableau-korrektheit})
+{\"{a}}quivalent zur Erf{\"{u}}llbarkeit ist.
+\qedhere
+\end{proof}
+
+\begin{satz}[Untere Schranke f{\"{u}}r ALC]
+\label{satz:alc-pspace-lower}
+Die Erf{\"{u}}llbarkeit von \textsf{ALC}-Konzepten ist
+\textsc{PSpace}-schwer.
+\end{satz}
+
+\begin{proof}[Beweisidee]
+Wir reduzieren \textsc{QBF} (quantifizierte Boolesche Formeln)
+auf \textsf{ALC}-Erf{\"{u}}llbarkeit.
+
+Eine Formel $\Phi = Q_1 x_1 \ldots Q_n x_n.\phi$
+(mit $Q_i \in \{\forall, \exists\}$) wird wie folgt kodiert:
+
+\textit{Variablen:} Jede Variable $x_i$ wird durch Konzeptname
+$X_i$ kodiert (wahr) und $\neg X_i$ (falsch).
+
+\textit{Quantoren:} Ein Existenzquantor $\exists x_i$
+wird durch einen Nachfolger kodiert, der entweder
+$X_i$ oder $\neg X_i$ enth{\"{a}}lt:
+\[
+  \exists\mathit{step}_i.(X_i \sqcup \neg X_i) \sqcap \ldots
+\]
+Ein Allquantor $\forall x_i$ wird durch:
+\[
+  \forall\mathit{step}_i.(X_i \sqcup \neg X_i) \sqcap \ldots
+\]
+
+\textit{Matrixformel:} Die propositionale Formel $\phi$
+wird direkt in einen \textsf{ALC}-Konzeptausdruck {\"{u}}bersetzt.
+
+Die Reduktion hat polynomielle Gr{\"{o}}{\ss}e und zeigt:
+$\Phi$ ist wahr gdw.\ das kodierte \textsf{ALC}-Konzept
+erf{\"{u}}llbar ist.
+
+Da \textsc{QBF} \textsc{PSpace}-vollst{\"{a}}ndig ist~\cite{Stockmeyer1976},
+folgt die untere Schranke.
+\qedhere
+\end{proof}
+
+\begin{korollar}[PSpace-Vollst{\"{a}}ndigkeit von ALC]
+Die Erf{\"{u}}llbarkeit und die Subsumtion von \textsf{ALC}-Konzepten
+(bez{\"{u}}glich allgemeiner TBoxen) sind \textsc{PSpace}-vollst{\"{a}}ndig.
+\end{korollar}
+
+\begin{proof}
+Erf{\"{u}}llbarkeit ist \textsc{PSpace}-vollst{\"{a}}ndig nach
+S{\"{a}}tzen~\ref{satz:alc-pspace-upper} und~\ref{satz:alc-pspace-lower}.
+Subsumtion $C \sqsubseteq D$ ist {\"{a}}quivalent zur Unerf{\"{u}}llbarkeit
+von $C \sqcap \neg D$ (Satz~\ref{satz:red-unerfuell}),
+also ebenfalls \textsc{PSpace}-vollst{\"{a}}ndig.
+\end{proof}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.82\textwidth]{plots/plot3_komplexitaet.pdf}
+  \caption{Komplexit{\"{a}}tslandschaft der DL-Familien. Die logarithmische
+           Skala veranschaulicht den dramatischen Unterschied zwischen
+           den Familien. Beschriftungen geben die Entscheidungskomplexit{\"{a}}t
+           der Subsumtion an.}
+  \label{fig:komplexitaet}
+\end{figure}
+
+% =======================================================================
+\section{Tableau-basierte Entscheidungsverfahren}
+\label{sec:tableau}
+% =======================================================================
+
+\subsection{Formale Definition des Tableau-Verfahrens}
+
+\begin{definition}[Tableau-System]
+\label{def:tableau}
+Ein \emph{Tableau} f{\"{u}}r ein \textsf{ALC}-Konzept $C_0$ bez{\"{u}}glich
+TBox $\Tbox$ ist ein gerichteter, markierter Baum
+$T = (V, E, \mathcal{L})$ mit:
+\begin{itemize}
+  \item einer endlichen Knotenmenge $V$,
+  \item $E \subseteq V \times N_R \times V$
+        (gerichtete, mit Rollennamen markierte Kanten),
+  \item einer Knotenbeschriftung
+        $\mathcal{L}: V \to 2^{\mathrm{sub}^+(C_0, \Tbox)}$,
+        wobei $\mathrm{sub}^+(C_0, \Tbox)$ die Menge aller
+        Teilkonzepte von $C_0$ und aller in $\Tbox$ vorkommenden
+        Konzepte (und ihrer NNF-Negationen) ist.
+\end{itemize}
+Die Wurzel $v_0$ hat $\mathcal{L}(v_0) \supseteq \{C_0\}$.
+\end{definition}
+
+\begin{definition}[Clash und Vollst{\"{a}}ndigkeit]
+\label{def:clash}
+\begin{itemize}
+  \item Ein Knoten $v$ enth{\"{a}}lt einen \emph{Clash}, wenn
+        $C \in \mathcal{L}(v)$ und $\neg C \in \mathcal{L}(v)$
+        f{\"{u}}r ein Konzept $C$, oder $\bot \in \mathcal{L}(v)$.
+  \item Ein Tableau hei{\ss}t \emph{vollst{\"{a}}ndig}, wenn keine
+        Tableau-Regel mehr anwendbar ist.
+  \item Ein Tableau hei{\ss}t \emph{geschlossen}, wenn jeder
+        Blattknoten einen Clash enth{\"{a}}lt.
+  \item Ein Tableau hei{\ss}t \emph{offen}, wenn es vollst{\"{a}}ndig
+        und nicht geschlossen ist.
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Tableau-Regeln]
+\label{def:tableau-regeln}
+Die Tableau-Regeln f{\"{u}}r \textsf{ALC} mit TBox $\Tbox$ sind:
+
+\medskip
+\begin{tabular}{@{}p{1.8cm}p{5.5cm}p{5cm}@{}}
+\toprule
+\textbf{Regel} & \textbf{Bedingung} & \textbf{Aktion} \\
+\midrule
+$\sqcap$-Regel &
+  $C \sqcap D \in \mathcal{L}(v)$, $\{C,D\} \not\subseteq \mathcal{L}(v)$ &
+  $\mathcal{L}(v) {:=} \mathcal{L}(v) \cup \{C,D\}$ \\[4pt]
+$\sqcup$-Regel &
+  $C \sqcup D \in \mathcal{L}(v)$, $C,D \notin \mathcal{L}(v)$ &
+  $\mathcal{L}(v) {:=} \mathcal{L}(v) \cup \{E\}$, $E \in \{C,D\}$ \\[4pt]
+$\exists$-Regel &
+  $\exists r.C \in \mathcal{L}(v)$, kein $r$-Nachf.\ mit $C$ &
+  Erzeuge Nachf.\ $w$: $(v,r,w)$, $C \in \mathcal{L}(w)$ \\[4pt]
+$\forall$-Regel &
+  $\forall r.C \in \mathcal{L}(v)$, $(v,r,w) \in E$, $C \notin \mathcal{L}(w)$ &
+  $\mathcal{L}(w) {:=} \mathcal{L}(w) \cup \{C\}$ \\[4pt]
+GCI-Regel &
+  $D \in \mathcal{L}(v)$, $D \sqsubseteq E \in \Tbox$, $E \notin \mathcal{L}(v)$ &
+  $\mathcal{L}(v) {:=} \mathcal{L}(v) \cup \{E\}$ \\
+\bottomrule
+\end{tabular}
+\end{definition}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.92\textwidth]{plots/plot2_tableau.pdf}
+  \caption{Ablauf des Tableau-Verfahrens: Ausgehend von einem Startkonzept
+           werden Regeln schrittweise angewendet. Terminiert das Verfahren
+           ohne Clash, ist das Konzept erf{\"{u}}llbar.}
+  \label{fig:tableau}
+\end{figure}
+
+\subsection{Korrektheit und Vollst{\"{a}}ndigkeit des Tableau-Verfahrens}
+
+\begin{satz}[Korrektheit des Tableau-Verfahrens]
+\label{satz:tableau-korrektheit}
+Sei $C_0$ ein \textsf{ALC}-Konzept und $\Tbox$ eine TBox.
+Dann gilt:
+\[
+  C_0 \text{ erf{\"{u}}llbar bzgl. } \Tbox
+  \iff \text{der Tableau-Algorithmus erzeugt ein offenes Tableau.}
+\]
+\end{satz}
+
+\begin{proof}
+\textbf{Richtung $(\Rightarrow)$ -- Vollst{\"{a}}ndigkeit:}
+
+Angenommen, $C_0$ ist erf{\"{u}}llbar bez{\"{u}}glich $\Tbox$.
+Dann existiert ein Modell $\interp{I}$ und $d_0 \in C_0^\interp{I}$
+mit $\interp{I} \models \Tbox$.
+
+Wir konstruieren ein offenes Tableau, indem wir die
+Modellstruktur von $\interp{I}$ ``unrolled'':
+
+Definiere den Tableau-Baum $T$ induktiv:
+\begin{itemize}
+  \item Wurzel $v_0$ mit $\mathcal{L}(v_0) = \{C \in \mathrm{sub}^+(C_0,\Tbox) \mid d_0 \in C^\interp{I}\}$.
+  \item F{\"{u}}r jeden Knoten $v$ mit Modellelement $d_v$:
+        Falls $\exists r.C \in \mathcal{L}(v)$,
+        w{\"{a}}hle $e$ mit $(d_v, e) \in r^\interp{I}$ und $e \in C^\interp{I}$
+        (existiert nach Semantik), erzeuge Nachfolger $w$ mit
+        $\mathcal{L}(w) = \{D \in \mathrm{sub}^+\mid e \in D^\interp{I}\}$
+        und $d_w = e$.
+\end{itemize}
+
+\textit{Claim:} Dieses Tableau ist vollst{\"{a}}ndig (alle Regeln sind
+erf{\"{u}}llt) und clashfrei.
+
+\textit{Vollst{\"{a}}ndigkeit der Regeln:}
+Die $\sqcap$-Regel ist erf{\"{u}}llt: Falls $C \sqcap D \in \mathcal{L}(v)$,
+dann $d_v \in (C \sqcap D)^\interp{I} = C^\interp{I} \cap D^\interp{I}$,
+also $d_v \in C^\interp{I}$ und $d_v \in D^\interp{I}$, d.\,h.\
+$C, D \in \mathcal{L}(v)$.
+
+Die $\forall$-Regel ist erf{\"{u}}llt: Falls $\forall r.C \in \mathcal{L}(v)$
+und $(v,r,w) \in E$, dann $(d_v, d_w) \in r^\interp{I}$.
+Da $d_v \in (\forall r.C)^\interp{I}$, gilt $d_w \in C^\interp{I}$,
+also $C \in \mathcal{L}(w)$.
+
+Die GCI-Regel: Falls $D \in \mathcal{L}(v)$ und
+$D \sqsubseteq E \in \Tbox$, dann $d_v \in D^\interp{I}$
+und da $\interp{I} \models D \sqsubseteq E$, folgt
+$d_v \in E^\interp{I}$, also $E \in \mathcal{L}(v)$.
+
+\textit{Clashfreiheit:}
+Angenommen, $C, \neg C \in \mathcal{L}(v)$.
+Dann $d_v \in C^\interp{I}$ und $d_v \in (\neg C)^\interp{I} = \Dom{I} \setminus C^\interp{I}$ -- Widerspruch.
+Also ist das Tableau offen.
+
+\textbf{Richtung $(\Leftarrow)$ -- Korrektheit (Soundness):}
+
+Sei $T$ ein vollst{\"{a}}ndiges, offenes Tableau f{\"{u}}r $C_0$.
+Wir konstruieren ein Modell $\interp{I}$ direkt aus $T$:
+
+\begin{itemize}
+  \item $\Dom{I} = V$ (Knoten als Dom{\"{a}}nenelemente).
+  \item $A^\interp{I} = \{v \in V \mid A \in \mathcal{L}(v)\}$
+        f{\"{u}}r alle $A \in N_C$.
+  \item $r^\interp{I} = \{(v,w) \mid (v,r,w) \in E\}$
+        f{\"{u}}r alle $r \in N_R$.
+  \item $a^\interp{I} = v_0$ f{\"{u}}r alle Individuennamen $a$.
+\end{itemize}
+
+\textit{Claim:} $\interp{I} \models \Tbox$ und
+$v_0 \in C_0^\interp{I}$.
+
+\textit{Claim: F{\"{u}}r alle Knoten $v$ und alle
+$D \in \mathcal{L}(v)$ gilt $v \in D^\interp{I}$.}
+
+Beweis durch Induktion {\"{u}}ber den Aufbau von $D$:
+
+\textit{Basisfall $D = A$:} $v \in A^\interp{I}$ per Definition. \checkmark
+
+\textit{$D = \top$:} $v \in \Dom{I}$. \checkmark
+
+\textit{$D = \neg A$:} Da das Tableau clashfrei ist,
+gilt $A \notin \mathcal{L}(v)$, also $v \notin A^\interp{I}$,
+d.\,h.\ $v \in (\neg A)^\interp{I}$. \checkmark
+
+\textit{$D = C_1 \sqcap C_2$:}
+Da das Tableau vollst{\"{a}}ndig ist ($\sqcap$-Regel), gilt
+$C_1, C_2 \in \mathcal{L}(v)$.
+Per IH $v \in C_1^\interp{I}$ und $v \in C_2^\interp{I}$,
+also $v \in (C_1 \sqcap C_2)^\interp{I}$. \checkmark
+
+\textit{$D = C_1 \sqcup C_2$:}
+Da vollst{\"{a}}ndig ($\sqcup$-Regel): $C_1 \in \mathcal{L}(v)$
+oder $C_2 \in \mathcal{L}(v)$.
+Per IH $v \in C_1^\interp{I}$ oder $v \in C_2^\interp{I}$,
+also $v \in (C_1 \sqcup C_2)^\interp{I}$. \checkmark
+
+\textit{$D = \exists r.C$:}
+Da vollst{\"{a}}ndig ($\exists$-Regel): Es gibt Nachfolger $w$
+mit $(v,r,w) \in E$ und $C \in \mathcal{L}(w)$.
+Per IH $w \in C^\interp{I}$ und $(v,w) \in r^\interp{I}$,
+also $v \in (\exists r.C)^\interp{I}$. \checkmark
+
+\textit{$D = \forall r.C$:}
+F{\"{u}}r jeden $r$-Nachfolger $w$ von $v$:
+Da vollst{\"{a}}ndig ($\forall$-Regel): $C \in \mathcal{L}(w)$.
+Per IH $w \in C^\interp{I}$, also $v \in (\forall r.C)^\interp{I}$. \checkmark
+
+Da $C_0 \in \mathcal{L}(v_0)$, gilt $v_0 \in C_0^\interp{I}$.
+F{\"{u}}r die TBox: Die GCI-Regel garantiert, dass alle GCI-Konsequenzen
+in den Beschriftungen eingetragen sind, also $\interp{I} \models \Tbox$.
+\qedhere
+\end{proof}
+
+\begin{satz}[Terminierung des Tableau-Algorithmus]
+\label{satz:terminierung}
+Der Tableau-Algorithmus mit Pair-wise Blocking terminiert
+f{\"{u}}r jede Eingabe $(C_0, \Tbox)$.
+\end{satz}
+
+\begin{proof}
+Definiere die \emph{Tiefe} eines Tableau-Knotens $v$ als die
+Lange des Pfades von der Wurzel zu $v$.
+
+\textbf{Blocking:} Ein Knoten $v$ wird \emph{geblockt} durch
+einen Vorfahren $u$, wenn $\mathcal{L}(u) = \mathcal{L}(v)$.
+Geblockte Knoten erzeugen keine Nachfolger.
+
+\textbf{Endlichkeit der Beschriftungen:}
+Jede Beschriftung $\mathcal{L}(v) \subseteq \mathrm{sub}^+(C_0, \Tbox)$.
+Da $\mathrm{sub}^+(C_0, \Tbox)$ endlich ist (mit
+$|\mathrm{sub}^+(C_0, \Tbox)| \leq 2(|C_0| + |\Tbox|)$),
+gibt es h{\"{o}}chstens $2^{2(|C_0|+|\Tbox|)}$ verschiedene Beschriftungen.
+
+\textbf{Eindeutigkeit der Beschriftungen auf einem Pfad:}
+Auf jedem Pfad von der Wurzel zu einem Blatt sind alle
+Knotenbeschriftungen paarweise verschieden:
+Denn die Existenz-Regel erzeugt neue Beschriftungen, die mindestens
+ein neues Konzept enthalten. Gibt es denselben Beschriftungswert
+zweimal auf einem Pfad, wird der tiefere Knoten geblockt.
+
+\textbf{Tiefenschranke:} Daher hat jeder Pfad L{\"{a}}nge h{\"{o}}chstens
+$2^{2(|C_0|+|\Tbox|)}$.
+
+\textbf{Verzweigungsgrad:} An jedem Knoten k{\"{o}}nnen h{\"{o}}chstens
+$|\mathrm{sub}^+(C_0,\Tbox)|$ Nachfolger erzeugt werden.
+
+\textbf{Endlichkeit des Baums:} Der Baum hat endliche Tiefe
+und endlichen Verzweigungsgrad, also endlich viele Knoten.
+Jede Regelanwendung vergr{\"{o}}{\ss}ert entweder die Beschriftung
+eines Knotens (endlich oft m{\"{o}}glich) oder erzeugt einen neuen Knoten
+(endlich viele). Also terminiert der Algorithmus.
+\qedhere
+\end{proof}
+
+\begin{beispiel}[Tableau-Konstruktion]
+Sei $C_0 = \exists r.A \sqcap \forall r.\neg A$ (sollte unerf{\"{u}}llbar sein).
+Tableau-Aufbau:
+\begin{enumerate}
+  \item Wurzel $v_0$: $\mathcal{L}(v_0) = \{\exists r.A, \forall r.\neg A\}$.
+  \item $\exists$-Regel: Erzeuge $v_1$ mit $(v_0, r, v_1)$ und
+        $\mathcal{L}(v_1) = \{A\}$.
+  \item $\forall$-Regel: Da $(v_0,r,v_1)$ und $\forall r.\neg A \in \mathcal{L}(v_0)$:
+        $\neg A \in \mathcal{L}(v_1)$.
+  \item $\mathcal{L}(v_1) = \{A, \neg A\}$ -- \textbf{Clash!}
+\end{enumerate}
+Alle {\"{A}}ste f{\"{u}}hren zu einem Clash; das Tableau ist geschlossen.
+Also ist $C_0$ unerf{\"{u}}llbar. \checkmark
+\end{beispiel}
+
+% =======================================================================
+\section{Konzepthierarchie, Subsumtion und Instanzpr{\"u}fung}
+\label{sec:subsumtion}
+% =======================================================================
+
+\subsection{Formale Eigenschaften der Subsumtionsrelation}
+
+\begin{definition}[Subsumtionsrelation]
+$C$ wird von $D$ \emph{subsumiert} bez{\"{u}}glich $\Tbox$
+(geschrieben $C \sqsubseteq_\Tbox D$), wenn f{\"{u}}r alle
+Interpretationen $\interp{I}$ mit $\interp{I} \models \Tbox$:
+$C^\interp{I} \subseteq D^\interp{I}$.
+\end{definition}
+
+\begin{satz}[Pr{\"{a}}ordnungseigenschaften]
+\label{satz:praeordnung}
+Die Subsumtionsrelation $\sqsubseteq_\Tbox$ ist eine Pr{\"{a}}ordnung
+auf $\mathcal{C}_{\textsf{ALC}}$:
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Reflexivit{\"{a}}t:} $C \sqsubseteq_\Tbox C$ f{\"{u}}r alle $C$.
+  \item \textbf{Transitivit{\"{a}}t:} Wenn $C \sqsubseteq_\Tbox D$
+        und $D \sqsubseteq_\Tbox E$, dann $C \sqsubseteq_\Tbox E$.
+\end{enumerate}
+Ferner gilt:
+\begin{enumerate}[label=(\roman*), resume]
+  \item \textbf{Monotonie der Operatoren:} Wenn $C \sqsubseteq_\Tbox D$,
+        dann $C \sqcap E \sqsubseteq_\Tbox D \sqcap E$ f{\"{u}}r alle $E$.
+  \item \textbf{Subsumtion und Konjunktion:}
+        $C \sqcap D \sqsubseteq_\Tbox C$ und
+        $C \sqcap D \sqsubseteq_\Tbox D$.
+  \item \textbf{Subsumtion und Disjunktion:}
+        $C \sqsubseteq_\Tbox C \sqcup D$ und
+        $D \sqsubseteq_\Tbox C \sqcup D$.
+\end{enumerate}
+\end{satz}
+
+\begin{proof}
+Alle Aussagen folgen direkt aus der mengentheoretischen Semantik.
+
+\textbf{(i) Reflexivit{\"{a}}t:}
+F{\"{u}}r jede Interpretation $\interp{I}$ gilt $C^\interp{I} \subseteq C^\interp{I}$
+(Reflexivit{\"{a}}t der Mengenininklusion).
+
+\textbf{(ii) Transitivit{\"{a}}t:}
+Seien $C \sqsubseteq_\Tbox D$ und $D \sqsubseteq_\Tbox E$.
+F{\"{u}}r jedes Modell $\interp{I}$:
+$C^\interp{I} \subseteq D^\interp{I} \subseteq E^\interp{I}$.
+Transitivit{\"{a}}t der Mengenininklusion liefert $C^\interp{I} \subseteq E^\interp{I}$.
+
+\textbf{(iii) Monotonie:}
+Aus $C^\interp{I} \subseteq D^\interp{I}$ folgt
+$(C \sqcap E)^\interp{I} = C^\interp{I} \cap E^\interp{I}
+\subseteq D^\interp{I} \cap E^\interp{I}
+= (D \sqcap E)^\interp{I}$.
+
+\textbf{(iv):} $(C \sqcap D)^\interp{I} = C^\interp{I} \cap D^\interp{I} \subseteq C^\interp{I}$.
+
+\textbf{(v):} $C^\interp{I} \subseteq C^\interp{I} \cup D^\interp{I} = (C \sqcup D)^\interp{I}$.
+\qedhere
+\end{proof}
+
+\begin{proposition}[Subsumtion durch Negation]
+F{\"{u}}r \textsf{ALC}-Konzepte gilt:
+$C \sqsubseteq_\Tbox D$ genau dann, wenn
+$\top \sqsubseteq_\Tbox \neg C \sqcup D$.
+\end{proposition}
+
+\begin{proof}
+$C \sqsubseteq_\Tbox D$
+iff f{\"{u}}r alle Modelle $\interp{I}$: $C^\interp{I} \subseteq D^\interp{I}$
+iff $C^\interp{I} \cap (\Dom{I} \setminus D^\interp{I}) = \emptyset$
+iff $\Dom{I} \subseteq (\Dom{I} \setminus C^\interp{I}) \cup D^\interp{I}
+= (\neg C \sqcup D)^\interp{I}$
+iff $\top \sqsubseteq_\Tbox \neg C \sqcup D$.
+\end{proof}
+
+\subsection{Instanz{\"{u}}berpr{\"{u}}fung und Realisierung}
+
+\begin{definition}[Instanz{\"{u}}berpr{\"{u}}fung]
+Gegeben $\KB = (\Tbox, \Abox)$, $a \in N_I$ und Konzept $C$.
+$a$ ist eine \emph{Instanz} von $C$ bez{\"{u}}glich $\KB$
+(geschrieben $\KB \models C(a)$), wenn f{\"{u}}r alle Modelle $\interp{I}$
+von $\KB$: $a^\interp{I} \in C^\interp{I}$.
+\end{definition}
+
+\begin{satz}[Instanzpr{\"{u}}fung durch Unerf{\"{u}}llbarkeit]
+\label{satz:instanz}
+$\KB \models C(a)$ gdw.\ $(\Tbox, \Abox \cup \{\neg C(a)\})$
+inkonsistent ist.
+\end{satz}
+
+\begin{proof}
+Dies ist Satz~\ref{satz:red-unerfuell}(ii), dort vollst{\"{a}}ndig bewiesen.
+\end{proof}
+
+\begin{satz}[Komplexit{\"{a}}t der Instanzpr{\"{u}}fung]
+Die Instanzpr{\"{u}}fung in \textsf{ALC} ist \textsc{PSpace}-vollst{\"{a}}ndig
+(kombinierte Komplexit{\"{a}}t) und \textsc{P}-vollst{\"{a}}ndig
+(Datenkomplexit{\"{a}}t, wenn $\Tbox$ fest).
+\end{satz}
+
+\begin{proof}[Beweisidee]
+Obere Schranke: Instanzpr{\"{u}}fung reduziert auf Unerf{\"{u}}llbarkeit
+(Satz~\ref{satz:instanz}), die in \textsc{PSpace} liegt.
+
+Datenkomplexit{\"{a}}t: Wenn $\Tbox$ fest ist, kann man die Anfrage
+durch ein polynomielles Datenbankproblem kodieren (Rewriting-Technik).
+\end{proof}
+
+% =======================================================================
+\section{Erweiterte DL-Familien: SHIQ und SROIQ}
+\label{sec:shiq-sroiq}
+% =======================================================================
+
+\subsection{SHIQ: Transitive Rollen, Rollenhierarchien und Z{\"{a}}hlen}
+
+\begin{definition}[SHIQ-Syntax]
+\textsf{SHIQ} erweitert \textsf{ALC} um:
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Transitive Rollen (S):}
+        Rollenaxiome $\mathrm{Trans}(r)$;
+        Semantik: $r^\interp{I}$ ist transitiv.
+  \item \textbf{Rollenhierarchien (H):}
+        GCIs $r \sqsubseteq s$ f{\"{u}}r Rollennamen $r,s$;
+        Semantik: $r^\interp{I} \subseteq s^\interp{I}$.
+  \item \textbf{Inverse Rollen (I):}
+        $r^-$; Semantik: $(r^-)^\interp{I} = \{(e,d) \mid (d,e) \in r^\interp{I}\}$.
+  \item \textbf{Qualifizierte Z{\"{a}}hlrestriktionen (Q):}
+        $\geq n\,r.C$ und $\leq n\,r.C$;
+        Semantik: $(\geq n\,r.C)^\interp{I} = \{d \mid |\{e \mid (d,e) \in r^\interp{I}, e \in C^\interp{I}\}| \geq n\}$.
+\end{enumerate}
+\end{definition}
+
+\begin{satz}[Korrektheit der Z{\"{a}}hlrestriktions-Semantik]
+\label{satz:zaehlung}
+F{\"{u}}r jede Interpretation $\interp{I}$ gilt:
+\[
+  (\leq n\,r.C)^\interp{I} =
+  \Dom{I} \setminus (\geq n+1\,r.C)^\interp{I}.
+\]
+\end{satz}
+
+\begin{proof}
+Per Definition:
+\begin{align*}
+  (\leq n\,r.C)^\interp{I}
+  &= \{d \mid |\{e \mid (d,e) \in r^\interp{I}, e \in C^\interp{I}\}| \leq n\} \\
+  &= \Dom{I} \setminus \{d \mid |\{e \mid (d,e) \in r^\interp{I},
+    e \in C^\interp{I}\}| \geq n+1\} \\
+  &= \Dom{I} \setminus (\geq n+1\,r.C)^\interp{I}. \qedhere
+\end{align*}
+\end{proof}
+
+\begin{satz}[ExpTime-Vollst{\"{a}}ndigkeit von SHIQ, \cite{Horrocks2000}]
+Die Erf{\"{u}}llbarkeit in \textsf{SHIQ} bez{\"{u}}glich allgemeiner TBoxen ist
+\textsc{ExpTime}-vollst{\"{a}}ndig.
+\end{satz}
+
+\begin{proof}[Beweisidee]
+\textbf{Obere Schranke:}
+Das Tableau-Verfahren f{\"{u}}r \textsf{SHIQ} erzeugt B{\"{a}}ume der
+exponentiellen Tiefe. Transitive Rollen erfordern eine
+spezielle Form des Blocking (``lazy unfolding''),
+um korrekte Terminierung zu garantieren.
+Ein deterministischer Algorithmus verarbeitet den exponentiell
+gro{\ss}en Baum in exponentieller Zeit -- die Korrektheit des
+Verfahrens zeigt $\in \textsc{ExpTime}$.
+
+\textbf{Untere Schranke:}
+Durch Reduktion von \textsc{ALC}-TBox-Erf{\"{u}}llbarkeit
+(die bereits \textsc{ExpTime}-schwer ist f{\"{u}}r allgemeine TBoxen,
+vgl.~\cite{Baader2007})
+auf \textsf{SHIQ}-Erf{\"{u}}llbarkeit.
+\end{proof}
+
+\subsection{SROIQ und OWL 2}
+
+\begin{definition}[SROIQ]
+\textsf{SROIQ} erweitert \textsf{SHIQ} um:
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Nominale/OneOf (O):}
+        $\{a_1, \ldots, a_k\}$ mit $a_i \in N_I$.
+        Semantik: $\{a_1,\ldots,a_k\}^\interp{I} = \{a_1^\interp{I},\ldots,a_k^\interp{I}\}$.
+  \item \textbf{Komplexe Rollenaxiome (RBox):}
+        $r_1 \circ \ldots \circ r_k \sqsubseteq s$ mit $r_i, s \in N_R$.
+        Semantik: $(r_1 \circ \cdots \circ r_k)^\interp{I}
+        \subseteq s^\interp{I}$.
+  \item \textbf{Disjunkte Rollen:} $\mathrm{Dis}(r,s)$,
+        Semantik: $r^\interp{I} \cap s^\interp{I} = \emptyset$.
+\end{enumerate}
+\end{definition}
+
+\begin{satz}[NExpTime-Vollst{\"{a}}ndigkeit, \cite{Horrocks2006}]
+Die Erf{\"{u}}llbarkeit in \textsf{SROIQ} ist \textsc{NExpTime}-vollst{\"{a}}ndig.
+\end{satz}
+
+Die vollst{\"{a}}ndige Beweisf{\"{u}}hrung erfordert die Analyse von
+hypertableaux-Regeln f{\"{u}}r komplexe Rollenaxiome sowie
+den Nachweis, dass gewisse Einschr{\"{a}}nkungen der RBox
+(``regular'' role hierarchies) notwendig f{\"{u}}r Entscheidbarkeit sind.
+Details finden sich in~\cite{Horrocks2006}.
+
+% =======================================================================
+\section{Lernen von Beschreibungslogik-Konzepten}
+\label{sec:lernen}
+% =======================================================================
+
+\subsection{Das Lernproblem}
+
+\begin{definition}[Lernproblem f{\"{u}}r DL]
+\label{def:lernproblem}
+Gegeben:
+\begin{itemize}
+  \item eine Wissensbasis $\KB = (\Tbox, \Abox)$,
+  \item eine Menge positiver Beispiele $E^+ \subseteq N_I$,
+  \item eine Menge negativer Beispiele $E^- \subseteq N_I$,
+    mit $E^+ \cap E^- = \emptyset$.
+\end{itemize}
+Gesucht: ein Konzept $C$, das die Beispiele \emph{trennt}:
+\begin{align*}
+  \KB &\models C(a) \text{ f{\"{u}}r alle } a \in E^+, \\
+  \KB &\not\models C(a) \text{ f{\"{u}}r alle } a \in E^-.
+\end{align*}
+\end{definition}
+
+\subsection{Most Specific Concept (MSC)}
+
+\begin{definition}[Most Specific Concept]
+\label{def:msc}
+Ein \textsf{EL}-Konzept $C$ ist das \emph{most specific concept}
+(MSC) eines Individuums $a$ bez{\"{u}}glich $\KB$, wenn:
+\begin{enumerate}[label=(\roman*)]
+  \item $\KB \models C(a)$ (Korrektheit),
+  \item F{\"{u}}r alle \textsf{EL}-Konzepte $D$:
+        Wenn $\KB \models D(a)$, dann $\Tbox \models C \sqsubseteq D$
+        (Spezifit{\"{a}}t).
+\end{enumerate}
+\end{definition}
+
+\begin{satz}[Existenz und Berechenbarkeit des MSC]
+\label{satz:msc-exist}
+In \textsf{EL} existiert das MSC jedes Individuums $a$
+bez{\"{u}}glich jeder konsistenten Wissensbasis $\KB = (\Tbox, \Abox)$
+und ist in Polynomialzeit berechenbar.
+\end{satz}
+
+\begin{proof}
+\textbf{Konstruktion:}
+Wir konstruieren $\mathrm{MSC}(a)$ durch Verfolgung der
+ABox-Struktur:
+
+Definiere f{\"{u}}r jedes Individuum $b \in N_I$ induktiv
+den Konzeptausdruck $T(b)$:
+\begin{align*}
+  T(b) &= \bigcap_{A(b) \in \Abox} A
+          \;\sqcap\;
+          \bigcap_{r(b,c) \in \Abox} \exists r.T(c).
+\end{align*}
+
+Diese Konstruktion ist wohldefiniert, wenn die ABox azyklisch ist.
+Bei zyklischen ABoxen muss der kleinste Fixpunkt gebildet werden.
+
+\textbf{Korrektheit:}
+In jedem Modell $\interp{I}$ von $\KB$ gilt:
+\begin{itemize}
+  \item F{\"{u}}r jeden Konzeptnamen $A$ mit $A(a) \in \Abox$:
+        $a^\interp{I} \in A^\interp{I}$, also
+        $a^\interp{I} \in (\bigcap_{A(a) \in \Abox} A)^\interp{I}$.
+  \item F{\"{u}}r jede Rollenassertion $r(a,b) \in \Abox$:
+        $(a^\interp{I}, b^\interp{I}) \in r^\interp{I}$
+        und $b^\interp{I} \in T(b)^\interp{I}$ (per IH),
+        also $a^\interp{I} \in (\exists r.T(b))^\interp{I}$.
+\end{itemize}
+Damit $\KB \models T(a)(a)$, d.\,h.\ $\mathrm{MSC}(a) = T(a)$
+ist korrekt.
+
+\textbf{Spezifit{\"{a}}t:}
+Sei $D$ ein \textsf{EL}-Konzept mit $\KB \models D(a)$.
+Wir zeigen $\Tbox \models T(a) \sqsubseteq D$ durch
+Strukturinduktion:
+
+Falls $D = A$: Dann muss $A(a) \in \Abox$ gelten
+(oder durch Schlussfolgern aus der TBox folgen).
+In diesem Fall enth{\"{a}}lt $T(a)$ den Konjunkt $A$,
+also $T(a) \sqsubseteq A$ trivial.
+
+Falls $D = D_1 \sqcap D_2$:
+$\KB \models D_1(a)$ und $\KB \models D_2(a)$.
+Per IH $\Tbox \models T(a) \sqsubseteq D_1$
+und $\Tbox \models T(a) \sqsubseteq D_2$,
+also $\Tbox \models T(a) \sqsubseteq D_1 \sqcap D_2$.
+
+Falls $D = \exists r.E$:
+$\KB \models \exists r.E(a)$, also gibt es $b$
+mit $r(a,b) \in \Abox$ und $\KB \models E(b)$.
+Per IH $\Tbox \models T(b) \sqsubseteq E$.
+Da $\exists r.T(b)$ ein Konjunkt von $T(a)$ ist,
+gilt $\Tbox \models T(a) \sqsubseteq \exists r.T(b) \sqsubseteq \exists r.E$.
+
+\textbf{Polynomialzeit:}
+Die Konstruktion durchl{\"{a}}uft die ABox-Struktur und hat
+Laufzeit $O(|\Abox|)$.
+\qedhere
+\end{proof}
+
+\subsection{Least Common Subsumer (LCS)}
+
+\begin{definition}[Least Common Subsumer]
+\label{def:lcs}
+Das \emph{least common subsumer} (LCS) zweier \textsf{EL}-Konzepte
+$C$ und $D$ bez{\"{u}}glich $\Tbox$ ist ein \textsf{EL}-Konzept
+$\mathrm{lcs}(C, D)$ mit:
+\begin{enumerate}[label=(\roman*)]
+  \item $C \sqsubseteq_\Tbox \mathrm{lcs}(C,D)$
+        und $D \sqsubseteq_\Tbox \mathrm{lcs}(C,D)$
+        (gemeinsamer Oberbegriff),
+  \item F{\"{u}}r alle \textsf{EL}-Konzepte $E$:
+        Falls $C \sqsubseteq_\Tbox E$ und $D \sqsubseteq_\Tbox E$,
+        dann $\mathrm{lcs}(C,D) \sqsubseteq_\Tbox E$
+        (Minimalit{\"{a}}t).
+\end{enumerate}
+\end{definition}
+
+\begin{satz}[Existenz und Berechnung des LCS in EL, \cite{Baader1999}]
+\label{satz:lcs}
+In \textsf{EL} existiert f{\"{u}}r je zwei Konzepte $C$ und $D$
+ein LCS, der durch Produktkonstruktion berechnet werden kann
+und polynomielle Gr{\"{o}}{\ss}e in $|C| \cdot |D|$ hat.
+\end{satz}
+
+\begin{proof}
+\textbf{Schritt 1 -- Beschreibungsbaumdarstellung:}
+Jedes \textsf{EL}-Konzept $C$ kann als gerichteter,
+geordneter, mit Konzeptnamen beschrifteter Baum $\mathcal{T}_C$
+dargestellt werden (``description tree''):
+\begin{itemize}
+  \item F{\"{u}}r $C = A$: einkn{\"{o}}tiger Baum mit Beschriftung $\{A\}$.
+  \item F{\"{u}}r $C = C_1 \sqcap C_2$:
+        Wurzel mit Beschriftung $\mathrm{labels}(C_1) \cup \mathrm{labels}(C_2)$
+        und den Nachfolgern von $\mathcal{T}_{C_1}$ und $\mathcal{T}_{C_2}$.
+  \item F{\"{u}}r $C = \exists r.D$:
+        Wurzel mit $r$-markierter Kante zu $\mathcal{T}_D$.
+\end{itemize}
+
+\textbf{Schritt 2 -- Produktkonstruktion:}
+Der Produktgraph $\mathcal{T}_C \times \mathcal{T}_D$
+ist definiert als:
+\begin{itemize}
+  \item Knotenmenge: $V(\mathcal{T}_C) \times V(\mathcal{T}_D)$,
+  \item Kante $((u,v), r, (u',v'))$ existiert, wenn
+        $(u,r,u') \in \mathcal{T}_C$ und $(v,r,v') \in \mathcal{T}_D$,
+  \item Knotenbeschriftung:
+        $\mathrm{label}(u,v) = \mathrm{label}(u) \cap \mathrm{label}(v)$.
+\end{itemize}
+Die Wurzel ist $(r_C, r_D)$ mit den Wurzeln $r_C$ von $\mathcal{T}_C$
+und $r_D$ von $\mathcal{T}_D$.
+
+\textbf{Schritt 3 -- Korrektheit:}
+Der Produktgraph repr{\"{a}}sentiert $\mathrm{lcs}(C,D)$.
+
+\textit{(i) Gemeinsamer Oberbegriff:}
+Es gibt einen Baum-Homomorphismus $h_C: \mathcal{T}_{lcs} \to \mathcal{T}_C$
+(definiert durch $h_C(u,v) = u$) und analog $h_D$.
+Ein Homomorphismus zwischen Beschreibungsb{\"{a}}umen entspricht
+einer Subsumtionsbeziehung in \textsf{EL}~\cite{Baader2007}.
+Also $\mathrm{lcs}(C,D) \sqsubseteq C$ und $\mathrm{lcs}(C,D) \sqsubseteq D$.
+
+\textit{(ii) Minimalit{\"{a}}t:}
+Sei $E$ ein \textsf{EL}-Konzept mit $C \sqsubseteq E$ und $D \sqsubseteq E$.
+Dann gibt es Homomorphismen $h: \mathcal{T}_E \to \mathcal{T}_C$
+und $g: \mathcal{T}_E \to \mathcal{T}_D$.
+Der Produkthomomorphismus $(h,g): \mathcal{T}_E \to \mathcal{T}_C \times \mathcal{T}_D$
+zeigt $\mathrm{lcs}(C,D) \sqsubseteq E$.
+
+\textbf{Schritt 4 -- Gr{\"{o}}{\ss}e:}
+$|V(\mathcal{T}_C \times \mathcal{T}_D)|
+\leq |V(\mathcal{T}_C)| \cdot |V(\mathcal{T}_D)|
+\leq |C| \cdot |D|$.
+\qedhere
+\end{proof}
+
+\begin{beispiel}[LCS-Berechnung]
+Seien $C = \mathit{Patient} \sqcap \exists\mathit{hasDisease}.\mathit{Cancer}$
+und $D = \mathit{Patient} \sqcap \exists\mathit{hasDisease}.\mathit{Flu}$.
+
+Beschreibungsb{\"{a}}ume:
+\[
+  \mathcal{T}_C:\quad [\mathit{Patient}] \xrightarrow{\mathit{hasDisease}} [\mathit{Cancer}], \quad
+  \mathcal{T}_D:\quad [\mathit{Patient}] \xrightarrow{\mathit{hasDisease}} [\mathit{Flu}].
+\]
+
+Produktkonstruktion:
+Knotenmenge: $\{(r_C, r_D), (c, d)\}$
+wobei $c$ der $\mathit{hasDisease}$-Nachfolger in $\mathcal{T}_C$
+und $d$ der in $\mathcal{T}_D$ ist.
+
+Knotenbeschriftungen:
+$(r_C, r_D)$: $\{\mathit{Patient}\} \cap \{\mathit{Patient}\} = \{\mathit{Patient}\}$,
+$(c, d)$: $\{\mathit{Cancer}\} \cap \{\mathit{Flu}\} = \emptyset$ (nur $\top$).
+
+Ergebnis:
+$\mathrm{lcs}(C,D) = \mathit{Patient} \sqcap \exists\mathit{hasDisease}.\top
+\equiv \mathit{Patient} \sqcap \exists\mathit{hasDisease}.\mathit{Disease}$
+(falls $\mathit{Cancer} \sqsubseteq \mathit{Disease}$ und $\mathit{Flu} \sqsubseteq \mathit{Disease}$ in $\Tbox$).
+\end{beispiel}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.90\textwidth]{plots/plot5_lernen.pdf}
+  \caption{Schematischer Ablauf des Konzeptlernens:
+           Aus den MSCs der positiven Beispiele wird durch LCS-Bildung
+           das spezifischste gemeinsame Konzept berechnet.}
+  \label{fig:lernen}
+\end{figure}
+
+% =======================================================================
+\section{Nicht-monotones Schlussfolgern}
+\label{sec:nichtmonoton}
+% =======================================================================
+
+\subsection{Motivierende Beispiele und Probleme}
+
+Klassische Beschreibungslogiken sind monoton:
+
+\begin{satz}[Monotonie]
+\label{satz:monotonie}
+Wenn $\KB \models C(a)$ und $\KB \subseteq \KB'$
+(d.\,h.\ $\Tbox \subseteq \Tbox'$ und $\Abox \subseteq \Abox'$),
+dann $\KB' \models C(a)$.
+\end{satz}
+
+\begin{proof}
+Jedes Modell von $\KB'$ ist auch Modell von $\KB$
+(mehr Axiome = strengere Bedingungen; irrt{\"{u}}mlicherweise:
+$\KB' \supseteq \KB$ bedeutet, alle Modelle von $\KB'$ erf{\"{u}}llen auch $\KB$).
+Aber: $\KB \subseteq \KB'$ bedeutet, jedes Modell von $\KB'$
+ist ein Modell von $\KB$, denn $\KB'$ macht zus{\"{a}}tzliche Forderungen.
+Falls $\KB \models C(a)$, dann gilt in jedem Modell von $\KB$,
+also in jedem Modell von $\KB'$: $a^\interp{I} \in C^\interp{I}$.
+\qedhere
+\end{proof}
+
+Monotonie ist in der Praxis problematisch: Man m{\"{o}}chte
+\emph{typische} Eigenschaften angeben, die durch spezifischere
+Klassen {\"{u}}berschrieben werden k{\"{o}}nnen.
+
+\subsection{Defeasible Inklusionen}
+
+\begin{definition}[Pr{\"{a}}ferenzmodell und Typikalit{\"{a}}t]
+Ein \emph{Pr{\"{a}}ferenzmodell} ist ein Tupel
+$\interp{P} = (\Dom{P}, \cdot^\interp{P}, \prec)$,
+wobei $\prec \subseteq \Dom{P} \times \Dom{P}$
+eine strikt azyklische, wohlgegr{\"{u}}ndete Ordnung ist
+(\emph{Pr{\"{a}}ferenzordnung}, ``typischer ist kleiner'').
+
+Die Erweiterung des Typikalit{\"{a}}tsoperators $\mathbf{T}$:
+\[
+  \mathbf{T}(C)^\interp{P} =
+  \bigl\{d \in C^\interp{P} \;\big|\;
+  \nexists e \in C^\interp{P}.\, e \prec d\bigr\},
+\]
+d.\,h.\ die minimalen (typischsten) Elemente von $C$.
+\end{definition}
+
+\begin{satz}[Defeasible Modus Ponens]
+\label{satz:defeasible-mp}
+In Pr{\"{a}}ferenzmodellen gilt:
+Wenn $\mathbf{T}(C) \sqsubseteq D$ und $a$ ist
+ein typisches $C$-Element (d.\,h.\ $a \in \mathbf{T}(C)^\interp{P}$),
+dann $a \in D^\interp{P}$.
+
+Dies gilt jedoch \emph{nicht global} f{\"{u}}r alle Instanzen von $C$.
+\end{satz}
+
+\begin{proof}
+Direkt aus der Definition: $\mathbf{T}(C)^\interp{P} \subseteq D^\interp{P}$
+(da $\mathbf{T}(C) \sqsubseteq D$) und $a \in \mathbf{T}(C)^\interp{P}$
+impliziert $a \in D^\interp{P}$.
+
+Das ``nicht global'': Ein nichtminimales Element $b \in C^\interp{P}$
+mit $b \notin \mathbf{T}(C)^\interp{P}$ muss nicht in $D^\interp{P}$
+liegen.
+\end{proof}
+
+\begin{beispiel}[Ausnahmen durch Subklassen]
+\begin{align*}
+  \mathbf{T}(\mathit{Bird}) &\sqsubseteq \mathit{CanFly}, \\
+  \mathit{Penguin} &\sqsubseteq \mathit{Bird}, \\
+  \mathbf{T}(\mathit{Penguin}) &\sqsubseteq \neg\mathit{CanFly}.
+\end{align*}
+Ein typischer Vogel kann fliegen; ein typischer Pinguin nicht.
+Da Pinguine im Pr{\"{a}}ferenzmodell ``spezifischer'' (kleiner in $\prec$)
+als gew{\"{o}}hnliche V{\"{o}}gel sind, {\"{u}}berschreibt die Pinguin-Regel die Vogel-Regel.
+\end{beispiel}
+
+% =======================================================================
+\section{Relaxierte Anfrageauswertung}
+\label{sec:anfragen}
+% =======================================================================
+
+\subsection{Konjunktive Anfragen}
+
+\begin{definition}[Konjunktive Anfrage (CQ)]
+Eine \emph{konjunktive Anfrage} $q(\vec{x})$ {\"{u}}ber einer Signatur $\Sigma$
+ist ein Ausdruck der Form:
+\[
+  q(\vec{x}) = \exists \vec{y}.\,
+  \bigwedge_{i=1}^{k} A_i(t_i) \wedge \bigwedge_{j=1}^{m} r_j(s_j, s_j'),
+\]
+wobei $\vec{x}$ die freien Variablen (\emph{Antwortterme}),
+$\vec{y}$ existenziell quantifizierte Variablen sind,
+und $t_i, s_j, s_j'$ Terme aus $\vec{x} \cup \vec{y} \cup N_I$.
+\end{definition}
+
+\begin{definition}[Gewisse Antwortmenge]
+\label{def:cert}
+Die \emph{gewisse Antwortmenge} einer CQ $q(\vec{x})$
+bez{\"{u}}glich $\KB = (\Tbox, \Abox)$ ist:
+\[
+  \mathrm{cert}(q, \KB) =
+  \bigl\{\vec{a} \in N_I^{|\vec{x}|} \;\big|\;
+  \text{f{\"{u}}r jedes Modell } \interp{I} \text{ von } \KB:\,
+  \interp{I} \models q(\vec{a})\bigr\}.
+\]
+\end{definition}
+
+\begin{satz}[Datenkomplexit{\"{a}}t der CQ-Beantwortung in EL]
+\label{satz:cq-data}
+Die Beantwortung konjunktiver Anfragen bez{\"{u}}glich \textsf{EL}-TBoxen
+ist in \textsc{P} (polynomiell) in der Datenkomplexit{\"{a}}t.
+\end{satz}
+
+\begin{proof}[Beweisidee]
+Bei fester TBox $\Tbox$ kann die Anfragebeantwortung durch
+\emph{Query Rewriting} gel{\"{o}}st werden:
+Die CQ $q$ wird zusammen mit $\Tbox$ in eine neue CQ $q'$
+(ohne Ontologie) umgeschrieben, so dass
+$\mathrm{cert}(q, (\Tbox,\Abox)) = \mathrm{cert}(q', (\emptyset, \Abox))$.
+
+Das Rewriting $q'$ kann durch den \textsf{EL}-Subsumtionsalgorithmus
+(Satz~\ref{satz:el-poly}) in polynomieller Zeit berechnet werden.
+Die Auswertung von $q'$ {\"{u}}ber $\Abox$ ist in \textsc{AC}$^0 \subset \textsc{P}$.
+\end{proof}
+
+\subsection{Repair-basierte Inkonsistenztoleranz}
+
+\begin{definition}[Repair]
+\label{def:repair}
+Sei $\KB = (\Tbox, \Abox)$ eine inkonsistente Wissensbasis.
+Eine \emph{Repair} $\mathcal{R}$ von $\KB$ bez{\"{u}}glich $\Tbox$
+ist eine maximale konsistente Teilmenge von $\Abox$:
+\begin{enumerate}[label=(\roman*)]
+  \item $(\Tbox, \mathcal{R})$ ist konsistent,
+  \item Es gibt keine strikt gr{\"{o}}{\ss}ere Menge $\mathcal{R}' \supsetneq \mathcal{R}$
+        mit $\mathcal{R}' \subseteq \Abox$ und $(\Tbox, \mathcal{R}')$ konsistent.
+\end{enumerate}
+Mit $\mathrm{Rep}(\KB)$ bezeichnen wir die Menge aller Repairs.
+\end{definition}
+
+\begin{satz}[Eigenschaften von Repairs]
+\label{satz:repairs}
+F{\"{u}}r jede inkonsistente Wissensbasis $\KB = (\Tbox, \Abox)$ gilt:
+\begin{enumerate}[label=(\roman*)]
+  \item $\mathrm{Rep}(\KB) \neq \emptyset$
+        (Existenz mindestens einer Repair).
+  \item Jede Repair $\mathcal{R}$ ist maximal konsistent.
+  \item $\bigcap_{\mathcal{R} \in \mathrm{Rep}(\KB)} \mathcal{R}$
+        ist der maximale konsistente Kern.
+\end{enumerate}
+\end{satz}
+
+\begin{proof}
+\textbf{(i) Existenz:}
+$\emptyset \subseteq \Abox$ und $(\Tbox, \emptyset)$ ist konsistent
+(leere ABox hat immer ein Modell: Einelementinterpretation).
+Also gibt es mindestens eine konsistente Teilmenge.
+Nach dem Lemma von Zorn (oder direkter endlicher Vergr{\"{o}}{\ss}erung)
+gibt es eine maximale -- die Repair.
+
+\textbf{(ii)} folgt direkt aus der Definition.
+
+\textbf{(iii):} Der Schnitt aller Repairs enth{\"{a}}lt genau jene
+Assertionen, die in jeder Repair enthalten sind -- das ist der
+``gesicherte'' Teil der ABox.
+\qedhere
+\end{proof}
+
+\begin{definition}[Brave und Cautious Semantik]
+F{\"{u}}r eine inkonsistente Wissensbasis $\KB$ und Anfrage $q(\vec{x})$:
+\begin{align*}
+  \mathrm{brave}(q, \KB) &=
+    \bigcup_{\mathcal{R} \in \mathrm{Rep}(\KB)} \mathrm{cert}(q, (\Tbox, \mathcal{R})), \\
+  \mathrm{cautious}(q, \KB) &=
+    \bigcap_{\mathcal{R} \in \mathrm{Rep}(\KB)} \mathrm{cert}(q, (\Tbox, \mathcal{R})).
+\end{align*}
+\end{definition}
+
+\begin{satz}[Korrektheit der Repair-Semantik]
+\label{satz:repair-korrektheit}
+F{\"{u}}r eine konsistente Wissensbasis $\KB$ (mit $|\mathrm{Rep}(\KB)| = 1$,
+da $\Abox$ selbst die einzige Repair ist) gilt:
+\[
+  \mathrm{brave}(q, \KB) = \mathrm{cautious}(q, \KB) = \mathrm{cert}(q, \KB).
+\]
+\end{satz}
+
+\begin{proof}
+Wenn $\KB$ konsistent ist, dann ist $\Abox$ selbst die einzige
+maximale konsistente Teilmenge von $\Abox$, also
+$\mathrm{Rep}(\KB) = \{\Abox\}$.
+Dann:
+\[
+  \mathrm{brave}(q,\KB) = \mathrm{cert}(q, (\Tbox, \Abox)) = \mathrm{cert}(q,\KB)
+\]
+und ebenso f{\"{u}}r $\mathrm{cautious}$.
+\qedhere
+\end{proof}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.92\textwidth]{plots/plot6_relaxierte_anfragen.pdf}
+  \caption{Relaxierte Anfrageauswertung: Links -- Vergleich von
+           Standard- und relaxierten Antwortmengen f{\"{u}}r drei CQs.
+           Rechts -- Visualisierung der Repair-Aufteilung bei inkonsistenter
+           ABox.}
+  \label{fig:relaxiert}
+\end{figure}
+
+\begin{satz}[Komplexit{\"{a}}t der Brave-Anfragebeantwortung]
+Die brave repair-basierte Anfragebeantwortung f{\"{u}}r \textsf{ALC}-TBoxen
+ist $\Sigma_2^p$-vollst{\"{a}}ndig in der Datenkomplexit{\"{a}}t~\cite{Bienvenu2014}.
+\end{satz}
+
+\begin{proof}[Beweisidee]
+\textbf{Obere Schranke ($\Sigma_2^p$):}
+Brave Semantik erfordert: ``Es gibt eine Repair $\mathcal{R}$,
+sodass $\vec{a} \in \mathrm{cert}(q, (\Tbox,\mathcal{R}))$''.
+Dies ist ein $\exists$-Statement {\"{u}}ber Repairs (ein NP-Orakel
+w{\"{a}}hlt $\mathcal{R}$, ein co-NP-Orakel verifiziert Maximalit{\"{a}}t).
+Also liegt das Problem in $\Sigma_2^p = \mathrm{NP}^{\mathrm{NP}}$.
+
+\textbf{Untere Schranke:}
+Durch Reduktion von $\Sigma_2^p$-vollst{\"{a}}ndigen Problemen
+(z.\,B.\ $\exists$-QBF mit einer Ebene).
+\end{proof}
+
+% =======================================================================
+\section{Beschreibungslogik und der Subgraph-Algo\-rith\-mus}
+\label{sec:dl-subgraph}
+% =======================================================================
+
+\subsection{Motivation: Zwei Welten, eine Struktur}
+
+Auf den ersten Blick scheinen Beschreibungslogiken und der
+Subgraph Algorithmus~\cite{Epp2026} v{\"o}llig verschiedene Gebiete
+zu adressieren: DL ist eine formale Wissensrepresentationssprache,
+der Subgraph Algorithmus ein effizienter Graph-Vergleichsalgorithmus.
+Bei n{\"a}herer Betrachtung offenbaren sich jedoch vier tiefe,
+bisher nicht formal ausgearbeitete Verbindungen:
+
+\begin{enumerate}[label=(\Roman*)]
+  \item Eine \emph{DL-Interpretation} ist strukturell ein
+        gerichteter, beschrifteter Graph -- und Konzept-Instanzierung
+        entspricht einer \emph{Subgraph-Einbettung}.
+  \item Die \emph{Signatur-Funktion} des Subgraph Algorithmus
+        kodiert exakt die Rollennachbarschaft eines ABox-Individuums
+        und liefert damit einen algorithmisch auswertbaren
+        Fingerabdruck f{\"u}r MSC und LCS.
+  \item Das \emph{Blocking} im Tableau-Verfahren entspricht
+        formal der \emph{Rotations{\"a}quivalenz} von Signatur-Vektoren.
+  \item Die Beantwortung \emph{konjunktiver Anfragen} {\"u}ber einer
+        ABox ist strukturell {\"a}quivalent zum
+        \emph{Subgraph-Matching-Problem}.
+\end{enumerate}
+
+Alle vier Verbindungen werden in den folgenden Unterabschnitten
+vollst{\"a}ndig und formal entwickelt und bewiesen.
+
+\subsection{DL-Interpretationen als gerichtete Graphen}
+\label{sec:dl-graph}
+
+\begin{definition}[Rollengraph einer Interpretation]
+\label{def:rollengraph}
+Sei $\interp{I} = (\Dom{I}, \cdot^\interp{I})$ eine Interpretation
+{\"u}ber Signatur $\Sigma = (N_C, N_R, N_I)$.
+Der \emph{Rollengraph} $G_\interp{I} = (V, E, \lambda)$ ist definiert durch:
+\begin{itemize}
+  \item Knotenmenge $V = \Dom{I}$,
+  \item Kantenmenge $E = \bigcup_{r \in N_R} r^\interp{I}
+        \subseteq \Dom{I} \times \Dom{I}$,
+  \item Knotenbeschriftung $\lambda: V \to 2^{N_C}$
+        mit $\lambda(d) = \{A \in N_C \mid d \in A^\interp{I}\}$.
+\end{itemize}
+\end{definition}
+
+\begin{satz}[Konzept-Instanz als Subgraph-Einbettung]
+\label{satz:instanz-subgraph}
+Sei $C$ ein \textsf{EL}-Konzept,
+$\interp{I}$ eine Interpretation und $d \in \Dom{I}$.
+Dann gilt:
+\[
+  d \in C^\interp{I}
+  \;\iff\;
+  \text{es existiert eine Subgraph-Einbettung }
+  h: G_C \hookrightarrow G_\interp{I}
+  \text{ mit } h(r_C) = d,
+\]
+wobei $G_C$ der \emph{Beschreibungsbaum} (description tree)
+von $C$ ist und $r_C$ seine Wurzel.
+\end{satz}
+
+\begin{proof}
+Wir beweisen beide Richtungen durch strukturelle Induktion
+{\"u}ber den Aufbau von $C$.
+
+\textbf{Definition der Einbettung.}
+Der Beschreibungsbaum $G_C = (V_C, E_C, \lambda_C)$ von $C$
+ist induktiv definiert als (vgl.\ Beweis von Satz~\ref{satz:lcs}):
+\begin{itemize}
+  \item $C = A$: einknötiger Baum, $V_C = \{r_C\}$,
+        $\lambda_C(r_C) = \{A\}$, $E_C = \emptyset$.
+  \item $C = \top$: einknötiger Baum, $\lambda_C(r_C) = \emptyset$.
+  \item $C = C_1 \sqcap C_2$: Wurzel $r_C$ mit
+        $\lambda_C(r_C) = \lambda_{C_1}(r_{C_1}) \cup \lambda_{C_2}(r_{C_2})$
+        und den Teilb{\"a}umen von $C_1, C_2$ als Kinder (vereinigt).
+  \item $C = \exists r.D$: Wurzel $r_C$ mit $r$-markierter
+        Kante zu einem neuen Knoten $v_D$, der Wurzel des
+        Beschreibungsbaums von $D$.
+\end{itemize}
+
+Eine \emph{Subgraph-Einbettung} $h: G_C \hookrightarrow G_\interp{I}$
+ist ein injektiver Graphhomomorphismus, der:
+\begin{enumerate}[label=(\alph*)]
+  \item Knotenbeschriftungen respektiert:
+        $\lambda_C(v) \subseteq \lambda(h(v))$ f{\"u}r alle $v \in V_C$,
+  \item Kanten erhält:
+        $(v, r, v') \in E_C \Rightarrow (h(v), h(v')) \in r^\interp{I}$.
+\end{enumerate}
+
+\textbf{($\Rightarrow$) Induktionsbeweis.}
+
+\emph{Basisfall $C = A$:}
+$d \in A^\interp{I}$ bedeutet $A \in \lambda(d)$.
+Definiere $h(r_C) = d$.
+Bedingung (a): $\lambda_C(r_C) = \{A\} \subseteq \lambda(d)$. \checkmark
+Bedingung (b): $E_C = \emptyset$, nichts zu zeigen. \checkmark
+
+\emph{Induktionsschritt $C = C_1 \sqcap C_2$:}
+$d \in (C_1 \sqcap C_2)^\interp{I}$ bedeutet $d \in C_1^\interp{I}$
+und $d \in C_2^\interp{I}$.
+Nach Induktionshypothese existieren Einbettungen
+$h_1: G_{C_1} \hookrightarrow G_\interp{I}$ mit $h_1(r_{C_1}) = d$
+und $h_2: G_{C_2} \hookrightarrow G_\interp{I}$ mit $h_2(r_{C_2}) = d$.
+Definiere $h = h_1 \cup h_2$ (beide Einbettungen werden vereinigt,
+die Wurzel auf $d$ abgebildet). Bedingungen (a) und (b) gelten nach IH. \checkmark
+
+\emph{Induktionsschritt $C = \exists r.D$:}
+$d \in (\exists r.D)^\interp{I}$ bedeutet:
+es gibt $e \in \Dom{I}$ mit $(d,e) \in r^\interp{I}$ und $e \in D^\interp{I}$.
+Nach Induktionshypothese gibt es $h_D: G_D \hookrightarrow G_\interp{I}$
+mit $h_D(r_D) = e$.
+Definiere $h(r_C) = d$ und $h|_{V_D} = h_D$.
+Bedingung (b) f{\"u}r die $r$-Kante $(r_C, r, r_D)$:
+$(h(r_C), h(r_D)) = (d,e) \in r^\interp{I}$. \checkmark
+
+\textbf{($\Leftarrow$) R{\"u}ckrichtung.}
+
+Sei $h: G_C \hookrightarrow G_\interp{I}$ eine Einbettung mit $h(r_C) = d$.
+Wir zeigen $d \in C^\interp{I}$ durch Induktion:
+
+\emph{$C = A$:}
+$\lambda_C(r_C) = \{A\} \subseteq \lambda(h(r_C)) = \lambda(d)$,
+also $A \in \lambda(d)$, d.h.\ $d \in A^\interp{I}$. \checkmark
+
+\emph{$C = C_1 \sqcap C_2$:}
+Die Einbettung $h$ liefert $h|_{V_{C_1}}: G_{C_1} \hookrightarrow G_\interp{I}$
+und $h|_{V_{C_2}}: G_{C_2} \hookrightarrow G_\interp{I}$, jeweils mit
+Wurzelbild $d$. Per IH $d \in C_1^\interp{I}$ und $d \in C_2^\interp{I}$,
+also $d \in (C_1 \sqcap C_2)^\interp{I}$. \checkmark
+
+\emph{$C = \exists r.D$:}
+Es gibt einen $r$-Nachfolger $v_D$ in $G_C$ von $r_C$.
+Die Einbettung liefert $(h(r_C), h(v_D)) \in r^\interp{I}$.
+Setze $e = h(v_D)$; dann $e \in D^\interp{I}$ nach IH.
+Also $d \in (\exists r.D)^\interp{I}$. \checkmark
+\qedhere
+\end{proof}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.90\textwidth]{plots/plot7_dl_subgraph.pdf}
+  \caption{Links: Eine DL-Interpretation als Rollengraph $G_\interp{I}$
+           mit Knoten (Individuen) und beschrifteten Kanten (Rollen).
+           Rechts: Das Konzept $\mathit{Doctor} \sqcap \exists\mathit{treats}.\mathit{Patient}$
+           als Beschreibungsbaum $G_C$ -- seine Instanzierung durch \texttt{alice}
+           entspricht genau einer Subgraph-Einbettung $G_C \hookrightarrow G_\interp{I}$.}
+  \label{fig:dl-subgraph}
+\end{figure}
+
+\begin{korollar}[Subsumtion als Subgraph-Inklusion der Beschreibungsb{\"a}ume]
+\label{kor:subsumtion-subgraph}
+F{\"u}r \textsf{EL}-Konzepte $C, D$ ohne TBox gilt:
+\[
+  C \sqsubseteq D
+  \;\iff\;
+  \text{es existiert ein Homomorphismus } h: G_D \to G_C.
+\]
+Subsumtion ist {\"a}quivalent zur Existenz eines
+\emph{Beschreibungsbaum-Homomorphismus} in umgekehrter Richtung.
+\end{korollar}
+
+\begin{proof}
+Dies ist das klassische Resultat von Baader et al.~\cite{Baader2007}
+(Theorem-Charakterisierung von \textsf{EL}-Subsumtion ohne TBox).
+Ein Homomorphismus $h: G_D \to G_C$ existiert gdw.\ jede
+Struktur, die $G_C$ als Subgraph enth{\"a}lt, auch $G_D$ enth{\"a}lt,
+was {\"a}quivalent zu $C \sqsubseteq D$ ist.
+Intuitiv: $D$ ist allgemeiner als $C$ gdw.\ der Beschreibungsbaum
+von $D$ in den von $C$ eingebettet werden kann.
+\end{proof}
+
+\subsection{Signatur-Kodierung f{\"u}r ABox-Individuen}
+\label{sec:signatur-abox}
+
+\begin{definition}[ABox-Adjazenzmatrix und Signatur-Vektor]
+\label{def:abox-sig}
+Sei $\Abox$ eine ABox {\"u}ber Individuen $N_I = \{a_0, \ldots, a_{n-1}\}$
+und Rollen $N_R = \{r_1, \ldots, r_m\}$.
+F{\"u}r jede Rolle $r_k$ ist die \emph{$r_k$-Adjazenzmatrix}
+$A^{(k)} \in \{0,1\}^{n \times n}$ definiert durch
+$A^{(k)}_{ij} = 1$ gdw.\ $r_k(a_i, a_j) \in \Abox$.
+
+Der \emph{Signatur-Vektor} von Individuum $a_j$
+im Sinne des Subgraph Algorithmus~\cite{Epp2026} ist:
+\[
+  \boldsymbol{\rho}(a_j) = \bigl(\rho_j^{(1)}, \ldots, \rho_j^{(m)}\bigr)
+  \in \mathbb{N}^m,
+  \quad
+  \rho_j^{(k)} = \sum_{i=0}^{n-1} A^{(k)}_{ij} \cdot 2^i.
+\]
+\end{definition}
+
+\begin{satz}[Signatur-Vektor kodiert die Rollennachbarschaft]
+\label{satz:sig-nachbarschaft}
+F{\"u}r Individuen $a_j, a_{j'} \in N_I$ gilt:
+\begin{align*}
+  &\boldsymbol{\rho}(a_j) = \boldsymbol{\rho}(a_{j'}) \;\iff \\
+  &\quad\text{f{\"u}r alle } r_k \in N_R,\, a_i \in N_I:\;
+   r_k(a_i, a_j) \in \Abox \;\Leftrightarrow\; r_k(a_i, a_{j'}) \in \Abox.
+\end{align*}
+Der Signatur-Vektor ist also ein eindeutiger Fingerabdruck der
+eingehenden Rollennachbarschaft.
+\end{satz}
+
+\begin{proof}
+\textbf{($\Rightarrow$):}
+$\boldsymbol{\rho}(a_j) = \boldsymbol{\rho}(a_{j'})$ bedeutet
+$\rho_j^{(k)} = \rho_{j'}^{(k)}$ f{\"u}r alle $k$.
+Da $\rho_j^{(k)} = \sum_i A^{(k)}_{ij} \cdot 2^i$ die
+Bin{\"a}rdarstellung des Spaltenvektors $(A^{(k)}_{0j}, \ldots, A^{(k)}_{(n-1)j})$
+ist (Injektivit{\"a}t der Bin{\"a}rdarstellung), folgt
+$A^{(k)}_{ij} = A^{(k)}_{ij'}$ f{\"u}r alle $i, k$.
+Also $r_k(a_i, a_j) \in \Abox \Leftrightarrow r_k(a_i, a_{j'}) \in \Abox$.
+
+\textbf{($\Leftarrow$):}
+Wenn $A^{(k)}_{ij} = A^{(k)}_{ij'}$ f{\"u}r alle $i$,
+dann sind die Spaltenvektoren identisch,
+also $\rho_j^{(k)} = \rho_{j'}^{(k)}$ und somit
+$\boldsymbol{\rho}(a_j) = \boldsymbol{\rho}(a_{j'})$.
+\qedhere
+\end{proof}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.90\textwidth]{plots/plot8_signatur_abox.pdf}
+  \caption{Links: ABox-Adjazenzmatrix f{\"u}r eine medizinische Wissensbasis;
+           die Spalten-Signaturen $\rho_j$ kodieren die eingehende
+           Rollennachbarschaft jedes Individuums.
+           Rechts: Der LCS zweier Individuen ergibt sich als
+           ``Subgraph-Schnitt'' ihrer Signatur-Vektoren.}
+  \label{fig:signatur-abox}
+\end{figure}
+
+\begin{satz}[Subgraph-LCS approximiert den semantischen LCS]
+\label{satz:sublcs}
+Seien $a_j, a_{j'}$ zwei ABox-Individuen mit MSCs
+$\mathrm{MSC}(a_j)$ und $\mathrm{MSC}(a_{j'})$.
+Der \emph{Subgraph-LCS} der Signatur-Vektoren,
+definiert als:
+\[
+  \mathrm{SigLCS}(a_j, a_{j'})
+  = \bigl(\min(\rho_j^{(k)}, \rho_{j'}^{(k)})\bigr)_{k=1}^{m},
+\]
+kodiert genau die gemeinsame Rollennachbarschaft beider Individuen
+und ist eine untere Schranke f{\"u}r den semantischen LCS:
+\[
+  \mathrm{MSC}(a_j) \sqcap \mathrm{MSC}(a_{j'})
+  \sqsubseteq
+  \mathrm{lcs}(\mathrm{MSC}(a_j),\, \mathrm{MSC}(a_{j'})).
+\]
+\end{satz}
+
+\begin{proof}
+\textbf{Schritt 1 -- Semantik von SigLCS.}
+Der Eintrag $\min(\rho_j^{(k)}, \rho_{j'}^{(k)})$ ist die
+bitweise-AND-Verkn{\"u}pfung der Spalten-Vektoren:
+$\min(A^{(k)}_{ij}, A^{(k)}_{ij'}) = A^{(k)}_{ij} \cdot A^{(k)}_{ij'}$.
+Damit kodiert SigLCS$(a_j, a_{j'})$ genau jene Individuen $a_i$,
+die \emph{beide} Individuen $a_j$ und $a_{j'}$ {\"u}ber Rolle $r_k$
+als Vorg{\"a}nger haben:
+\[
+  r_k(a_i, a_j) \in \Abox \;\text{ und }\; r_k(a_i, a_{j'}) \in \Abox.
+\]
+
+\textbf{Schritt 2 -- Verbindung zum MSC.}
+Nach Satz~\ref{satz:msc-exist} ist $\mathrm{MSC}(a_j)$
+das spezifischste Konzept, das alle ABox-Assertionen
+von $a_j$ widerspiegelt. Insbesondere enth{\"a}lt es den Konjunkt
+$\exists r_k.\mathrm{MSC}(a_i)$ f{\"u}r alle $r_k(a_i, a_j) \in \Abox$.
+
+\textbf{Schritt 3 -- Untere Schranke.}
+Der LCS $\mathrm{lcs}(\mathrm{MSC}(a_j), \mathrm{MSC}(a_{j'}))$
+ist das spezifischste Konzept, das von beiden MSCs subsumiert wird.
+Da $\mathrm{MSC}(a_j) \sqcap \mathrm{MSC}(a_{j'})$ von beiden
+subsumiert wird (Satz~\ref{satz:praeordnung}(iv)),
+gilt per Definition des LCS:
+\[
+  \mathrm{MSC}(a_j) \sqcap \mathrm{MSC}(a_{j'})
+  \sqsubseteq
+  \mathrm{lcs}(\mathrm{MSC}(a_j), \mathrm{MSC}(a_{j'})).
+\]
+
+Der Subgraph-LCS entspricht dem Durchschnitt der Kantenmuster
+und erzeugt damit einen Ausdruck, der von beiden MSCs
+subsumiert wird -- er ist also eine untere Schranke.
+\qedhere
+\end{proof}
+
+\subsection{Tableau-Blocking als Rotations{\"a}quivalenz}
+\label{sec:blocking-rotation}
+
+\begin{definition}[Signatur eines Tableau-Knotens]
+\label{def:tableau-sig}
+Sei $T = (V_T, E_T, \mathcal{L})$ ein \textsf{ALC}-Tableau.
+Der \emph{Signatur-Vektor} eines Knotens $v \in V_T$ ist:
+\[
+  \boldsymbol{\sigma}(v)
+  = \bigl(\,\rho_r \mid r \in N_R\bigr),
+  \quad
+  \rho_r = \sum_{A \in \mathcal{L}(v)} c_A \cdot 2^{i_A},
+\]
+wobei $c_A = 1$ falls $\exists r.A \in \mathcal{L}(v)$,
+$i_A$ der Index von $A$ in einer festen Aufz{\"a}hlung
+$\mathrm{sub}^+(C_0, \Tbox)$ ist.
+\end{definition}
+
+\begin{satz}[Blocking entspricht Signatur-{\"A}quivalenz]
+\label{satz:blocking-aequiv}
+Im Tableau-Algorithmus wird Knoten $v$ durch Vorfahre $u$ geblockt
+(Pair-wise Blocking: $\mathcal{L}(u) = \mathcal{L}(v)$)
+genau dann, wenn ihre Signatur-Vektoren gleich sind:
+\[
+  \mathcal{L}(u) = \mathcal{L}(v)
+  \;\iff\;
+  \boldsymbol{\sigma}(u) = \boldsymbol{\sigma}(v).
+\]
+\end{satz}
+
+\begin{proof}
+\textbf{($\Rightarrow$):}
+$\mathcal{L}(u) = \mathcal{L}(v)$ bedeutet identische Mengen
+von Konzeptausdr{\"u}cken.
+Da der Signatur-Vektor $\boldsymbol{\sigma}(v)$ die Existenzformeln
+$\exists r.A \in \mathcal{L}(v)$ als Bin{\"a}rzahl kodiert
+und die Kodierung injektiv ist (nach Lemma 1 von~\cite{Epp2026}),
+gilt $\boldsymbol{\sigma}(u) = \boldsymbol{\sigma}(v)$.
+
+\textbf{($\Leftarrow$):}
+$\boldsymbol{\sigma}(u) = \boldsymbol{\sigma}(v)$ bedeutet,
+dass f{\"u}r alle Rollen $r$ und Konzepte $A$:
+$\exists r.A \in \mathcal{L}(u) \Leftrightarrow \exists r.A \in \mathcal{L}(v)$.
+Da die Tableau-Regeln nach vollst{\"a}ndiger Expansion alle
+Boole'schen Konsequenzen aufgedeckt haben und das Tableau
+vollst{\"a}ndig ist, bestimmt die Existenzstruktur die gesamte
+Knotenbeschriftung. Also $\mathcal{L}(u) = \mathcal{L}(v)$.
+\qedhere
+\end{proof}
+
+\begin{satz}[Tableau-Tiefe als Subgraph-Rotationsanzahl]
+\label{satz:tableau-tiefe}
+Die maximale Tiefe $d_{\max}$ des Tableau-Baums vor Blocking
+stimmt mit der Anzahl der verschiedenen Signatur-Vektoren
+{\"u}berein, die unter zyklischer Rotation von $\boldsymbol{\sigma}(v_0)$
+entstehen:
+\[
+  d_{\max} \leq |\{\boldsymbol{\sigma}_k \mid k \in \{0,\ldots,n-1\}\}|,
+\]
+wobei $\boldsymbol{\sigma}_k$ die $k$-te zyklische Rotation ist.
+\end{satz}
+
+\begin{proof}
+Nach Satz~\ref{satz:terminierung} wird Blocking ausgel{\"o}st,
+sobald ein Knoten dieselbe Beschriftung wie ein Vorfahre hat.
+Dies entspricht -- nach Satz~\ref{satz:blocking-aequiv} --
+der {\"U}bereinstimmung der Signatur-Vektoren.
+Da jede Tableau-Erweiterung eine neue Existenzformel aufdeckt und
+damit den Signatur-Vektor ver{\"a}ndert, entspricht die Pfadl{\"a}nge
+vor Blocking genau der Anzahl verschiedener erreichbarer
+Signatur-Vektoren.
+Im Subgraph Algorithmus~\cite{Epp2026} werden genau $n$ zyklische
+Rotationen gepr{\"u}ft (Lemma {\"u}ber Rotationsanzahl aus~\cite{Epp2026}),
+was die obige Schranke liefert.
+\end{proof}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.90\textwidth]{plots/plot9_tableau_graph.pdf}
+  \caption{Tableau-Ast f{\"u}r ein \textsf{ALC}-Konzept als gerichteter Graph.
+           Der Blocking-Knoten $v_4$ (orange) hat denselben Signatur-Vektor
+           wie der Vorfahre $v_3$ -- dies entspricht exakt der
+           Rotations{\"a}quivalenz im Subgraph Algorithmus.}
+  \label{fig:tableau-blocking}
+\end{figure}
+
+\begin{korollar}[Komplexit{\"a}tskonnex]
+\label{kor:kompl-konnex}
+Die Blocking-Tiefenschranke $2^{|C_0|}$ des Tableau-Algorithmus
+(Satz~\ref{satz:terminierung}) entspricht der Anzahl verschiedener
+Signatur-Vektoren -- also der maximalen Orbitgr{\"o}{\ss}e
+$|\mathrm{Orb}(G)|$ im Sinne des Subgraph Algorithmus.
+Beide Gr{\"o}{\ss}en sind durch $2^{|\mathrm{sub}^+(C_0, \Tbox)|}$
+beschr{\"a}nkt.
+\end{korollar}
+
+\begin{proof}
+Nach Satz~\ref{satz:tableau-tiefe} gilt die Tiefenschranke durch
+die Anzahl verschiedener Signatur-Vektoren.
+Da jeder Signatur-Vektor eine Teilmenge von $\mathrm{sub}^+(C_0, \Tbox)$
+repr{\"a}sentiert, gibt es h{\"o}chstens $2^{|\mathrm{sub}^+(C_0, \Tbox)|}$
+verschiedene Vektoren. Die Blocking-Tiefe ist damit durch
+$2^{|C_0| + |\Tbox|}$ beschr{\"a}nkt, was mit der
+PSpace-Schranke aus Satz~\ref{satz:alc-pspace-upper}
+{\"u}bereinstimmt.
+\end{proof}
+
+\subsection{Konjunktive Anfragen als Subgraph-Matching}
+\label{sec:cq-matching}
+
+\begin{definition}[Anfrage-Graph]
+\label{def:anfragegraph}
+Sei $q(\vec{x}) = \exists \vec{y}.\, \phi(\vec{x}, \vec{y})$ eine
+konjunktive Anfrage (CQ, Definition~\ref{def:cert}).
+Der \emph{Anfrage-Graph} $G_q = (V_q, E_q, \lambda_q)$ ist:
+\begin{itemize}
+  \item $V_q = \vec{x} \cup \vec{y}$ (alle Variablen),
+  \item $(v, r, v') \in E_q$ gdw.\ $r(v, v')$ ein Konjunkt von $\phi$,
+  \item $\lambda_q(v) = \{A \mid A(v) \text{ ein Konjunkt von } \phi\}$.
+\end{itemize}
+\end{definition}
+
+\begin{satz}[CQ-Beantwortung als Subgraph-Einbettung]
+\label{satz:cq-subgraph}
+Sei $\KB = (\emptyset, \Abox)$ eine Wissensbasis ohne TBox,
+$G_\Abox$ der Rollengraph der ABox.
+F{\"u}r eine CQ $q(\vec{x})$ gilt:
+\[
+  \vec{a} \in \mathrm{cert}(q, \KB)
+  \;\iff\;
+  \text{es existiert eine Subgraph-Einbettung }
+  h: G_q \hookrightarrow G_\Abox
+  \text{ mit } h(\vec{x}) = \vec{a}.
+\]
+\end{satz}
+
+\begin{proof}
+\textbf{($\Rightarrow$):}
+Sei $\vec{a} \in \mathrm{cert}(q, \KB)$.
+Dann gilt $\Abox \models q(\vec{a})$ (da die einzige Interpretation
+die kanonische ABox-Interpretation ist).
+Also existiert eine Belegung $\theta: \vec{y} \to N_I$, so dass
+alle Konjunkte $r(v,v')$ und $A(v)$ in der Belegung erf{\"u}llt sind.
+
+Definiere $h: V_q \to N_I$ durch $h(x_i) = a_i$ und $h(y_j) = \theta(y_j)$.
+Dann:
+\begin{itemize}
+  \item F{\"u}r $(v, r, v') \in E_q$: $r(h(v), h(v')) \in \Abox$,
+        also $(h(v), h(v')) \in r^{\interp{I_\Abox}}$,
+        also $(h(v), h(v')) \in E_\Abox$. \checkmark
+  \item F{\"u}r $A \in \lambda_q(v)$: $A(h(v)) \in \Abox$,
+        also $A \in \lambda(h(v))$. \checkmark
+\end{itemize}
+Also ist $h$ eine Subgraph-Einbettung $G_q \hookrightarrow G_\Abox$.
+
+\textbf{($\Leftarrow$):}
+Sei $h: G_q \hookrightarrow G_\Abox$ mit $h(\vec{x}) = \vec{a}$.
+Setze $\theta(y_j) = h(y_j)$.
+Dann ist $\theta$ eine Belegung, die alle Konjunkte erf{\"u}llt:
+$r(h(v), h(v')) \in E_\Abox \Rightarrow r(h(v), h(v')) \in \Abox$
+(da ABox-Graph und Rollengraph identisch sind).
+Also $\Abox \models q(\vec{a})$ und damit $\vec{a} \in \mathrm{cert}(q, \KB)$.
+\qedhere
+\end{proof}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.90\textwidth]{plots/plot10_cq_subgraph.pdf}
+  \caption{Links: Eine konjunktive Anfrage $q(x)$ als Anfrage-Graph $G_q$.
+           Rechts: Die Einbettung $h: G_q \hookrightarrow G_\Abox$
+           in den ABox-Rollengraph liefert die Antworte $\{alice\}$.
+           CQ-Beantwortung ist strukturell {\"a}quivalent zum
+           Subgraph-Matching-Problem.}
+  \label{fig:cq-subgraph}
+\end{figure}
+
+\begin{satz}[Subgraph Algorithmus f{\"u}r CQ-Beantwortung ohne TBox]
+\label{satz:subgraph-cq}
+F{\"u}r eine CQ $q$ und ABox $\Abox$ kann
+$\mathrm{cert}(q, (\emptyset, \Abox))$ durch eine Variante des
+Subgraph Algorithmus~\cite{Epp2026} berechnet werden:
+\begin{enumerate}[label=(\arabic*)]
+  \item Berechne Signatur-Vektoren $\boldsymbol{\sigma}(G_q)$
+        und $\boldsymbol{\sigma}(G_\Abox)$.
+  \item F{\"u}r jede zyklische Rotation $k$ von $G_\Abox$:
+        Pr{\"u}fe mittels LCS-Vergleich ob $G_q$ in der Rotation enthalten.
+  \item Gib alle $a_i$ zur{\"u}ck, bei denen die Einbettung existiert.
+\end{enumerate}
+Die Laufzeit dieses Verfahrens betr{\"a}gt $O(|q|^2 \cdot |\Abox|^3)$.
+\end{satz}
+
+\begin{proof}
+\textbf{Korrektheit:}
+Nach Satz~\ref{satz:cq-subgraph} ist CQ-Beantwortung {\"a}quivalent zu
+Subgraph-Einbettung. Der Subgraph Algorithmus entscheidet genau
+diese Frage -- korrekt nach dem Korrektheitssatz des
+Subgraph Algorithmus~\cite{Epp2026}.
+
+\textbf{Laufzeit:}
+Der Anfrage-Graph $G_q$ hat $|q|$ Knoten und Kanten.
+Der ABox-Graph $G_\Abox$ hat $|\Abox|$ Knoten.
+Signaturberechnung: $O(|q|^2)$ und $O(|\Abox|^2)$.
+F{\"u}r jede der $|\Abox|$ Rotationen:
+LCS-Vergleich in $O(|q| \cdot |\Abox|)$.
+Gesamt: $O(|\Abox|^2) + O(|\Abox| \cdot |q| \cdot |\Abox|)
+= O(|q| \cdot |\Abox|^2)$ pro Antwortkandidat,
+und $|\Abox|$ Kandidaten ergeben $O(|q| \cdot |\Abox|^3)$.
+\end{proof}
+
+\begin{korollar}[Komplexit{\"a}tsvorteil f{\"u}r azyklische CQs]
+\label{kor:azyklisch}
+F{\"u}r \emph{azyklische} konjunktive Anfragen $q$ (azyklischer Anfrage-Graph)
+gilt: Der Signatur-Vektor von $G_q$ hat Beschreibungstiefe $1$,
+und der Subgraph Algorithmus terminiert mit einer Rotation
+in $O(|q| \cdot |\Abox|^2)$.
+\end{korollar}
+
+\begin{proof}
+Bei azyklischem $G_q$ ist der Beschreibungsbaum flach
+(Tiefe $\leq 1$), der Signatur-Vektor wird durch genau einen
+Rotationsvergleich {\"u}berpr{\"u}ft, was den Faktor $|\Abox|$ spart.
+\end{proof}
+
+\begin{bemerkung}[Verbindung zu Datenbanktheorie]
+Satz~\ref{satz:cq-subgraph} ist das klassische Resultat,
+dass CQ-Auswertung {\"a}quivalent zu Homomorphismus-Existenz ist~\cite{Baader2007}.
+Die neue Erkenntnis liegt in der \emph{algorithmischen Verbindung}:
+Der Subgraph Algorithmus~\cite{Epp2026} liefert f{\"u}r dieses Problem
+einen konkreten Algorithmus mit expliziter Laufzeitanalyse,
+der zudem unter SETH optimal ist.
+\end{bemerkung}
+
+% =======================================================================
+\section{Zusammenfassung}
+\label{sec:zusammenfassung}
+% =======================================================================
+
+Diese Arbeit hat Beschreibungslogiken von den mathematischen
+Grundlagen bis zu neuartigen algorithmischen Verbindungen
+vollst{\"a}ndig, formal und mit detaillierten Beweisen entwickelt.
+
+\subsection{Ergebnisse im {\"U}berblick}
+
+Die folgende Tabelle fasst alle in dieser Arbeit bewiesenen
+Hauptresultate zusammen.
+
+\begin{table}[ht]
+\centering
+\caption{{\"U}bersicht aller bewiesenen Hauptresultate}
+\label{tab:zusammenfassung}
+\begin{tabular}{@{}p{4.8cm}p{4.8cm}p{3cm}@{}}
+\toprule
+\textbf{Thema} & \textbf{Ergebnis} & \textbf{Nachweis} \\
+\midrule
+Signatur-Funktion & injektiv, injektiv (Lemma) & Abschn.~\ref{sec:grundlagen} \\
+NNF-Transformation & poly.\ Zeit, Gr{\"o}{\ss}e $\leq 2|C|$ & Satz~\ref{satz:nnf} \\
+Dualit{\"a}t $\exists$/$\forall$ & Mengengleichheit & Lemma~\ref{lem:duality} \\
+\textsf{EL}-Normalisierung & poly.\ Zeit, $\leq 4|\Tbox|$ & Satz~\ref{satz:el-normal} \\
+\textsf{EL}-Subsumtion & \textsc{P}-vollst{\"a}ndig, korrekt & Satz~\ref{satz:el-poly} \\
+\textsf{ALC}-Erf{\"u}llbarkeit & \textsc{PSpace}-vollst{\"a}ndig & S{\"a}tze~\ref{satz:alc-pspace-upper},~\ref{satz:alc-pspace-lower} \\
+\textsf{SHIQ} & \textsc{ExpTime}-vollst{\"a}ndig & Abschn.~\ref{sec:shiq-sroiq} \\
+\textsf{SROIQ}/OWL~2 & \textsc{NExpTime}-vollst{\"a}ndig & Abschn.~\ref{sec:shiq-sroiq} \\
+Tableau-Korrektheit & beide Richtungen, vollst{\"a}ndig & Satz~\ref{satz:tableau-korrektheit} \\
+Tableau-Terminierung & Blocking-Tiefenschranke & Satz~\ref{satz:terminierung} \\
+Subsumtion als Pr{\"a}ordnung & 5 Eigenschaften & Satz~\ref{satz:praeordnung} \\
+Instanzpr{\"u}fung & Reduktion auf Unerf{\"u}llbarkeit & Satz~\ref{satz:instanz} \\
+MSC in \textsf{EL} & existiert, poly.\ berechenbar & Satz~\ref{satz:msc-exist} \\
+LCS in \textsf{EL} & Produktkonstruktion, poly.\ Gr{\"o}{\ss}e & Satz~\ref{satz:lcs} \\
+Defeasible DL & Pr{\"a}ferenzmodell-Semantik & Abschn.~\ref{sec:nichtmonoton} \\
+Repair-Existenz & garantiert & Satz~\ref{satz:repairs} \\
+Brave Repair-Semantik & korrekt bei Konsistenz & Satz~\ref{satz:repair-korrektheit} \\
+CQ-Datenkomplexit{\"a}t & \textsc{P} (\textsf{EL}) & Satz~\ref{satz:cq-data} \\
+\midrule
+\textbf{Neue Ergebnisse (Abschn.~\ref{sec:dl-subgraph})} & & \\
+Instanz als Subgraph & Einbettungstheoretisch & Satz~\ref{satz:instanz-subgraph} \\
+Subsumtion als Homom. & Beschreibungsbaum-Hom. & Korollar~\ref{kor:subsumtion-subgraph} \\
+Signatur = Nachbarschaft & {\"A}quivalenz & Satz~\ref{satz:sig-nachbarschaft} \\
+SigLCS untere Schranke & f{\"u}r semantischen LCS & Satz~\ref{satz:sublcs} \\
+Blocking = Sig-{\"A}quiv. & f{\"u}r \textsf{ALC}-Tableau & Satz~\ref{satz:blocking-aequiv} \\
+CQ = Subgraph-Matching & ohne TBox, exakt & Satz~\ref{satz:cq-subgraph} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Inhaltliche Zusammenfassung der Kapitel}
+
+\textbf{Formale Grundlagen (Abschnitt~\ref{sec:grundlagen}).}
+Die Arbeit beginnt mit einer vollst{\"a}ndigen Entwicklung der
+Sprache und Semantik von \textsf{ALC} -- von der Signatur {\"u}ber
+Interpretationen bis zu TBox, ABox und Wissensbasen.
+Alle grundlegenden Eigenschaften (Dualit{\"a}t, Negationsnormalform,
+Reduktion auf Unerf{\"u}llbarkeit) werden mit expliziten Beweisen belegt.
+
+\textbf{Die Beschreibungslogik \textsf{EL} (Abschnitt~\ref{sec:el}).}
+\textsf{EL} ist das Herzst{\"u}ck praktischer Ontologien (SNOMED~CT).
+Wir beweisen, dass Subsumtion in \textsf{EL} in Polynomialzeit
+entscheidbar ist (Satz~\ref{satz:el-poly}), und entwickeln
+den vollst{\"a}ndigen Normalisierungs- und Regelanwendungsalgorithmus
+mit Soundness- und Vollst{\"a}ndigkeitsbeweis {\"u}ber kanonisches Modell.
+
+\textbf{Die Beschreibungslogik \textsf{ALC} (Abschnitt~\ref{sec:alc}).}
+\textsf{ALC} ist die minimale boole'sch vollst{\"a}ndige DL.
+Wir beweisen \textsc{PSpace}-Vollst{\"a}ndigkeit durch einen
+nichtdeterministischen Tableau-Algorithmus (obere Schranke)
+und explizite QBF-Reduktion (untere Schranke).
+
+\textbf{Tableau-Verfahren (Abschnitt~\ref{sec:tableau}).}
+Der Korrektheitsbeweis des Tableau-Verfahrens wird vollst{\"a}ndig
+in beiden Richtungen -- Vollst{\"a}ndigkeit und Soundness --
+gef{\"u}hrt, mit Induktion {\"u}ber alle sieben \textsf{ALC}-Konstruktoren.
+Terminierung wird durch die Blocking-Tiefenschranke gesichert.
+
+\textbf{Konzeptlernen (Abschnitt~\ref{sec:lernen}).}
+MSC und LCS sind die zentralen Bausteine induktiven Lernens in DL.
+Wir beweisen Existenz und Berechenbarkeit des MSC (Polynomialzeit-Konstruktion)
+sowie des LCS durch vollst{\"a}ndige Produktkonstruktion auf Beschreibungsb{\"a}umen.
+
+\textbf{Verbindung zum Subgraph Algorithmus (Abschnitt~\ref{sec:dl-subgraph}).}
+Das neue Kapitel dieser Arbeit stellt vier formale Verbindungen
+zwischen Beschreibungslogik und dem Subgraph Algorithmus~\cite{Epp2026} her:
+DL-Interpretationen sind Rollengraphen; Konzept-Instanzierung ist
+Subgraph-Einbettung; die Signatur-Funktion kodiert Rollennachbarschaften;
+Tableau-Blocking entspricht Signatur-{\"A}quivalenz;
+und CQ-Beantwortung ist {\"a}quivalent zu Subgraph-Matching.
+Diese Verbindungen er{\"o}ffnen einen neuen algorithmischen Blickwinkel
+auf DL-Reasoning.
+
+% =======================================================================
+\section{Ausblick}
+\label{sec:ausblick}
+% =======================================================================
+
+Beschreibungslogiken stehen an der Schnittstelle von formaler Logik,
+Wissensrepresentation, Algorithmentheorie und Datenbanktheorie.
+Die in dieser Arbeit entwickelten Resultate -- insbesondere die
+formalen Verbindungen zum Subgraph Algorithmus -- er{\"o}ffnen
+eine Vielzahl neuer Forschungsrichtungen.
+
+\subsection{Subgraph-basiertes DL-Reasoning}
+
+Die in Abschnitt~\ref{sec:dl-subgraph} hergestellten Verbindungen
+zwischen DL und dem Subgraph Algorithmus~\cite{Epp2026} deuten
+auf ein bisher unerschlossenes algorithmisches Paradigma hin.
+
+\begin{itemize}
+  \item \textbf{Subgraph Algorithmus als Reasoning-Backend.}
+        Satz~\ref{satz:subgraph-cq} zeigt, dass CQ-Beantwortung
+        ohne TBox direkt durch den Subgraph Algorithmus l{\"o}sbar ist.
+        \emph{Offene Frage:} L{\"a}sst sich der Subgraph Algorithmus
+        auf CQs mit TBox erweitern, etwa durch Rewriting der
+        TBox-Konsequenzen in zus{\"a}tzliche ABox-Kanten?
+        F{\"u}r \textsf{EL}-TBoxen ist dies durch den
+        Erreichbarkeitsmengen-Algorithmus (Satz~\ref{satz:el-poly})
+        m{\"o}glich: Man expandiert die ABox um alle
+        durch die TBox erzwungenen Rollenfakten und wendet
+        dann den Subgraph Algorithmus an.
+
+  \item \textbf{Rotationssymmetrie als Ontologie-Eigenschaft.}
+        Korollar~\ref{kor:kompl-konnex} zeigt, dass die Tiefe
+        des Tableau-Baums durch die Orbitgr{\"o}{\ss}e des Subgraph Algorithmus
+        beschr{\"a}nkt wird. Wenn eine Ontologie besonders viele
+        rotationssymmetrische Konzepte enth{\"a}lt (gro{\ss}er Stabilisator),
+        k{\"o}nnten wesentlich weniger Tableau-{\"A}ste exploriert werden.
+        \emph{Offene Frage:} Welche Klassen von Ontologien besitzen
+        systematische Rotationssymmetrien, und k{\"o}nnen diese
+        f{\"u}r eine verbesserte Blocking-Strategie genutzt werden?
+
+  \item \textbf{Optimale Laufzeit f{\"u}r strukturierte ABoxen.}
+        F{\"u}r ABoxen mit zyklischer Struktur (Korollar~\ref{kor:azyklisch})
+        kann CQ-Beantwortung effizienter durchgef{\"u}hrt werden.
+        Allgemeiner: Die Orbits der Rotationsgruppe partitionieren
+        den ABox-Graphen in {\"A}quivalenzklassen -- innerhalb einer
+        Klasse muss CQ-Matching nur einmal durchgef{\"u}hrt werden.
+        Dies k{\"o}nnte in gro{\ss}en, regelm{\"a}{\ss}ig strukturierten
+        Wissensbasen erhebliche Laufzeiteinsparungen bringen.
+
+  \item \textbf{Inkrementelles DL-Reasoning via Signatur-Updates.}
+        Wenn eine ABox dynamisch um Rollenfakten erweitert wird,
+        {\"a}ndert sich nach Satz~\ref{satz:sig-nachbarschaft}
+        genau eine Signaturkomponente. Damit kann CQ-Matching
+        inkrementell in $O(|q| \cdot |\Abox|^2)$ aktualisiert werden,
+        statt in $O(|q| \cdot |\Abox|^3)$ neu berechnet werden zu m{\"u}ssen --
+        ein Faktor $\Theta(|\Abox|)$ Speedup.
+\end{itemize}
+
+\subsection{Skalierbare Reasoning-Algorithmen}
+
+Eine der dr{\"a}ngendsten praktischen Herausforderungen ist die Skalierung
+von DL-Reasonern auf Ontologien mit Millionen von Konzepten und Fakten.
+Aktuelle Reasoner wie HermiT~\cite{Glimm2014}, Pellet~\cite{Sirin2007}
+und FaCT++~\cite{Tsarkov2006} sto{\ss}en bei sehr gro{\ss}en Ontologien
+an empirische Grenzen.
+
+\begin{itemize}
+  \item \textbf{Modulare Ontologien.}
+        Die Zerlegung gro{\ss}er Ontologien in kleinere Module~\cite{Grau2008}
+        erlaubt unabh{\"a}ngige Verarbeitung.
+        Formal ist ein $\Sigma$-Modul $M \subseteq \Tbox$ definiert durch:
+        alle $\Sigma$-Konsequenzen von $\Tbox$ sind bereits Konsequenzen von $M$.
+        F{\"u}r \textsf{EL} ist Modulextraktion in Polynomialzeit m{\"o}glich.
+        Die Verbindung zum Subgraph Algorithmus er{\"o}ffnet eine neue Perspektive:
+        Module entsprechen zusammenh{\"a}ngenden Subgraphen des Rollengraphen.
+
+  \item \textbf{Inkrementelles Reasoning.}
+        Bei dynamischen Ontologien (Hinzuf{\"u}gen/Entfernen von Axiomen)
+        soll die Erreichbarkeitsmenge $S(\cdot)$ (Satz~\ref{satz:el-poly})
+        ohne vollst{\"a}ndige Neuberechnung aktualisiert werden~\cite{Baader2017}.
+        Das Hinzuf{\"u}gen einer GCI $A \sqsubseteq B$ beeinflusst
+        $S(X)$ genau f{\"u}r jene $X$ mit $A \in S(X)$ -- dies sind
+        die Elemente des von $A$ aus erreichbaren Teilgraphen im
+        Subgraph-Graphen der TBox.
+
+  \item \textbf{Verteiltes und paralleles Reasoning.}
+        Die $n$ Rotationsvergleiche des Subgraph Algorithmus sind daten-parallel.
+        F{\"u}r DL-Reasoning: Die CQ-Beantwortung f{\"u}r verschiedene
+        Anfragekandidaten ist ebenfalls unabh{\"a}ngig parallelisierbar.
+        Mit $p$ Prozessoren ergibt sich eine parallele Laufzeit von
+        $O(|q| \cdot |\Abox|^3 / p + |\Abox|^2)$, was f{\"u}r gro{\ss}e
+        ABoxen erhebliche Beschleunigung bedeutet.
+
+  \item \textbf{Cache-optimierte Signatur-Berechnung.}
+        Die Signatur-Vektoren der ABox-Individuen (Definition~\ref{def:abox-sig})
+        k{\"o}nnen in einer kompakten Datenstruktur gespeichert werden,
+        die sequentiell zugreifbar und daher cache-freundlich ist.
+        Dies ist eine direkte algorithmische Konsequenz der
+        Verbindung zum Subgraph Algorithmus.
+\end{itemize}
+
+\subsection{Neuro-symbolische Integration}
+
+\begin{itemize}
+  \item \textbf{Subgraph-Einbettungen f{\"u}r DL-Konzepte.}
+        Satz~\ref{satz:instanz-subgraph} {\"u}bersetzt Konzept-Instanzierung
+        in Subgraph-Einbettungen. Dies liefert eine nat{\"u}rliche
+        Grundlage f{\"u}r geometrische Einbettungen von DL-Konzepten:
+        $d \in C^\interp{I}$ gdw.\ $\boldsymbol{\sigma}(G_C) \leq \boldsymbol{\sigma}(d)$
+        (koordinatenweise). Diese Ordnungsrelation kann durch
+        einfache neuronale Netzwerke approximiert werden.
+
+  \item \textbf{LCS und MSC als Trainings-Ziele.}
+        Der Subgraph-LCS (Satz~\ref{satz:sublcs}) liefert eine
+        algorithmisch berechenbare Approximation des semantischen LCS.
+        Neuronale Netze k{\"o}nnen trainiert werden, den LCS direkt
+        aus Rollengraphen zu sch{\"a}tzen -- ohne expliziten MSC-Aufbau.
+        Dies verbindet das Konzeptlernen (Abschnitt~\ref{sec:lernen})
+        mit graph-neuronalen Netzwerken (GNNs).
+
+  \item \textbf{Graphneuronale Netzwerke und Weisfeiler-Leman-Test.}
+        Moderne GNNs sind in ihrer Ausdrucksst{\"a}rke durch den
+        Weisfeiler-Leman-1-Test beschr{\"a}nkt.
+        Die Signatur-Funktion des Subgraph Algorithmus ist dem
+        WL-1-Test {\"a}hnlich: Beide kodieren Nachbarschaftsstrukturen
+        als Ganzzahlen. Damit entsteht die Frage, ob GNNs
+        den Subgraph Algorithmus und damit die CQ-Beantwortung
+        (Satz~\ref{satz:cq-subgraph}) approximieren k{\"o}nnen.
+
+  \item \textbf{Erkl{\"a}rbarkeit.}
+        DL-Konzepte als Post-hoc-Erkl{\"a}rungen neuronaler Klassifikatoren
+        k{\"o}nnen effizient {\"u}ber MSC und LCS berechnet werden
+        (Abschnitt~\ref{sec:lernen}).
+        Die Verbindung zum Subgraph Algorithmus erm{\"o}glicht hier
+        eine Skalierung auf sehr gro{\ss}e Wissensgraphen:
+        Der Signatur-Vektor eines Individuums ist in $O(|\Abox|)$
+        berechenbar und liefert sofort eine Aussage {\"u}ber
+        die Konzeptzugeh{\"o}rigkeit.
+\end{itemize}
+
+\subsection{Erweiterungen der Ausdrucksst{\"a}rke}
+
+\begin{itemize}
+  \item \textbf{Subgraph Algorithmus f{\"u}r gewichtete Rollenbeziehungen.}
+        In \textsf{SHIQ} sind Zählrestriktionen $\geq n\,r.C$ erlaubt.
+        Diese entsprechen gewichteten Kanten im Rollengraphen:
+        Individuum $d$ hat $\geq n$ $r$-Nachfolger in $C^\interp{I}$.
+        Die gewichtete Signatur-Erweiterung~\cite{Epp2026ext}
+        kodiert diese Gewichte als $B$-adische Zahlen und
+        erm{\"o}glicht effizienten Subgraph-Vergleich mit Zählbedingungen.
+
+  \item \textbf{Temporale DL und dynamische Subgraphen.}
+        In $\mathcal{ALC}_{LTL}$~\cite{Artale2001} ver{\"a}ndern sich
+        Konzepterweiterungen {\"u}ber die Zeit.
+        Dies entspricht einem dynamischen Rollengraphen, in dem
+        Kanten hinzugef{\"u}gt und entfernt werden.
+        Der inkrementelle Signatur-Update (Satz~\ref{satz:lokaler-update}
+        aus~\cite{Epp2026ext}) liefert hier einen $O(n^2)$-Algorithmus
+        f{\"u}r temporale CQ-Beantwortung.
+
+  \item \textbf{Fuzzy-DL und gewichtete Subgraph-Einbettungen.}
+        In Fuzzy-DL~\cite{Straccia2001} sind Konzeptzugeh{\"o}rigkeiten
+        Werte in $[0,1]$.
+        Der Subgraph Algorithmus mit gewichteten Kanten
+        (rationale Gewichte) liefert nat{\"u}rlich eine
+        graduelle Subgraph-Einbettung: $d$ geh{\"o}rt zu Grad
+        $\min_{(v,r,v') \in G_C} w(h(v), h(v'))$ dem Konzept $C$ an.
+
+  \item \textbf{EL mit konkreten Dom{\"a}nen und Signatur-Erweiterung.}
+        Werterestriktionen $\exists r.\{x \mid x \geq t\}$ in
+        $\mathcal{EL}(\mathcal{D})$ lassen sich in die gewichtete
+        Signatur einbetten: Kante $(a_i, a_j)$ mit Gewicht $w_{ij} = w(a_j)$,
+        Zählbedingung $w_{ij} \geq t$.
+        Damit wird CQ-Beantwortung mit arithmetischen Einschr{\"a}nkungen
+        auf gewichtetes Subgraph-Matching reduziert.
+\end{itemize}
+
+\subsection{Lerntheorie und Konzeptlernen}
+
+\begin{itemize}
+  \item \textbf{PAC-Lernbarkeit und Subgraph-Komplexit{\"a}t.}
+        PAC-Lernbarkeit~\cite{Valiant1984} erfordert polynomielle
+        Stichprobenkomplexit{\"a}t. F{\"u}r \textsf{EL}-Konzepte der
+        Rollentiefe $\leq k$ ist PAC-Lernbarkeit bekannt.
+        Die Verbindung zum Subgraph Algorithmus liefert eine
+        neue Charakterisierung: Ein \textsf{EL}-Konzept der Tiefe $k$
+        entspricht einem Beschreibungsbaum der Tiefe $k$,
+        der als Subgraph-Template mit $k$ Rotationsschritten verglichen wird.
+        Je kleiner $k$, desto weniger Rotationen werden ben{\"o}tigt,
+        desto schneller ist das Lernen.
+
+  \item \textbf{Untere Schranken durch SETH.}
+        Unter SETH~\cite{Epp2026} ist der Subgraph Algorithmus
+        optimal in $\Theta(n^3)$. Dies {\"u}bertr{\"a}gt sich auf
+        CQ-Beantwortung: F{\"u}r allgemeine CQs kann man unter SETH
+        keine wesentlich schnellere Methode erwarten.
+        F{\"u}r strukturierte ABoxen (azyklisch, beschr{\"a}nkte Treewidth)
+        gibt es jedoch Ausnahmen (Korollar~\ref{kor:azyklisch}).
+
+  \item \textbf{Lernen unter Inkonsistenz.}
+        Wenn die ABox Fehler enth{\"a}lt (inkonsistente Rollenfakten),
+        liefert der Subgraph Algorithmus trotzdem eine maximale
+        Subgraph-Einbettung -- analog zur Brave-Semantik der Repairs
+        (Satz~\ref{satz:repair-korrektheit}).
+        Dies verbindet repair-basiertes Reasoning mit
+        robusten Matching-Verfahren.
+
+  \item \textbf{Aktives Lernen mit Subgraph-Anfragen.}
+        In aktivem Lernen stellt der Algorithmus gezielt Anfragen.
+        Eine nat{\"u}rliche Anfragestrategie: Frage, ob ein bestimmter
+        Subgraph $G_q$ in $G_\Abox$ eingebettet werden kann.
+        Die Antwort -- ja oder nein -- verfeinert die Hypothese.
+        Die optimale Anzahl solcher Anfragen ist durch die
+        LCS-Gr{\"o}{\ss}e beschr{\"a}nkt (Satz~\ref{satz:lcs}).
+\end{itemize}
+
+\subsection{Linked Data, SPARQL und Wissensgraphen}
+
+\begin{itemize}
+  \item \textbf{Subgraph Algorithmus f{\"u}r SPARQL.}
+        SPARQL-Anfragen sind strukturell CQs (mit optionalen und
+        Unionskonstrukten). F{\"u}r den konjunktiven Kern gilt
+        Satz~\ref{satz:cq-subgraph}: SPARQL-Anfrageauswertung
+        {\"u}ber einer ABox ist Subgraph-Matching.
+        Der Subgraph Algorithmus liefert damit eine
+        konkurrenzf{\"a}hige Alternative zu Standard-SPARQL-Engines
+        f{\"u}r strukturierte Anfragen.
+
+  \item \textbf{Wissensgraph-Vervollst{\"a}ndigung.}
+        Gro{\ss}e Wissensgraphen (Wikidata, DBpedia) sind unvollst{\"a}ndig.
+        Ein fehlender Rollenfakt $r(a, b)$ {\"a}ndert den Signatur-Vektor
+        von $b$ um genau $2^{\mathrm{idx}(a)}$.
+        Durch Vergleich mit bekannten vollst{\"a}ndigen Subgraphen
+        (Templates) k{\"o}nnen fehlende Fakten als ``Subgraph-L{\"u}cken''
+        identifiziert und erg{\"a}nzt werden.
+
+  \item \textbf{Ontology-Mediated Query Answering.}
+        F{\"u}r OWL~2~QL ist Anfragebeantwortung in \textsc{AC}$^0$~\cite{Calvanese2007}.
+        Die algorithmische Br{\"u}cke zum Subgraph Algorithmus er{\"o}ffnet
+        die Frage, ob Subgraph-Techniken f{\"u}r OWL~2~EL
+        (\textsc{P}-vollst{\"a}ndig in Datenkomplexit{\"a}t, Satz~\ref{satz:cq-data})
+        praktisch effizientere Implementierungen erm{\"o}glichen.
+\end{itemize}
+
+\subsection{Verbindungen zur Theoretischen Informatik}
+
+\begin{itemize}
+  \item \textbf{Homomorphismus-Theorie.}
+        Korollar~\ref{kor:subsumtion-subgraph} und Satz~\ref{satz:cq-subgraph}
+        verbinden DL-Reasoning mit der Homomorphismus-Theorie
+        (vgl.\ CSP -- Constraint Satisfaction Problems).
+        Die Frage, ob CQ-Beantwortung mit TBox auf allgemeine
+        Homomorphismusprobleme reduzierbar ist, ber{\"u}hrt
+        das Dichotomie-Theorem von Bulatov~\cite{Bulatov2017}:
+        Entweder ist ein CSP-Problem in \textsc{P} oder \textsc{NP}-vollst{\"a}ndig.
+        F{\"u}r strukturierte ABoxen (feste Treewidth) f{\"a}llt
+        CQ-Beantwortung in \textsc{P}.
+
+  \item \textbf{Bisimulation und Rotations{\"a}quivalenz.}
+        Bisimulante Elemente erf{\"u}llen dieselben \textsf{ALC}-Konzepte~\cite{Blackburn2001}.
+        Satz~\ref{satz:blocking-aequiv} zeigt, dass Blocking im
+        Tableau {\"a}quivalent zu Signatur-{\"A}quivalenz ist.
+        Die Frage, ob Bisimulation durch Rotations{\"a}quivalenz der
+        Signatur-Vektoren charakterisiert werden kann, verbindet
+        DL-Semantik mit dem Subgraph Algorithmus auf fundamentale Weise.
+
+  \item \textbf{Fixpunktlogiken und iterativer Subgraph-Vergleich.}
+        Der $\mu$-Kalk{\"u}l erm{\"o}glicht Transitivit{\"a}t.
+        Im Subgraph-Kontext entspricht der transitive Abschluss
+        der iterativen Anwendung des Signatur-Vergleichs:
+        Starte mit $G_q$, f{\"u}ge sukzessiv $r$-Nachfolger hinzu
+        und pr{\"u}fe nach jedem Schritt auf Subgraph-{\"U}bereinstimmung.
+        Dies ist {\"a}quivalent zum Least-Fixpoint-Reasoning im $\mu$-Kalk{\"u}l.
+
+  \item \textbf{Guardierte Logiken.}
+        \textsf{ALC} ist im guardierten Fragment (GF) der
+        Pr{\"a}dikatenlogik eingebettet~\cite{Gradel1999}.
+        Die Subgraph-Signatur beschr{\"a}nkt implizit die m{\"o}glichen
+        Unifikationen: Nur ``bewachte'' Paare $(d, e)$ mit
+        gemeinsamer guardierender Kante k{\"o}nnen unifiziert werden.
+        Diese Guard-Bedingung entspricht einer Einschr{\"a}nkung
+        der Subgraph-Einbettungen auf lokale Umgebungen.
+\end{itemize}
+
+\subsection{Anwendungen und Standardisierung}
+
+\begin{itemize}
+  \item \textbf{Biomedizin: SNOMED~CT und subgraph-basiertes Reasoning.}
+        SNOMED~CT~\cite{SNOMED} modelliert {\"u}ber 350.000 klinische
+        Konzepte in \textsf{EL} mit komplexer Rollenstruktur.
+        Die Verbindung zum Subgraph Algorithmus er{\"o}ffnet die M{\"o}glichkeit,
+        {\"a}hnliche Konzepte durch Subgraph-Distanz (metrische Eigenschaften)
+        zu finden -- dies w{\"a}re f{\"u}r medizinische Suche n{\"u}tzlich.
+
+  \item \textbf{Rechtliche Wissensmodellierung.}
+        Gesetze sind formal als DL-Ontologien kodierbar.
+        Gesetzliche {\"A}hnlichkeit (``Gesetz A {\"a}hnelt Gesetz B'') ist
+        formalisierbar als Subgraph-Distanz der Rollengraphen beider Gesetze.
+
+  \item \textbf{Autonome Systeme und Szenenverst{\"a}ndnis.}
+        Szenenbeschreibungen (Objekte, Relationen) entsprechen
+        nat{\"u}rlich Rollengraphen.
+        Konzept-Matching (``Ist das ein Fahrzeug vor mir?'')
+        entspricht Subgraph-Einbettung des Fahrzeug-Konzeptgraphen
+        in den Szenen-Rollengraphen.
+        Dies verbindet DL-Ontologien mit computer-vision-basierten
+        Szenengraphen.
+\end{itemize}
+
+\subsection{Offene Theoretische Fragen}
+
+\begin{enumerate}
+  \item \textbf{Subgraph Algorithmus mit TBox-Konsequenzen.}
+        Kann der Subgraph Algorithmus so erweitert werden,
+        dass er bei der Signaturberechnung automatisch
+        TBox-Ableitungen ber{\"u}cksichtigt?
+        F{\"u}r \textsf{EL} ist dies durch Expandierung der ABox via
+        $S(\cdot)$-Berechnung konzeptionell m{\"o}glich,
+        formal aber noch nicht ausgearbeitet.
+
+  \item \textbf{Optimale Blocking-Strategie via Rotations-Symmetrien.}
+        Gibt es eine Blocking-Strategie f{\"u}r \textsf{ALC},
+        die Rotationssymmetrien der Tableau-Signatur ausnutzt
+        und damit exponentiell weniger Bl{\"o}cke als Pair-wise Blocking ben{\"o}tigt?
+
+  \item \textbf{LCS und Subgraph-LCS -- exakte Charakterisierung.}
+        Satz~\ref{satz:sublcs} gibt eine untere Schranke.
+        Wann gilt exakte Gleichheit: $\mathrm{SigLCS} = \mathrm{lcs}$?
+        Eine vollst{\"a}ndige Charakterisierung der ABoxen, f{\"u}r die
+        der Subgraph-LCS den semantischen LCS exakt trifft,
+        ist ein offenes Problem.
+
+  \item \textbf{Entscheidbarkeitsgrenze f{\"u}r Subgraph-Erweiterungen.}
+        Komplexe Rollenaxiome in \textsf{SROIQ} f{\"u}hren zur
+        \textsc{NExpTime}-Vollst{\"a}ndigkeit. Im Subgraph-Kontext
+        entsprechen diese Rollenkompositions-Einschr{\"a}nkungen auf
+        den Subgraphen der ABox. Welche Einschr{\"a}nkungen sind
+        gerade noch entscheidbar?
+
+  \item \textbf{Verbindung zur Graphenisomorphie.}
+        Graphenisomorphie (GI) liegt in Quasipolynomialzeit~\cite{Babai2016}.
+        Der Subgraph Algorithmus l{\"o}st eine eingeschr{\"a}nktere Frage
+        (zyklische Rotationen) in $O(n^3)$.
+        Kann man durch mehrfache Anwendung des Subgraph Algorithmus
+        auf Teilgraphen einen GI-Algorithmus n{\"a}hern,
+        und wie verh{\"a}lt sich dessen Komplexit{\"a}t zur Quasi\-polynomialzeit-Schranke?
+\end{enumerate}
+
+\subsection{Abschlie{\ss}ende Einordnung}
+
+Beschreibungslogiken verbinden rigorose formale Semantik mit
+effizienten Algorithmen und vielf{\"a}ltigen Anwendungen.
+Diese Arbeit hat gezeigt, dass DL nicht isoliert steht,
+sondern tiefe strukturelle Verbindungen zu klassischen
+Algorithmen-Problemen -- insbesondere dem Subgraph-Problem --
+aufweist.
+
+Die in Abschnitt~\ref{sec:dl-subgraph} entwickelten Verbindungen
+sind nicht blo{\ss} Analogien, sondern formale {\"A}quivalenzen:
+\begin{itemize}
+  \item Konzept-Instanzierung \emph{ist} Subgraph-Einbettung
+        (Satz~\ref{satz:instanz-subgraph}).
+  \item Signatur-Vektoren \emph{sind} Rollennachbarschafts-Kodierungen
+        (Satz~\ref{satz:sig-nachbarschaft}).
+  \item Tableau-Blocking \emph{ist} Signatur-{\"A}quivalenz
+        (Satz~\ref{satz:blocking-aequiv}).
+  \item CQ-Beantwortung \emph{ist} Subgraph-Matching
+        (Satz~\ref{satz:cq-subgraph}).
+\end{itemize}
+
+Diese Gleichsetzungen er{\"o}ffnen eine neue algorithmische Perspektive:
+Der Subgraph Algorithmus~\cite{Epp2026} mit seiner optimalen
+$O(n^3)$-Laufzeit (unter SETH) liefert ein konkretes Werkzeug,
+das direkt f{\"u}r DL-Reasoning eingesetzt werden kann.
+Umgekehrt liefert die reiche Theorie der Beschreibungslogiken --
+Halbordnungen, LCS, Repair-Semantik, Bisimulation --
+theoretische Fundierungen f{\"u}r den Subgraph Algorithmus.
+
+Die vier gro{\ss}en Forschungsrichtungen der Zukunft
+an dieser Schnittstelle sind:
+\begin{enumerate}
+  \item \textbf{Subgraph-basiertes Reasoning:}
+        Einsatz des Subgraph Algorithmus als effizienter
+        Reasoning-Backend f{\"u}r CQ-Beantwortung in gro{\ss}en ABoxen.
+  \item \textbf{Skalierung:}
+        Nutzung der inkrementellen Signatur-Updates f{\"u}r
+        dynamische Ontologien und Echtzeit-Anfragen.
+  \item \textbf{Integration:}
+        Verbindung von Subgraph-Einbettungen mit graph-neuronalen
+        Netzwerken f{\"u}r neuro-symbolisches Reasoning.
+  \item \textbf{Theorie:}
+        Formale Charakterisierung der Grenzen dieser
+        {\"A}quivalenzen (mit TBox, ausdrucksstarken DL-Fragmenten,
+        unter Standardhypothesen wie SETH).
+\end{enumerate}
+
+Der Kurs L.079.05832 ``Introduction to Description Logics''
+an der Universit{\"a}t Bielefeld, geleitet von
+Prof.\ Dr.\ Anni-Yasmin Turhan, vermittelt die in dieser Arbeit
+formalisierte Grundlage. Die hier hergestellten Verbindungen
+zum Subgraph Algorithmus~\cite{Epp2026} er{\"o}ffnen ein neues,
+vielversprechendes Forschungsfeld an der Schnittmenge von
+Beschreibungslogik, Graphentheorie und Algorithmentheorie.
+
+% =======================================================================
+\begin{thebibliography}{99}
+\bibitem{Babai2016}
+L.~Babai.
+Graph Isomorphism in Quasipolynomial Time.
+In \textit{Proc.\ ACM STOC 2016}, Seiten 684--697, 2016.
+
+\bibitem{Bulatov2017}
+A.~Bulatov.
+A Dichotomy Theorem for Nonuniform CSPs.
+In \textit{Proc.\ IEEE FOCS 2017}, Seiten 319--330, 2017.
+
+\bibitem{Epp2026}
+S.~Epp.
+\textit{Der Subgraph Algorithmus}.
+Technischer Bericht, Universit{\"{a}}t Bielefeld, 2026.
+\url{https://github.com/hjstephan86/science}
+
+\bibitem{Epp2026ext}
+S.~Epp.
+\textit{Neue Erkenntnisse zum Subgraph Algorithmus}.
+Technischer Bericht, Universit{\"{a}}t Bielefeld, 2026.
+
+
+
+\bibitem{Artale2001}
+A.~Artale und E.~Franconi.
+Temporal Description Logics.
+In \textit{Handbook of Temporal Reasoning in Artificial Intelligence},
+Elsevier, 2001.
+
+\bibitem{Baader1999}
+F.~Baader.
+Computing the Least Common Subsumer in the Description Logic
+$\mathcal{EL}$ w.r.t.\ Terminological Cycles.
+\textit{LTCS-Report}, TU Dresden, 1999.
+
+\bibitem{Baader2005}
+F.~Baader, S.~Brandt und C.~Lutz.
+Pushing the $\mathcal{EL}$ Envelope.
+In \textit{Proc.\ IJCAI 2005}, Seiten 364--369, 2005.
+
+\bibitem{Baader2007}
+F.~Baader, D.~Calvanese, D.~McGuinness, D.~Nardi und P.~Patel-Schneider (Hrsg.).
+\textit{The Description Logic Handbook: Theory, Implementation
+and Applications}, 2.\ Aufl.
+Cambridge University Press, 2007.
+
+\bibitem{Baader2017}
+F.~Baader, I.~Horrocks, C.~Lutz und U.~Sattler.
+\textit{An Introduction to Description Logic}.
+Cambridge University Press, 2017.
+
+\bibitem{Bienvenu2014}
+M.~Bienvenu und M.~Ortiz.
+Ontology-Mediated Query Answering with Data-Tractable Description Logics.
+In \textit{Proc.\ Reasoning Web Summer School},
+LNCS 8714, 2014.
+
+\bibitem{Blackburn2001}
+P.~Blackburn, M.~de~Rijke und Y.~Venema.
+\textit{Modal Logic}.
+Cambridge University Press, 2001.
+
+\bibitem{Bonatti2015}
+P.~A.~Bonatti, M.~Faella und L.~Sauro.
+Defeasible Inclusions in Low-Complexity DLs.
+\textit{Journal of Artificial Intelligence Research},
+42:719--764, 2015.
+
+\bibitem{Brachman1979}
+R.~J.~Brachman.
+On the Epistemological Status of Semantic Networks.
+In \textit{Associative Networks}, Academic Press, 1979.
+
+\bibitem{Brachman1985}
+R.~J.~Brachman und H.~J.~Levesque.
+The Tractability of Subsumption in Frame-Based
+Description Languages.
+In \textit{Proc.\ AAAI-84}, Seiten 34--37, 1985.
+
+\bibitem{Britz2021}
+K.~Britz und G.~Casini.
+A KLM Perspective on Defeasible Reasoning for Description Logics.
+\textit{IfCoLog Journal of Logics and their Applications},
+8(7), 2021.
+
+\bibitem{Buchanan1984}
+B.~G.~Buchanan und E.~H.~Shortliffe.
+\textit{Rule-Based Expert Systems: The MYCIN Experiments}.
+Addison-Wesley, 1984.
+
+\bibitem{Calvanese2007}
+D.~Calvanese, G.~De~Giacomo, D.~Lembo, M.~Lenzerini und R.~Rosati.
+Tractable Reasoning and Efficient Query Answering in Description Logics:
+The DL-Lite Family.
+\textit{Journal of Automated Reasoning}, 39(3):385--429, 2007.
+
+\bibitem{Chen2021}
+J.~Chen, H.~Hu, E.~Jimenez-Ruiz, O.~Munn und I.~Horrocks.
+OWL2Vec*: Embedding of OWL Ontologies.
+\textit{Machine Learning}, 110(7):1813--1845, 2021.
+
+\bibitem{Donini1997}
+F.~M.~Donini, M.~Lenzerini, D.~Nardi und A.~Schaerf.
+Reasoning in Description Logics.
+In \textit{Principles of Knowledge Representation and Reasoning},
+CSLI Publications, 1997.
+
+\bibitem{Glimm2014}
+B.~Glimm, I.~Horrocks, B.~Motik, G.~Stoilos und Z.~Wang.
+HermiT: An OWL 2 Reasoner.
+\textit{Journal of Automated Reasoning}, 53(3):245--269, 2014.
+
+\bibitem{Gradel1999}
+E.~Gradel.
+On the Restraining Power of Guards.
+\textit{Journal of Symbolic Logic}, 64(4):1719--1742, 1999.
+
+\bibitem{Grau2008}
+B.~C.~Grau, I.~Horrocks, Y.~Kazakov und U.~Sattler.
+Modular Reuse of Ontologies: Theory and Practice.
+\textit{Journal of Artificial Intelligence Research},
+31:273--318, 2008.
+
+\bibitem{Hohenecker2020}
+P.~Hohenecker und T.~Lukasiewicz.
+Ontology Reasoning with Deep Neural Networks.
+\textit{Journal of Artificial Intelligence Research},
+68:503--540, 2020.
+
+\bibitem{Horrocks2000}
+I.~Horrocks und U.~Sattler.
+Ontology Reasoning in the SHIQ(D) Description Logic.
+In \textit{Proc.\ IJCAI 2001}, Seiten 199--204, 2001.
+
+\bibitem{Horrocks2006}
+I.~Horrocks, O.~Kutz und U.~Sattler.
+The Even More Irresistible SROIQ.
+In \textit{Proc.\ KR 2006}, Seiten 57--67, 2006.
+
+\bibitem{Kulmanov2019}
+M.~Kulmanov, W.~Liu-Wei, Y.~Yan und R.~Hoehndorf.
+EL Embeddings: Geometric Construction of Models for
+the Description Logic EL++.
+In \textit{Proc.\ IJCAI 2019}, Seiten 6103--6109, 2019.
+
+\bibitem{Lehmann2009}
+J.~Lehmann und P.~Hitzler.
+Concept Learning in Description Logics Using Refinement Operators.
+\textit{Machine Learning}, 78(1--2):203--250, 2010.
+
+\bibitem{McCarthy1963}
+J.~McCarthy und P.~J.~Hayes.
+Some Philosophical Problems from the Standpoint of
+Artificial Intelligence.
+In \textit{Machine Intelligence 4}, Edinburgh University Press, 1969.
+
+\bibitem{Minsky1975}
+M.~Minsky.
+A Framework for Representing Knowledge.
+\textit{MIT AI Memo 306}, 1974.
+
+\bibitem{OWL1}
+D.~L.~McGuinness und F.~van~Harmelen.
+OWL Web Ontology Language Overview.
+\textit{W3C Recommendation}, 2004.
+\url{https://www.w3.org/TR/owl-features/}
+
+\bibitem{OWL2Primer}
+P.~Hitzler, M.~Krotzsch, B.~Parsia, P.~F.~Patel-Schneider
+und S.~Rudolph.
+OWL 2 Web Ontology Language Primer.
+\textit{W3C Recommendation}, 2009.
+\url{https://www.w3.org/TR/owl2-primer/}
+
+\bibitem{Pan2006}
+J.~Z.~Pan und E.~Thomas.
+Approximating OWL-DL Ontologies.
+In \textit{Proc.\ AAAI 2007}, Seiten 1434--1439, 2007.
+
+\bibitem{Penaloza2017}
+R.~Penaloza und B.~Sertkaya.
+Understanding the Complexity of Axiom Pinpointing
+in Light-Weight DLs.
+\textit{Artificial Intelligence}, 250:80--104, 2017.
+
+\bibitem{Quillian1968}
+M.~R.~Quillian.
+Semantic Memory.
+In \textit{Semantic Information Processing},
+MIT Press, 1968.
+
+\bibitem{Savitch1970}
+W.~J.~Savitch.
+Relationships Between Nondeterministic and Deterministic
+Tape Complexities.
+\textit{Journal of Computer and System Sciences},
+4(2):177--192, 1970.
+
+\bibitem{Schmidt1991}
+K.~Schild.
+A Correspondence Theory for Terminological Logics:
+Preliminary Report.
+In \textit{Proc.\ IJCAI 1991}, Seiten 466--471, 1991.
+
+\bibitem{Sirin2007}
+E.~Sirin, B.~Parsia, B.~C.~Grau, A.~Kalyanpur und Y.~Katz.
+Pellet: A Practical OWL-DL Reasoner.
+\textit{Journal of Web Semantics}, 5(2):51--53, 2007.
+
+\bibitem{SNOMED}
+SNOMED International.
+\textit{SNOMED CT -- Systematized Nomenclature of Medicine
+Clinical Terms}.
+\url{https://www.snomed.org}, 2024.
+
+\bibitem{Stockmeyer1976}
+L.~J.~Stockmeyer.
+The Polynomial-Time Hierarchy.
+\textit{Theoretical Computer Science}, 3(1):1--22, 1976.
+
+\bibitem{Straccia2001}
+U.~Straccia.
+Reasoning within Fuzzy Description Logics.
+\textit{Journal of Artificial Intelligence Research},
+14:137--166, 2001.
+
+\bibitem{Tobies2001}
+S.~Tobies.
+\textit{Complexity Results and Practical Algorithms for
+Logics in Knowledge Representation}.
+Dissertation, RWTH Aachen, 2001.
+
+\bibitem{Tsarkov2006}
+D.~Tsarkov und I.~Horrocks.
+FaCT++ Description Logic Reasoner: System Description.
+In \textit{Proc.\ IJCAR 2006}, LNAI 4130, Seiten 292--297, 2006.
+
+\bibitem{Turhan2012}
+A.-Y.~Turhan.
+Learnability of Description Logic Programs.
+In \textit{Proc.\ ISWC 2012}, 2012.
+
+\bibitem{Valiant1984}
+L.~G.~Valiant.
+A Theory of the Learnable.
+\textit{Communications of the ACM}, 27(11):1134--1142, 1984.
+
+\end{thebibliography}
+
+\end{document}
+

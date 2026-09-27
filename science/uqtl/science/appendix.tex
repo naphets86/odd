@@ -1,0 +1,407 @@
+﻿% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\appendix
+\section{Vollständige IQT-Grammatik (EBNF)}
+\label{app:grammatik}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Die folgende EBNF-Grammatik definiert die vollständige Syntax des
+Intermediate Query Tree.
+
+\begin{lstlisting}[style=sqlstyle, caption={IQT-Grammatik in EBNF},
+  label=lst:iqt_ebnf, numbers=left]
+IQT        ::= QueryNode
+
+QueryNode  ::= ScanNode
+             | FilterNode
+             | ProjectNode
+             | JoinNode
+             | GroupAggNode
+             | SortNode
+             | LimitNode
+             | WindowNode
+             | SubqueryNode
+             | SetOpNode
+             | WithNode
+
+ScanNode       ::= 'SCAN' '{' 'table' ':' QualName
+                              ('alias' ':' Ident)?
+                              ('hint' ':' IndexHint)?
+                   '}'
+
+FilterNode     ::= 'FILTER' '{' 'source'    ':' QueryNode
+                                'predicate' ':' Expr
+                                'position'  ':' ('WHERE' | 'HAVING')
+                   '}'
+
+ProjectNode    ::= 'PROJECT' '{' 'source'   ':' QueryNode
+                                 'columns'  ':' ProjItem+
+                                 'distinct' ':' Bool
+                   '}'
+
+ProjItem       ::= 'Star' | 'Expr' '{' 'expr' ':' Expr ('alias' ':' Ident)? '}'
+
+JoinNode       ::= 'JOIN' '{' 'left'      ':' QueryNode
+                              'right'     ':' QueryNode
+                              'type'      ':' JoinType
+                              'condition' ':' JoinCond
+                   '}'
+
+JoinType       ::= 'INNER' | 'LEFT_OUTER' | 'RIGHT_OUTER'
+                 | 'FULL_OUTER' | 'CROSS'
+
+JoinCond       ::= 'ON'    '{' 'predicate' ':' Expr '}'
+                 | 'USING' '{' 'columns'   ':' Ident+ '}'
+                 | 'NATURAL'
+
+GroupAggNode   ::= 'GROUP_AGG' '{' 'source'     ':' QueryNode
+                                   'groupBy'    ':' Expr*
+                                   'aggregates' ':' AggItem+
+                                   ('having'    ':' Expr)?
+                   '}'
+
+AggItem        ::= '{' 'func'     ':' AggFunc
+                       'arg'      ':' (Expr | 'STAR')
+                       'distinct' ':' Bool
+                       ('alias'   ':' Ident)?
+                   '}'
+
+AggFunc        ::= 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX'
+                 | 'STDDEV' | 'VAR' | 'STRING_AGG' | 'ARRAY_AGG'
+
+SortNode       ::= 'SORT' '{' 'source' ':' QueryNode
+                              'items'  ':' SortItem+
+                   '}'
+
+SortItem       ::= '{' 'expr'      ':' Expr
+                       'direction' ':' ('ASC' | 'DESC')
+                       'nulls'     ':' ('NULLS_FIRST' | 'NULLS_LAST' | 'DEFAULT')
+                   '}'
+
+LimitNode      ::= 'LIMIT' '{' 'source' ':' QueryNode
+                               'count'  ':' (Expr | 'NULL')
+                               'offset' ':' (Expr | 'NULL')
+                   '}'
+
+WindowNode     ::= 'WINDOW' '{' 'source'      ':' QueryNode
+                                'definitions' ':' WindowDef+
+                   '}'
+
+WindowDef      ::= '{' 'alias'       ':' Ident
+                       ('partitionBy' ':' Expr*)?
+                       ('orderBy'     ':' SortItem*)?
+                       ('frame'       ':' WindowFrame)?
+                       'func'         ':' WindowFunc
+                       'resultAlias'  ':' Ident
+                   '}'
+
+WindowFrame    ::= '{' 'unit'  ':' ('ROWS' | 'RANGE')
+                       'start' ':' FrameBound
+                       'end'   ':' FrameBound
+                   '}'
+
+FrameBound     ::= 'UNBOUNDED_PRECEDING' | 'CURRENT_ROW'
+                 | 'UNBOUNDED_FOLLOWING'
+                 | 'PRECEDING' '{' Expr '}'
+                 | 'FOLLOWING' '{' Expr '}'
+
+SetOpNode      ::= 'SET_OP' '{' 'left'  ':' QueryNode
+                                'right' ':' QueryNode
+                                'op'    ':' ('UNION' | 'UNION_ALL'
+                                            | 'INTERSECT' | 'EXCEPT')
+                   '}'
+
+WithNode       ::= 'WITH' '{' 'ctes'  ':' CTEDef+
+                              'query' ':' QueryNode
+                   '}'
+
+CTEDef         ::= '{' 'name'      ':' Ident
+                       'recursive' ':' Bool
+                       'query'     ':' QueryNode
+                   '}'
+
+Expr           ::= CompareExpr | LogicExpr | InExpr | BetweenExpr
+                 | LikeExpr | NullExpr | ExistsExpr | CaseExpr
+                 | Literal | ColumnRef | FuncCall | ArithExpr | SubqueryExpr
+
+CompareExpr    ::= '{' 'left' ':' Expr 'op' ':' CmpOp 'right' ':' Expr '}'
+CmpOp          ::= 'EQ' | 'NEQ' | 'LT' | 'GT' | 'LTE' | 'GTE'
+LogicExpr      ::= '{' 'op' ':' ('AND'|'OR'|'NOT') 'operands' ':' Expr+ '}'
+InExpr         ::= '{' 'value' ':' Expr 'list' ':' (Expr+ | SubqueryNode)
+                       'negated' ':' Bool '}'
+BetweenExpr    ::= '{' 'value' ':' Expr 'lo' ':' Expr 'hi' ':' Expr
+                       'negated' ':' Bool '}'
+LikeExpr       ::= '{' 'value' ':' Expr 'pattern' ':' StringLit
+                       ('escape' ':' Char)? 'negated' ':' Bool '}'
+NullExpr       ::= '{' 'value' ':' Expr 'negated' ':' Bool '}'
+ExistsExpr     ::= '{' 'subquery' ':' SubqueryNode 'negated' ':' Bool '}'
+\end{lstlisting}
+
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+\section{Operatormapping-Referenztabelle}
+\label{app:mapping}
+% â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+\begin{landscape}
+\scriptsize
+\begin{longtable}{p{4.5cm}p{5.5cm}p{5.5cm}p{5.5cm}}
+\caption{Vollständige Operatormapping-Referenz (IQT $\leftrightarrow$ Quellsprachen)}
+\label{tab:full_mapping} \\
+\toprule
+\textbf{IQT-Konstrukt} & \textbf{Python (SA 2.0)} & \textbf{Java (JPA/QueryDSL)} & \textbf{C\# (LINQ)} \\
+\midrule
+\endfirsthead
+\multicolumn{4}{c}{\small\itshape Fortsetzung von Tabelle~\ref{tab:full_mapping}} \\
+\toprule
+\textbf{IQT-Konstrukt} & \textbf{Python} & \textbf{Java} & \textbf{C\#} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{4}{r}{\small\itshape Fortsetzung auf nächster Seite} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+SCAN (table)
+  & \texttt{select(Model)}
+  & \texttt{cq.from(Model.class)}
+  & \texttt{context.Models} \\[4pt]
+
+SCAN (alias)
+  & \texttt{aliased(Model, name="a")}
+  & \texttt{Root<M> a = cq.from(M.class)}
+  & \texttt{-- (implizit)} \\[4pt]
+
+FILTER (=)
+  & \texttt{.where(M.col == v)}
+  & \texttt{.where(cb.equal(r.get("col"),v))}
+  & \texttt{.Where(x => x.Col == v)} \\[4pt]
+
+FILTER (!=)
+  & \texttt{.where(M.col != v)}
+  & \texttt{.where(cb.notEqual(...))}
+  & \texttt{.Where(x => x.Col != v)} \\[4pt]
+
+FILTER (LIKE)
+  & \texttt{.where(M.col.like("\%x\%"))}
+  & \texttt{.where(cb.like(r.get("col"),"\%x\%"))}
+  & \texttt{.Where(x => EF.Functions.Like(x.Col,"\%x\%"))} \\[4pt]
+
+FILTER (IS NULL)
+  & \texttt{.where(M.col == None)}
+  & \texttt{.where(cb.isNull(r.get("col")))}
+  & \texttt{.Where(x => x.Col == null)} \\[4pt]
+
+FILTER (IN list)
+  & \texttt{.where(M.col.in\_(list))}
+  & \texttt{.where(r.get("col").in(list))}
+  & \texttt{.Where(x => list.Contains(x.Col))} \\[4pt]
+
+FILTER (IN subq)
+  & \texttt{.where(M.col.in\_(subq))}
+  & \texttt{.where(r.get("col").in(subq))}
+  & \texttt{.Where(x => subq.Contains(x.Col))} \\[4pt]
+
+FILTER (BETWEEN)
+  & \texttt{.where(M.col.between(a,b))}
+  & \texttt{.where(cb.between(r.get("col"),a,b))}
+  & \texttt{.Where(x => x.Col >= a \&\& x.Col <= b)} \\[4pt]
+
+FILTER (EXISTS)
+  & \texttt{.where(exists(subq))}
+  & \texttt{.where(cb.exists(subq))}
+  & \texttt{.Where(x => subq.Any(...))} \\[4pt]
+
+PROJECT (cols)
+  & \texttt{select(M.a, M.b)}
+  & \texttt{cq.multiselect(r.get("a"),r.get("b"))}
+  & \texttt{.Select(x => new\{x.A,x.B\})} \\[4pt]
+
+PROJECT (expr)
+  & \texttt{select(func.upper(M.name))}
+  & \texttt{cq.select(cb.upper(r.get("name")))}
+  & \texttt{.Select(x => x.Name.ToUpper())} \\[4pt]
+
+PROJECT (DISTINCT)
+  & \texttt{select(M.col).distinct()}
+  & \texttt{cq.select(r.get("col")).distinct(true)}
+  & \texttt{.Select(x => x.Col).Distinct()} \\[4pt]
+
+SORT (ASC)
+  & \texttt{.order\_by(M.col)}
+  & \texttt{.orderBy(cb.asc(r.get("col")))}
+  & \texttt{.OrderBy(x => x.Col)} \\[4pt]
+
+SORT (DESC)
+  & \texttt{.order\_by(desc(M.col))}
+  & \texttt{.orderBy(cb.desc(r.get("col")))}
+  & \texttt{.OrderByDescending(x => x.Col)} \\[4pt]
+
+SORT (multi)
+  & \texttt{.order\_by(M.a, desc(M.b))}
+  & \texttt{.orderBy(cb.asc(...), cb.desc(...))}
+  & \texttt{.OrderBy(x=>x.A).ThenByDescending(x=>x.B)} \\[4pt]
+
+LIMIT
+  & \texttt{.limit(n)}
+  & \texttt{.setMaxResults(n)}
+  & \texttt{.Take(n)} \\[4pt]
+
+OFFSET
+  & \texttt{.offset(m)}
+  & \texttt{.setFirstResult(m)}
+  & \texttt{.Skip(m)} \\[4pt]
+
+JOIN (INNER)
+  & \texttt{.join(B, A.id==B.a\_id)}
+  & \texttt{r.join("bs", JoinType.INNER)}
+  & \texttt{join b in Bs on a.Id equals b.AId} \\[4pt]
+
+JOIN (LEFT)
+  & \texttt{.outerjoin(B, A.id==B.a\_id)}
+  & \texttt{r.join("bs", JoinType.LEFT)}
+  & \texttt{join b ... into g from b in g.DefaultIfEmpty()} \\[4pt]
+
+JOIN (CROSS)
+  & \texttt{select\_from(A, B)}
+  & \texttt{cq.from(A.class); cq.from(B.class)}
+  & \texttt{from a in As from b in Bs ...} \\[4pt]
+
+GROUP BY
+  & \texttt{.group\_by(M.col)}
+  & \texttt{.groupBy(r.get("col"))}
+  & \texttt{.GroupBy(x => x.Col)} \\[4pt]
+
+COUNT(*)
+  & \texttt{func.count("*")}
+  & \texttt{cb.count(root)}
+  & \texttt{.Count()} \\[4pt]
+
+SUM
+  & \texttt{func.sum(M.col)}
+  & \texttt{cb.sum(r.get("col"))}
+  & \texttt{.Sum(x => x.Col)} \\[4pt]
+
+AVG
+  & \texttt{func.avg(M.col)}
+  & \texttt{cb.avg(r.get("col"))}
+  & \texttt{.Average(x => x.Col)} \\[4pt]
+
+MIN / MAX
+  & \texttt{func.min/max(M.col)}
+  & \texttt{cb.min/max(r.get("col"))}
+  & \texttt{.Min/.Max(x => x.Col)} \\[4pt]
+
+HAVING
+  & \texttt{.having(func.count("*") > n)}
+  & \texttt{.having(cb.gt(cb.count(r), n))}
+  & \texttt{.Where(g => g.Count() > n)} \\[4pt]
+
+UNION
+  & \texttt{q1.union(q2)}
+  & \texttt{(JPQL UNION)}
+  & \texttt{q1.Union(q2)} \\[4pt]
+
+UNION ALL
+  & \texttt{q1.union\_all(q2)}
+  & \texttt{(JPQL UNION ALL)}
+  & \texttt{q1.Concat(q2)} \\[4pt]
+
+ROW\_NUMBER()
+  & \texttt{func.row\_number().over(...)}
+  & \texttt{cb.rowNumber().over(...)}
+  & \texttt{EF.Functions.RowNumber(...)} \\[4pt]
+
+RANK()
+  & \texttt{func.rank().over(...)}
+  & \texttt{cb.rank().over(...)}
+  & \texttt{EF.Functions.Rank(...)} \\[4pt]
+
+LAG(col, n)
+  & \texttt{func.lag(M.col, n).over(...)}
+  & \texttt{cb.lag(r.get("col"), n).over(...)}
+  & \texttt{EF.Functions.Lag(x.Col, n)...} \\[4pt]
+
+CTE
+  & \texttt{subq.cte("name")}
+  & \texttt{(Blaze-Persistence CTE)}
+  & \texttt{(EF Core 7+ native CTEs)} \\[4pt]
+
+\end{longtable}
+\end{landscape}
+
+\begin{thebibliography}{99}
+
+\bibitem{codd1970relational}
+E.\,F.\ Codd,
+\textit{A Relational Model of Data for Large Shared Data Banks},
+Communications of the ACM, 13(6):377--387, 1970.
+
+\bibitem{ansi_sql_2016}
+ISO/IEC 9075-1:2016,
+\textit{Information technology -- Database languages -- SQL -- Part 1: Framework (SQL/Framework)},
+International Organization for Standardization, 2016.
+
+\bibitem{sqlalchemy_docs}
+M.\ Bayer et al.,
+\textit{SQLAlchemy -- The Python SQL Toolkit and Object Relational Mapper},
+\url{https://docs.sqlalchemy.org}, Version 2.0, 2023.
+
+\bibitem{hibernate_docs}
+G.\ King, C.\ Bauer, et al.,
+\textit{Hibernate ORM Documentation},
+\url{https://docs.jboss.org/hibernate/orm/}, Version 6.4, 2023.
+
+\bibitem{ef_core_docs}
+Microsoft Corporation,
+\textit{Entity Framework Core Documentation},
+\url{https://learn.microsoft.com/en-us/ef/core/}, 2023.
+
+\bibitem{linq_docs}
+Microsoft Corporation,
+\textit{Language Integrated Query (LINQ) -- C\# Programming Guide},
+\url{https://learn.microsoft.com/en-us/dotnet/csharp/linq/}, 2023.
+
+\bibitem{java_stream_docs}
+Oracle Corporation,
+\textit{java.util.stream -- Stream API},
+Java SE 17 API Documentation,
+\url{https://docs.oracle.com/en/java/documentation/}, 2021.
+
+\bibitem{querydsl_docs}
+T.\ Kalliokoski,
+\textit{Querydsl -- Unified Queries for Java},
+\url{http://querydsl.com}, Version 5.0, 2023.
+
+\bibitem{jooq_docs}
+L.\ Waehner,
+\textit{jOOQ -- The Best Way to Write SQL in Java},
+\url{https://www.jooq.org/doc/}, Version 3.18, 2023.
+
+\bibitem{date_darwen_1997}
+C.\,J.\ Date, H.\ Darwen,
+\textit{A Guide to the SQL Standard}, 4th Edition,
+Addison-Wesley, 1997.
+
+\bibitem{garcia_molina_2009}
+H.\ Garcia-Molina, J.\,D.\ Ullman, J.\ Widom,
+\textit{Database Systems: The Complete Book}, 2nd Edition,
+Pearson Prentice Hall, 2009.
+
+\bibitem{aho_1986}
+A.\,V.\ Aho, R.\ Sethi, J.\,D.\ Ullman,
+\textit{Compilers: Principles, Techniques, and Tools},
+Addison-Wesley, 1986.
+
+\bibitem{wadler1990comprehending}
+P.\ Wadler,
+\textit{Comprehending Monads},
+Proceedings of the 1990 ACM Conference on Lisp and Functional Programming,
+pp.\ 61--78, 1990.
+
+\bibitem{buneman1994comprehension}
+P.\ Buneman, L.\ Libkin, D.\ Suciu, V.\ Tannen, L.\ Wong,
+\textit{Comprehension Syntax},
+SIGMOD Record, 23(1):87--96, 1994.
+
+\end{thebibliography}
+

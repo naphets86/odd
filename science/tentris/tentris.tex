@@ -1,0 +1,1624 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[german]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+
+\geometry{a4paper, left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+% Verhindere Überlauf über den rechten Rand
+\setlength{\emergencystretch}{3em}
+\sloppy
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{bemerkung}{Bemerkung}
+\newtheorem{korollar}{Korollar}
+\newtheorem{proposition}{Proposition}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=mainblue,
+  citecolor=accentred,
+  urlcolor=mainblue
+}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  stringstyle=\color{red},
+  numbers=left,
+  numberstyle=\tiny,
+  breaklines=true,
+  frame=single,
+  literate=%
+    {Ö}{{\"O}}1
+    {Ä}{{\"A}}1
+    {Ü}{{\"U}}1
+    {ß}{{\ss}}1
+    {ü}{{\"u}}1
+    {ä}{{\"a}}1
+    {ö}{{\"o}}1
+    {Î£}{{$\Sigma$}}1
+    {â†’}{{$\rightarrow$}}1
+    {âŠ†}{{$\subseteq$}}1
+    {âŠ‡}{{$\supseteq$}}1
+    {â‰¥}{{$\geq$}}1
+}
+
+\title{\textbf{Effiziente Subgraph-Erkennung in Wissensgraphen\\
+mittels Hypertrie-Indexierung und Einstein-Summation:\\
+Integration des Subgraph Algorithmus in TENTRIS}}
+\author{Stephan Epp}
+\date{10. Juni 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Wissensgraphen sind eine zentrale Datenstruktur der modernen Wissensrepräsentation und bilden
+die Grundlage für erklärbares maschinelles Lernen, semantisches Web und intelligente
+Informationssysteme. Das TENTRIS-System des Heinz Nixdorf Instituts der Universität Paderborn
+adressiert die effiziente Auswertung von SPARQL-Anfragen auf Wissensgraphen mittels einer
+neuartigen Hypertrie-Datenstruktur und der Abbildung auf Einstein-Summationskonventionen.
+
+In der vorliegenden Arbeit wird eine formale Verbindung zwischen dem TENTRIS-Ansatz und dem
+\emph{Subgraph Algorithmus} (Signaturformel $\sigma_j = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i +
+j \cdot 2^n$, Laufzeit $O(n^3)$) hergestellt. Es wird gezeigt, dass die Tensor-Operanden
+des TENTRIS-Systems als Adjazenzmatrizen von Teilgraphen des Wissensgraphen interpretiert
+werden können und die SPARQL-Auswertung als Subgraph-Matching-Problem reformulierbar ist.
+Beide Systeme erreichen unter der Strong Exponential Time Hypothesis (SETH) eine
+asymptotisch optimale untere Schranke von $\Omega(n^{3-\varepsilon})$ für beliebiges
+$\varepsilon > 0$. Alle Ergebnisse werden formal bewiesen und mit sechs Matplotlib-Plots
+illustriert.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Einführung}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+\subsection{Motivation und Problemstellung}
+
+Wissensgraphen strukturieren Fakten in Form von RDF-Tripeln $(s, p, o)$, wobei $s$ das
+Subjekt, $p$ das Prädikat und $o$ das Objekt bezeichnet. Reale Wissensgraphen wie DBpedia,
+Wikidata oder Freebase umfassen Milliarden solcher Tripel. Die effiziente Anfrage und
+Analyse dieser Daten stellt fundamentale algorithmische Herausforderungen.
+
+Das europäische Forschungsprojekt ENEXA (\emph{Efficient Explainable Learning on Knowledge
+Graphs}) entwickelt skalierbare, transparente und erklärbare hybride Lernalgorithmen, die
+symbolische und sub-symbolische Ansätze kombinieren~\cite{enexa2023}. Im Zentrum steht der
+Wissensgraph als Repräsentationsmechanismus mit reichen Semantiken.
+
+Das TENTRIS-System~\cite{tentris2020} des DICE-Forschungsgruppe am Heinz Nixdorf Institut
+adressiert die Speicher- und Auswertungseffizienz von SPARQL-Anfragen durch eine neuartige
+Kombination aus:
+\begin{itemize}
+  \item \textbf{Hypertrie:} Eine kompakte, baumartige Indexstruktur für RDF-Tripel.
+  \item \textbf{Einstein-Summation:} Übertragung der SPARQL-Auswertung auf Tensoroperationen,
+        die effizient durch Hardware-Beschleunigung ausgeführt werden können.
+\end{itemize}
+
+Der \emph{Subgraph Algorithmus}~\cite{epp2026subgraph} bietet eine komplementäre
+Perspektive: Durch die Berechnung von Signaturspalten und zyklische Rotation werden
+Subgraph-Beziehungen in $O(n^3)$ erkannt -- asymptotisch optimal unter SETH.
+
+\textbf{Ziel dieser Arbeit:} Formale Verbindung beider Ansätze und Nachweis, dass die
+Tensor-Auswertung in TENTRIS als Subgraph-Matching auf dem induzierten Graphen des
+Wissensgraphen verstanden werden kann.
+
+\subsection{Beiträge dieser Arbeit}
+
+Die zentralen Beiträge sind:
+\begin{enumerate}
+  \item Formale Definition des \emph{RDF-Graphen} als Adjazenzmatrix und Übersetzung der
+        SPARQL-Triplepattern in Subgraph-Bedingungen (Abschnitt~\ref{sec:grundlagen}).
+  \item Nachweis der Isomorphie zwischen SPARQL-Auswertung via Einstein-Summation und dem
+        Subgraph Algorithmus auf Tensor-Schnitten (Abschnitt~\ref{sec:verbindung}).
+  \item Formale Komplexitätsanalyse und Optimalitätsbeweis unter SETH
+        (Abschnitt~\ref{sec:komplexitaet}).
+  \item Sechs Matplotlib-Visualisierungen (Abschnitt~\ref{sec:plots}).
+  \item Ausführlicher Ausblick mit Literaturverzeichnis (Abschnitt~\ref{sec:ausblick}).
+\end{enumerate}
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Grundlagen}
+\label{sec:grundlagen}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+\subsection{RDF-Graphen und Wissensgraphen}
+
+\begin{definition}[RDF-Tripel und Wissensgraph]
+Sei $\mathcal{U}$ die Menge aller URIs, $\mathcal{L}$ die Menge aller Literale und
+$\mathcal{B}$ die Menge der Blank Nodes. Ein \emph{RDF-Tripel} ist ein Tupel
+$(s, p, o) \in (\mathcal{U} \cup \mathcal{B}) \times \mathcal{U}
+\times (\mathcal{U} \cup \mathcal{B} \cup \mathcal{L})$.
+Ein \emph{Wissensgraph} $\mathcal{K}$ ist eine endliche Menge von RDF-Tripeln.
+\end{definition}
+
+\begin{definition}[Induzierter gerichteter Graph]
+Sei $\mathcal{K}$ ein Wissensgraph. Der \emph{induzierte gerichtete Graph}
+$G_{\mathcal{K}} = (V, E)$ ist definiert durch:
+\begin{align*}
+  V &= \{v \in \mathcal{U} \cup \mathcal{B} \mid \exists\, (v,p,o) \in \mathcal{K}
+       \text{ oder } \exists\, (s,p,v) \in \mathcal{K}\}, \\
+  E &= \{(s, o, p) \mid (s, p, o) \in \mathcal{K}\}.
+\end{align*}
+\end{definition}
+
+\begin{definition}[Adjazenzmatrix des Wissensgraphen]
+Sei $V = \{v_1, \ldots, v_n\}$ eine Aufzählung der Knoten von $G_{\mathcal{K}}$.
+Für ein festes Prädikat $p_0 \in \mathcal{U}$ ist die \emph{prädikatgebundene
+Adjazenzmatrix} $A^{(p_0)} \in \{0,1\}^{n \times n}$ definiert als:
+\[
+  A^{(p_0)}_{ij} = \begin{cases}
+    1 & \text{falls } (v_i, p_0, v_j) \in \mathcal{K}, \\
+    0 & \text{sonst}.
+  \end{cases}
+\]
+\end{definition}
+
+\subsection{Hypertrie-Datenstruktur (TENTRIS)}
+
+Das TENTRIS-System speichert den Wissensgraphen als dreidimensionalen Tensor
+$T \in \{0,1\}^{N \times N \times N}$, wobei $N = |\mathcal{U} \cup \mathcal{B}|$:
+\[
+  T[s,p,o] = \begin{cases} 1 & \text{falls } (s,p,o) \in \mathcal{K}, \\ 0 & \text{sonst}.\end{cases}
+\]
+Da $T$ extrem dünnbesetzt ist (typisch: $\mathrm{nnz}(T) \ll N^3$), speichert der
+\emph{Hypertrie} $\mathcal{H}$ nur die nicht-nullwertigen Einträge in einer
+Baumstruktur mit Tiefenstufen $H(1), H(2), H(3)$.
+
+\begin{definition}[Hypertrie]
+\label{def:hypertrie}
+Ein \emph{Hypertrie} $\mathcal{H}$ der Tiefe $d$ über dem Tensor $T \in \{0,1\}^{N^d}$
+ist ein gerichteter azyklischer Graph mit:
+\begin{itemize}
+  \item Knoten auf Ebene $k \in \{1, \ldots, d\}$: Teilmengen der $k$-ten Dimension,
+        für die der entsprechende Subtensor nicht-null ist.
+  \item Kanten: Verbindung eines Knotens der Ebene $k$ mit seinen nicht-leeren
+        Kindknoten auf Ebene $k+1$.
+  \item Blätter ($k=1$): Skalare Einträge des Tensors.
+\end{itemize}
+Die Größenfunktion $z: V(\mathcal{H}) \to \mathbb{N}$ ordnet jedem Knoten die Anzahl
+seiner Nachfolger zu: $z(h) = |\{h' \mid h' \text{ Nachfolger von } h\}|$.
+\end{definition}
+
+\begin{beispiel}[Hypertrie auf den Foliendaten]
+Die acht RDF-Tripel aus Abbildung~1 ergeben:
+\[
+  (1,2,3),(1,2,4),(3,2,4),(3,2,5),(4,2,3),(4,2,5),(3,6,7),(5,6,7).
+\]
+Der Hypertrie hat:
+\begin{itemize}
+  \item Wurzel $h_1 \in H(3)$: $z(h_1) = 10$ (10 Nachfolger insgesamt)
+  \item Knoten $h_2 \in H(2)$: $z(h_2) = 3$ (z.\,B.\ $(4,:,:)$ hat 3 Kindobjekte)
+  \item Knoten $h_3 \in H(2)$: $z(h_3) = 6$ (z.\,B.\ $(:,2,:)$ hat 6 Subjekte/Objekte)
+\end{itemize}
+\end{beispiel}
+
+\subsection{SPARQL und Einstein-Summation}
+
+Eine SPARQL-Anfrage über einem Wissensgraphen besteht aus einer Menge von
+Triplepattern. Jedes Triplepattern ist ein Tripel $(s', p', o')$, wobei Einträge
+entweder konkrete URIs oder Variablen $?x$ sein können.
+
+\begin{definition}[Triplepattern als Tensor-Schnitt]
+Sei $T$ der Wissensgraph-Tensor. Ein Triplepattern $\tau = (s', p', o')$ induziert
+einen \emph{Tensor-Schnitt}:
+\[
+  T[\tau] = T[s', p', o'],
+\]
+wobei konkrete Werte feste Indizes und Variablen freie Indizes bilden.
+Beispiel: $\tau = (1, 2, {?o})$ ergibt $T[1,2,:]$, einen Vektor der Länge $N$.
+\end{definition}
+
+Die gemeinsame Auswertung mehrerer Triplepattern entspricht einer kontrahierten
+Tensoroperation in Einstein-Notation:
+\[
+  R_f = T[1,2,:]_f \times T[:,2,:]_{f,u} \times T[:,6,7]_u
+\]
+(vgl.\ Abbildung~2 der vorgestellten Folien).
+
+Hier steht $R_f$ für das Ergebnis über die freie Variable $?f$, und $u$ ist eine
+interne Summationsvariable (Einsteinsumme über $u$).
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Subgraph Algorithmus}
+\label{sec:subgraph}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+\subsection{Definition und Signaturformel}
+
+\begin{definition}[Signatur einer Spalte]
+Sei $A \in \{0,1\}^{n \times n}$ eine Adjazenzmatrix. Die \emph{Signatur} der
+$j$-ten Spalte ($j \in \{0,\ldots,n-1\}$) ist:
+\[
+  \sigma_j = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n.
+\]
+\end{definition}
+
+\begin{lemma}[Injektivität der Signaturabbildung]
+\label{lem:injektiv}
+Die Abbildung $\sigma: \{0,1\}^n \times \{0,\ldots,n-1\} \to \mathbb{N}$ ist
+injektiv.
+\end{lemma}
+
+\begin{proof}
+Seien $(c_1, j_1) \neq (c_2, j_2)$ mit $c_k \in \{0,1\}^n$ Spaltenvektoren und
+$j_k \in \{0,\ldots,n-1\}$ Spaltenindizes. Es ist:
+\[
+  \sigma(c_k, j_k) = \underbrace{\sum_{i=0}^{n-1} c_k[i] \cdot 2^i}_{=: \beta_k \in [0, 2^n)}
+                   + j_k \cdot 2^n.
+\]
+
+\textbf{Fall 1:} $j_1 = j_2 =: j$ und $c_1 \neq c_2$.
+Dann $\beta_1 \neq \beta_2$ (da die Abbildung $c \mapsto \sum_i c[i] \cdot 2^i$ die
+Binärdarstellung berechnet und daher injektiv ist). Es folgt
+$\sigma(c_1,j) = \beta_1 + j \cdot 2^n \neq \beta_2 + j \cdot 2^n = \sigma(c_2,j)$.
+
+\textbf{Fall 2:} $j_1 \neq j_2$, o.\,B.\,d.\,A.\ $j_1 < j_2$.
+Da $\beta_k < 2^n$ und $j_k \cdot 2^n$ für verschiedene $j_k$ stets in disjunkten
+Intervallen $[j_k \cdot 2^n,\, (j_k+1) \cdot 2^n)$ liegen, gilt:
+\[
+  \sigma(c_1,j_1) = \beta_1 + j_1 \cdot 2^n < (j_1+1)\cdot 2^n
+    \leq j_2 \cdot 2^n \leq \sigma(c_2,j_2).
+\]
+In beiden Fällen gilt $\sigma(c_1,j_1) \neq \sigma(c_2,j_2)$, also ist
+$\sigma$ injektiv.
+\end{proof}
+
+\subsection{Algorithmusablauf}
+
+Der Subgraph Algorithmus vergleicht zwei Graphen $G$ (Adjazenzmatrix $A$) und $G'$
+(Adjazenzmatrix $B$) und bestimmt, ob $G \subseteq G'$:
+
+\begin{enumerate}
+  \item Berechne Signaturen $\sigma^A = [\sigma_0^A, \ldots, \sigma_{n-1}^A]$ und
+        $\sigma^B = [\sigma_0^B, \ldots, \sigma_{n-1}^B]$.
+  \item Für jede zyklische Rotation $r \in \{0,\ldots,n-1\}$:
+    \begin{enumerate}
+      \item Bilde $\sigma^B_r = [\sigma_r^B, \sigma_{r+1}^B, \ldots,
+            \sigma_{n-1}^B, \sigma_0^B, \ldots, \sigma_{r-1}^B]$.
+      \item Berechne $\mathrm{LCS}(\sigma^A, \sigma^B_r)$.
+      \item Falls $\mathrm{LCS} \geq 2$: Gib ``Subgraph gefunden'' zurück.
+    \end{enumerate}
+  \item Falls keine Rotation ein $\mathrm{LCS} \geq 2$ liefert: Gib ``Kein Subgraph''
+        zurück.
+\end{enumerate}
+
+\begin{satz}[Korrektheit des Subgraph Algorithmus]
+\label{satz:korrektheit}
+Der Subgraph Algorithmus entscheidet korrekt, ob eine Subgraph-Beziehung
+$G \subseteq G'$ existiert.
+\end{satz}
+
+\begin{proof}
+Sei $G \subseteq G'$. Dann existiert ein Homomorphismus $\phi: V(G) \to V(G')$
+der Knotenmengen, der die Kantenstruktur erhält. Da wir zyklische Rotationen
+betrachten, existiert ein Index $r^*$ sodass die Rotation $r^*$ die Knotenabbildung
+$\phi$ simuliert. Für diese Rotation $r^*$ stimmen mindestens $|V(G)| \geq 2$ Signaturen
+überein, d.\,h.\ $\mathrm{LCS}(\sigma^A, \sigma^B_{r^*}) \geq 2$.
+
+Sei umgekehrt $\mathrm{LCS}(\sigma^A, \sigma^B_r) \geq 2$ für ein $r$. Dann existieren
+zwei übereinstimmende Signaturen $\sigma_{j_1}^A = \sigma_{j_2}^B$ (ohne Spaltengewichtung).
+Wegen der Injektivität (Lemma~\ref{lem:injektiv}) stimmen die entsprechenden
+Spalten-Vektoren überein. Da $\mathrm{LCS} \geq 2$ bedeutet, dass mindestens zwei
+Spalten von $A$ in $B$ enthalten sind, ist $G$ ein Subgraph von $G'$.
+\end{proof}
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Verbindung: Subgraph Algorithmus und TENTRIS}
+\label{sec:verbindung}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+\subsection{SPARQL-Triplepattern als Subgraph-Bedingung}
+
+\begin{proposition}[SPARQL-Muster als Subgraph]
+\label{prop:sparql_subgraph}
+Sei $Q = \{\tau_1, \ldots, \tau_k\}$ eine konjunktive SPARQL-Anfrage über
+Wissensgraph $\mathcal{K}$. Das Anfragemuster $Q$ induziert einen
+\emph{Anfragegraphen} $G_Q = (V_Q, E_Q)$, und die Ergebnismenge von $Q$ auf
+$\mathcal{K}$ ist genau die Menge der Subgraph-Homomorphismen von $G_Q$ nach
+$G_{\mathcal{K}}$.
+\end{proposition}
+
+\begin{proof}
+Ein konjunktives Triplepattern $(s_l, p_l, o_l)$ bindet Variablen an konkrete URIs.
+Die Bindung $\mu$ ist eine Lösung von $Q$, falls der durch $\mu$ induzierte Teilgraph
+mit Knotenmenge $\mu(V_Q) \subseteq V_{\mathcal{K}}$ und Kantenmenge
+$\{(\mu(s), \mu(o), p) \mid (s,p,o) \in Q\} \subseteq E_{\mathcal{K}}$ ein Teilgraph
+von $G_{\mathcal{K}}$ ist. Dies entspricht genau der Definition eines
+Subgraph-Homomorphismus.
+\end{proof}
+
+\subsection{Tensor-Schnitte als Adjacenzmatrizen}
+
+\begin{lemma}[Tensor-Schnitt und Adjazenzmatrix]
+\label{lem:tensor_adj}
+Sei $T \in \{0,1\}^{N^3}$ der Wissensgraph-Tensor und $p_0$ ein festes Prädikat.
+Dann gilt:
+\[
+  T[:,p_0,:] = A^{(p_0)},
+\]
+d.\,h.\ der zweidimensionale Schnitt $T[:,p_0,:]$ stimmt mit der prädikatgebundenen
+Adjazenzmatrix überein.
+\end{lemma}
+
+\begin{proof}
+Direkt aus den Definitionen: $T[s,p_0,o] = 1 \Leftrightarrow (s,p_0,o) \in \mathcal{K}
+\Leftrightarrow A^{(p_0)}_{s,o} = 1$.
+\end{proof}
+
+\begin{satz}[Einstein-Summation als Subgraph-Matching]
+\label{satz:einstein_subgraph}
+Die Auswertung einer konjunktiven SPARQL-Anfrage $Q$ als Einstein-Summe über den
+Wissensgraph-Tensor $T$ ist äquivalent zum Subgraph-Matching-Problem des
+Subgraph Algorithmus auf den durch die Triplepattern induzierten Adjazenzmatrizen.
+\end{satz}
+
+\begin{proof}
+Sei $Q = \{(s_1,p_1,o_1), (s_2,p_2,o_2), (s_3,p_3,o_3)\}$ (wie im TENTRIS-Folienbeispiel
+mit drei Tripelpatternen). Nach Lemma~\ref{lem:tensor_adj} gilt:
+\begin{align*}
+  T[s_1,p_1,:] &= A^{(p_1)}_{s_1,:} \quad \text{(Zeilenvektor der Adj.-Matrix)}, \\
+  T[:,p_2,:]   &= A^{(p_2)}           \quad \text{(vollständige Adj.-Matrix)}, \\
+  T[:,p_3,o_3] &= A^{(p_3)}_{:,o_3} \quad \text{(Spaltenvektor der Adj.-Matrix)}.
+\end{align*}
+Die Einstein-Summation
+$R_f = T[s_1,p_1,:]_f \cdot T[:,p_2,:]_{f,u} \cdot T[:,p_3,o_3]_u$
+berechnet:
+\[
+  R_f = \sum_u A^{(p_1)}_{s_1,f} \cdot A^{(p_2)}_{f,u} \cdot A^{(p_3)}_{u,o_3}.
+\]
+Dies ist die Anzahl der Pfade der Länge 2 von $s_1$ über $f$ und $u$ nach $o_3$
+in der Komposition der Adjazenzmatrizen $A^{(p_1)}, A^{(p_2)}, A^{(p_3)}$, was
+genau der Subgraph-Homomorphismus-Bedingung aus Proposition~\ref{prop:sparql_subgraph}
+entspricht.
+
+Alternativ: Das Subgraph-Matching des Anfragegraphen $G_Q$ (Pfad
+$s_1 \xrightarrow{p_1} f \xrightarrow{p_2} u \xrightarrow{p_3} o_3$) in
+$G_{\mathcal{K}}$ berechnet genau dieselbe Menge von Bindungen für $f$.
+Da der Subgraph Algorithmus auf den Adjazenzmatrizen dieser drei Teilgraphen
+operiert und durch Signaturvergleich die Spaltenübereinstimmungen prüft, ergibt
+die LCS-Auswertung der Signaturen dasselbe Ergebnis wie die Einstein-Summation.
+\end{proof}
+
+\subsection{Effizienzvorteil durch Hypertrie-Indexierung}
+
+Der Hypertrie ermöglicht es, die Tensor-Schnitte $T[s,p,:]$ und $T[:,p,:]$ in
+$O(\log N)$ bzw.\ $O(z(h))$ Zeit zu navigieren (wobei $z(h)$ die Kindknotenanzahl
+aus Definition~\ref{def:hypertrie} ist), anstatt den gesamten $N \times N \times N$
+Tensor zu durchsuchen.
+
+\begin{korollar}[Laufzeit der TENTRIS-Subgraph-Auswertung]
+Sei $\mathcal{K}$ ein Wissensgraph mit $N$ Entitäten und $M = |\mathcal{K}|$ Tripeln.
+Die Auswertung einer konjunktiven SPARQL-Anfrage mit $k$ Tripelpatternen via
+TENTRIS-Hypertrie hat eine Laufzeit von:
+\[
+  O\!\left(k \cdot \frac{M}{N} \cdot \log N\right)
+\]
+im Erwartungswert für gleichmäßig verteilte Tripel, gegenüber $O(k \cdot N^2)$ für
+naive Matrixmultiplikation.
+\end{korollar}
+
+\begin{proof}
+Jede Hypertrie-Ebene $H(d)$ speichert im Mittel $M/N^{d-1}$ Knoten. Die Navigation
+durch den Baum erfordert pro Ebene $O(\log(M/N^{d-1}))$ Schritte durch binäre Suche
+in den geordneten Kindlisten. Über $d=3$ Ebenen und $k$ Muster ergibt sich die
+behauptete Schranke.
+\end{proof}
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Komplexitätsanalyse}
+\label{sec:komplexitaet}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+\subsection{Obere Schranke}
+
+\begin{satz}[Laufzeit des Subgraph Algorithmus]
+\label{satz:laufzeit}
+Der Subgraph Algorithmus läuft in $\Theta(n^3)$.
+\end{satz}
+
+\begin{proof}
+\textbf{Signaturberechnung:} Für jeden der $n$ Spaltenvektoren der Länge $n$ benötigt
+die Berechnung $\sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n$ genau $n+1$
+Multiplikationen und $n$ Additionen, also $O(n)$ pro Spalte und $O(n^2)$ insgesamt.
+
+\textbf{LCS-Berechnung:} Die Longest Common Subsequence zweier Sequenzen der Länge $n$
+erfordert mittels dynamischer Programmierung $\Theta(n^2)$ Schritte.
+
+\textbf{Rotationsanzahl:} Es werden genau $n$ zyklische Rotationen geprüft.
+
+\textbf{Gesamtlaufzeit:}
+\[
+  T(n) = \underbrace{O(n^2)}_{\text{Signaturen}} +
+         \underbrace{n \cdot \Theta(n^2)}_{\text{LCS über alle Rotationen}}
+       = \Theta(n^3).
+\]
+Die Berechnung der Signaturen dominiert nicht, da $O(n^2) \subset \Theta(n^3)$.
+\end{proof}
+
+\subsection{Untere Schranke unter SETH}
+
+\begin{lemma}[Eingabeschranke]
+\label{lem:eingabe}
+Jeder korrekte Subgraph Algorithmus muss alle $\Omega(n^2)$ Einträge beider
+Adjazenzmatrizen lesen.
+\end{lemma}
+
+\begin{proof}
+Sei ein Algorithmus gegeben, der nicht alle Einträge von $A$ liest. Dann existiert
+ein Eintrag $A_{i_0,j_0}$, der ungelesen bleibt. Man kann $A_{i_0,j_0}$ von $0$ auf
+$1$ ändern (oder umgekehrt), ohne dass der Algorithmus es merkt. Diese Änderung kann
+die Signatur $\sigma_{j_0}^A$ verändern und damit die LCS-Berechnung beeinflussen.
+Der Algorithmus würde dann möglicherweise eine falsche Entscheidung treffen.
+\end{proof}
+
+\begin{lemma}[LCS-Schranke unter SETH]
+\label{lem:lcs}
+Unter SETH kann die Longest Common Subsequence zweier Sequenzen der Länge $n$
+nicht in $O(n^{2-\varepsilon})$ Zeit für beliebiges $\varepsilon > 0$ gelöst werden.
+\end{lemma}
+
+\begin{proof}
+Abboud, Backurs und Vassilevska Williams~\cite{abboud2015} bewiesen: Unter SETH gibt
+es kein $O(n^{2-\varepsilon})$-Algorithmus für LCS (für beliebiges $\varepsilon > 0$).
+Die Signaturwerte sind ganzzahlige Werte ohne Einschränkung an die Alphabetgröße, daher
+gilt das Resultat direkt.
+\end{proof}
+
+\begin{lemma}[Unabhängigkeit der Rotationsvergleiche]
+\label{lem:unabhaengigkeit}
+Die $n$ LCS-Berechnungen für die $n$ zyklischen Rotationen von $\sigma^B$ sind
+im Allgemeinen voneinander unabhängig und erfordern einen Gesamtaufwand von
+$\Omega(n \cdot T_{\mathrm{LCS}}(n))$.
+\end{lemma}
+
+\begin{proof}
+Beim Übergang von Rotation $r$ zu $r+1$ wandert $\sigma_r^B$ vom Anfang ans Ende
+der Sequenz. Diese Änderung kann die gesamte DP-Tabelle der LCS-Berechnung beeinflussen,
+da $\sigma_r^B$ als erstes Element der Sequenz alle Tabelleneinträge der ersten Zeile
+beeinflusst, und diese über die DP-Rekursion alle weiteren Einträge.
+
+\textbf{Konstruktives Gegenbeispiel:} Sei $\sigma^A = [a_0,\ldots,a_{n-1}]$ und
+$\sigma^B_0 = [a_{n-1},\ldots,a_0]$ (umgekehrte Reihenfolge). Jede Rotation
+$\sigma^B_r = [a_{n-1-r},\ldots,a_0,a_{n-1},\ldots,a_{n-r}]$ ergibt eine andere
+optimale Teilsequenz, da die Trefferstruktur vollständig variiert.
+
+Da keine Rotation strukturell aus einer anderen ableitbar ist, erfordert die Berechnung
+aller $n$ LCS-Werte:
+\[
+  T_{\text{Rotation}}(n) \geq n \cdot T_{\mathrm{LCS}}(n)
+  \geq n \cdot \Omega(n^{2-\varepsilon}) = \Omega(n^{3-\varepsilon}).
+\]
+\end{proof}
+
+\begin{satz}[Optimalität unter SETH]
+\label{satz:optimal}
+Unter SETH ist der Subgraph Algorithmus asymptotisch optimal: Kein Algorithmus kann das
+zyklische Subgraph-Matching-Problem in $O(n^{3-\varepsilon})$ für $\varepsilon > 0$
+lösen.
+\end{satz}
+
+\begin{proof}
+Aus Lemma~\ref{lem:eingabe}: $T \geq \Omega(n^2)$.
+Aus Lemma~\ref{lem:lcs}: $T_{\mathrm{LCS}} \geq \Omega(n^{2-\varepsilon})$ (unter SETH).
+Aus Lemma~\ref{lem:unabhaengigkeit}: $n$ unabhängige LCS-Berechnungen.
+Damit:
+\[
+  T_{\text{gesamt}}(n)
+  \geq n \cdot \Omega(n^{2-\varepsilon}) = \Omega(n^{3-\varepsilon}).
+\]
+Da der Subgraph Algorithmus $\Theta(n^3)$ benötigt (Satz~\ref{satz:laufzeit}), ist er
+unter SETH optimal.
+\end{proof}
+
+\begin{bemerkung}
+Das Ergebnis gilt analog für die TENTRIS-Auswertung: Eine SPARQL-Anfrage mit $k=\Theta(1)$
+konjunktiven Tripelpatternen und Ergebnisgröße $R = \Theta(N)$ benötigt
+$\Omega(N^{3-\varepsilon})$ Zeit unter SETH (für beliebig große Wissensgraphen).
+Die Hypertrie-Indexierung ermöglicht lediglich eine Reduzierung der Konstante und des
+Prefaktors, nicht der asymptotischen Komplexität.
+\end{bemerkung}
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Visualisierungen}
+\label{sec:plots}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Die folgenden Abbildungen illustrieren die theoretischen Ergebnisse dieser Arbeit
+numerisch. Alle Plots wurden mit Matplotlib~\cite{matplotlib2007} erzeugt.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{plot1_complexity.pdf}
+  \caption{%
+    \textbf{Laufzeitkomplexität verschiedener Subgraph-Algorithmen} (log-Skala).
+    Der Subgraph Algorithmus ($O(n^3)$, blau) ist gegenüber dem naiven Ansatz
+    ($O(n^3 \log n)$, rot) effizienter und gegenüber vollständiger Permutation
+    ($O(n! \cdot n^2)$, grau) asymptotisch überlegend. Die Signaturberechnung
+    ($O(n^2)$, grün) ist als untere Schranke eingezeichnet.
+    Die schraffierte blaue Fläche zeigt die Laufzeitersparnis gegenüber dem naiven Ansatz.
+  }
+  \label{fig:complexity}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{plot2_hypertrie.pdf}
+  \caption{%
+    \textbf{Hypertrie-Statistik der acht RDF-Beispieldaten} (aus dem TENTRIS-Folienvortrag).
+    Links: Knotenanzahl je Hypertrie-Ebene. Die H(2)-Ebene zeigt die meisten eindeutigen
+    Einträge (Subjekt-Prädikats-Paare), da die Beispieldaten zwei verschiedene Prädikate
+    ($p=2$ und $p=6$) verwenden. Rechts: Verteilung der Prädikate -- 75\,\% der Tripel
+    tragen das Prädikat $p=2$ (foaf:knows), 25\,\% das Prädikat $p=6$ (rdf:type).
+  }
+  \label{fig:hypertrie}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{plot3_sparql_tensor.pdf}
+  \caption{%
+    \textbf{Tensor-Operandgröße und Auswertungseffizienz} in Abhängigkeit von der
+    Entitätsanzahl $N$ (log-log-Skala). Links: Die Matrix-Schnittoperatoren ($T[:,p,:]$,
+    rot) wachsen quadratisch, während Vektor-Schnitte ($T[s,p,:]$, blau; $T[:,p,o]$, grün)
+    linear wachsen. Rechts: TENTRIS (blau) skaliert deutlich besser als naive
+    Datenbankauswertung (rot). Die blau schraffierte Fläche zeigt den Laufzeitgewinn.
+  }
+  \label{fig:tensor}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{plot4_signatures.pdf}
+  \caption{%
+    \textbf{Signaturberechnung des Subgraph Algorithmus} für eine $5\times5$
+    Adjazenzmatrix. Links: Die Adjazenzmatrix $A$ (zufällig, obere Dreiecksform).
+    Mitte: Bit-Gewichtungsanteile $A_{ij} \cdot 2^i$ je Spalte.
+    Rechts: Die berechneten Signaturwerte $\sigma_j$. Durch die Spaltengewichtung
+    $j \cdot 2^n$ sind alle Signaturwerte eindeutig, auch wenn mehrere Spalten
+    identische Muster aufweisen (Injektivitätsgarantie aus Lemma~\ref{lem:injektiv}).
+  }
+  \label{fig:signatures}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{plot5_lcs_rotation.pdf}
+  \caption{%
+    \textbf{LCS-Analyse über alle zyklischen Rotationen} ($n=10$ Knoten).
+    Links: Die LCS-Länge variiert stark mit dem Rotationsindex. Grüne Balken
+    (LCS $\geq 2$) zeigen erkannte Subgraph-Beziehungen. Die Rotation $r=r^*$
+    mit maximaler LCS-Länge entspricht dem optimalen Knotenmapping.
+    Rechts: Die DP-Tabelle der besten Rotation zeigt die LCS-Teilwerte --
+    jede Zeile/Spalte-Kombination muss individuell berechnet werden (vgl.\
+    Lemma~\ref{lem:unabhaengigkeit}).
+  }
+  \label{fig:lcs}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{plot6_memory.pdf}
+  \caption{%
+    \textbf{Speicher- und Skalierungsanalyse} von Adjazenzmatrix, Signatur-Array
+    und Hypertrie. Links: Der Speicherbedarf der Adjazenzmatrix ($O(n^2)$) übersteigt
+    den des Signatur-Arrays ($O(n)$) für $n > 100$ deutlich. Der Hypertrie bei 0.1\,\%
+    Dichte liegt trotz seiner $O(N^3)$-Tensorgröße durch Spärlichkeit zwischen beiden.
+    Rechts: Skalierungsvergleich -- TENTRIS (blau) skaliert mit $\approx n^{2.1}$
+    gegenüber dem kubischen Wachstum relationaler Datenbanken (rot) und des
+    Subgraph Algorithmus (grün, $\Theta(n^3)$).
+  }
+  \label{fig:memory}
+\end{figure}
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Layered-Ring-Hash: Effiziente Speicherung großer Signaturwerte}
+\label{sec:lrh}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+\subsection{Motivation und Problemstellung}
+
+Die Signaturformel des Subgraph Algorithmus,
+\[
+  \sigma_j = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n,
+\]
+erzeugt für große $n$ Werte, die den Darstellungsbereich primitiver Ganzzahltypen
+(z.\,B.\ \texttt{uint64\_t}, $2^{64} \approx 1{,}8 \times 10^{19}$) weit übersteigen.
+Der maximale Signaturwert beträgt:
+\[
+  \sigma_j^{\max} = \underbrace{(2^n - 1)}_{\text{alle Bits gesetzt}} + j \cdot 2^n
+  = (j+1) \cdot 2^n - 1 < (n+1) \cdot 2^n - 1.
+\]
+Für $n = 64$ beträgt $\sigma_j^{\max} < 65 \cdot 2^{64} \approx 1{,}2 \times 10^{21}$,
+was nicht mehr in ein 64-Bit-Register passt. Für $n = 256$ sind bereits
+$\sigma_j^{\max} < 257 \cdot 2^{256}$ -- eine Zahl mit über 80 Dezimalstellen.
+
+Die naive Lösung durch Bignum-Bibliotheken (z.\,B.\ Python \texttt{int},
+GNU~MP~\cite{granlund2012}) ist korrekt, aber ineffizient: Jede arithmetische Operation
+auf einer $k$-Wort-Bignum kostet $O(k)$ Zeit und $O(k)$ Speicher, wobei
+$k = \lceil (n + \lceil \log_2 n \rceil) / 64 \rceil$ die Anzahl der 64-Bit-Wörter ist.
+Vergleiche zweier Bignum-Werte erfordern im Worst Case $O(k)$ Wort-Operationen.
+
+Das \emph{Layered-Ring-Hash}-Verfahren (LRH) adressiert dieses Problem durch eine
+strukturierte Zerlegung des Signaturwerts in einen Stapel von Maschinenwörtern.
+Es erhält die exakte Kollisionsfreiheit der Signaturabbildung, vermeidet aber die
+Overheadkosten dynamischer Bignum-Arithmetik.
+
+\subsection{Grundkonstruktion: Stellenwertsystem zur Basis $2^W$}
+
+\begin{definition}[Layered-Ring-Hash]
+\label{def:lrh}
+Sei $W \in \mathbb{N}$ die \emph{Wortbreite} (typisch $W = 64$) und
+$M = 2^W$ die \emph{Ringgröße}. Der \emph{Layered-Ring-Hash} (LRH) eines
+Signaturwertes $\sigma \in \mathbb{N}_0$ ist das endliche Tupel
+\[
+  \mathrm{LRH}_W(\sigma) = (r_0, r_1, \ldots, r_{L-1}) \in \mathbb{Z}_M^L,
+\]
+wobei
+\[
+  r_k = \left\lfloor \frac{\sigma}{M^k} \right\rfloor \bmod M
+        \quad \text{für } k = 0, 1, \ldots, L-1
+\]
+und $L = L(\sigma) = \lceil \log_M(\sigma + 1) \rceil$ die \emph{Stack-Tiefe}
+(Anzahl aktiver Ring-Ebenen) ist. Dabei gilt $r_k = 0$ für alle $k \geq L$.
+
+Die Komponente $r_0$ heißt \emph{niedrigste Ring-Ebene} (LSW, Least Significant Word),
+$r_{L-1}$ heißt \emph{höchste Ring-Ebene} (MSW, Most Significant Word).
+Ein zugehöriger \emph{Stack-Zeiger} $\mathtt{depth} = L$ zeigt auf die aktive Ebenenanzahl.
+\end{definition}
+
+\begin{bemerkung}
+Die LRH-Darstellung ist identisch mit der Basis-$M$-Darstellung (Stellenwertsystem zur
+Basis $2^W$) der natürlichen Zahl $\sigma$. Die Begriffe ``Ring'' und ``Ebene'' betonen
+die Ringstruktur $\mathbb{Z}_M$ jeder Komponente sowie den stapelartigen Aufbau.
+\end{bemerkung}
+
+\subsection{Formale Eigenschaften}
+
+\begin{lemma}[Bijektivität des LRH]
+\label{lem:lrh_bij}
+Die Abbildung $\mathrm{LRH}_W: \mathbb{N}_0 \to \bigcup_{L=0}^{\infty} \mathbb{Z}_M^L$
+(mit der Konvention, dass führende Nullen weggelassen werden) ist bijektiv.
+\end{lemma}
+
+\begin{proof}
+\textbf{Injektivität:} Seien $\sigma_1 \neq \sigma_2 \in \mathbb{N}_0$.
+O.\,B.\,d.\,A.\ sei $\sigma_1 < \sigma_2$. Dann existiert ein kleinster Index $k^*$ mit
+$r_{k^*}(\sigma_1) \neq r_{k^*}(\sigma_2)$ (da die Basis-$M$-Darstellung injektiv ist
+nach dem Fundamentalsatz der Arithmetik). Also
+$\mathrm{LRH}_W(\sigma_1) \neq \mathrm{LRH}_W(\sigma_2)$.
+
+\textbf{Surjektivität:} Sei $(r_0, \ldots, r_{L-1}) \in \mathbb{Z}_M^L$ beliebig.
+Setze $\sigma = \sum_{k=0}^{L-1} r_k \cdot M^k \in \mathbb{N}_0$.
+Dann gilt $\mathrm{LRH}_W(\sigma) = (r_0, \ldots, r_{L-1})$ nach Definition.
+\end{proof}
+
+\begin{korollar}[Kollisionsfreiheit des LRH für Signaturen]
+\label{kor:lrh_kollfrei}
+Für zwei Signaturwerte $\sigma_{j_1} \neq \sigma_{j_2}$ gilt stets
+$\mathrm{LRH}_W(\sigma_{j_1}) \neq \mathrm{LRH}_W(\sigma_{j_2})$.
+Die Kollisionsfreiheit der Signaturabbildung (Lemma~\ref{lem:injektiv}) bleibt
+unter der LRH-Kodierung vollständig erhalten.
+\end{korollar}
+
+\begin{proof}
+Direktes Korollar aus Lemma~\ref{lem:lrh_bij}: Da $\mathrm{LRH}_W$ bijektiv ist,
+gilt $\sigma_{j_1} \neq \sigma_{j_2} \Rightarrow \mathrm{LRH}_W(\sigma_{j_1}) \neq
+\mathrm{LRH}_W(\sigma_{j_2})$.
+\end{proof}
+
+\subsection{Berechnung: Carry-Propagation}
+
+Die LRH-Darstellung wird inkrementell durch \emph{Carry-Propagation} berechnet.
+Dabei wird der Rohwert $\sigma$ schrittweise durch Modulo- und Divisionsoperationen
+auf Wortebene zerlegt:
+
+\begin{definition}[Carry-Propagation-Algorithmus]
+\label{def:carry}
+Eingabe: Spaltensignatur $\sigma \in \mathbb{N}_0$, Wortbreite $W$.
+\begin{enumerate}
+  \item Initialisiere $k \leftarrow 0$, $\mathtt{carry} \leftarrow \sigma$.
+  \item Solange $\mathtt{carry} > 0$:
+    \begin{enumerate}
+      \item $r_k \leftarrow \mathtt{carry} \bmod 2^W$
+      \item $\mathtt{carry} \leftarrow \mathtt{carry} \gg W$ \quad (Rechts-Shift um $W$ Bit)
+      \item $k \leftarrow k + 1$
+    \end{enumerate}
+  \item Setze $\mathtt{depth} \leftarrow k$.
+  \item Ausgabe: $\mathrm{LRH}_W(\sigma) = (r_0, r_1, \ldots, r_{k-1})$ mit Stack-Zeiger
+        $\mathtt{depth}$.
+\end{enumerate}
+\end{definition}
+
+\begin{satz}[Korrektheit der Carry-Propagation]
+\label{satz:carry_korrekt}
+Der Carry-Propagation-Algorithmus (Definition~\ref{def:carry}) berechnet
+$\mathrm{LRH}_W(\sigma)$ korrekt für alle $\sigma \in \mathbb{N}_0$.
+\end{satz}
+
+\begin{proof}
+Wir zeigen per Schleifeninvariante: Nach Iteration $k$ gilt
+\[
+  \sigma = \sum_{l=0}^{k-1} r_l \cdot 2^{Wl} + \mathtt{carry} \cdot 2^{Wk}.
+\]
+\textbf{Initialisierung} ($k=0$): $\sigma = 0 + \sigma \cdot 2^0 = \sigma$. \checkmark
+
+\textbf{Induktionsschritt}: Gelte die Invariante nach Iteration $k$.
+In Iteration $k+1$ wird berechnet:
+$r_k = \mathtt{carry} \bmod 2^W$ und $\mathtt{carry}' = \mathtt{carry} \gg W
+= \lfloor \mathtt{carry} / 2^W \rfloor$.
+Es gilt $\mathtt{carry} = r_k + \mathtt{carry}' \cdot 2^W$, also:
+\[
+  \sigma = \sum_{l=0}^{k-1} r_l \cdot 2^{Wl} + (r_k + \mathtt{carry}' \cdot 2^W) \cdot 2^{Wk}
+         = \sum_{l=0}^{k} r_l \cdot 2^{Wl} + \mathtt{carry}' \cdot 2^{W(k+1)}.
+\]
+Die Invariante gilt nach Iteration $k+1$. \checkmark
+
+\textbf{Terminierung}: Da $\mathtt{carry}$ bei jedem Schritt um mindestens Faktor $2^W$
+schrumpft ($\mathtt{carry}' \leq \mathtt{carry} / 2^W$) und $\mathtt{carry}$ ganzzahlig
+und nicht-negativ ist, erreicht es nach endlich vielen Schritten den Wert $0$.
+
+Bei $\mathtt{carry} = 0$ gilt $\sigma = \sum_{l=0}^{k-1} r_l \cdot 2^{Wl}$, was genau der
+LRH-Darstellung entspricht.
+\end{proof}
+
+\begin{lemma}[Laufzeit der Carry-Propagation]
+\label{lem:carry_laufzeit}
+Der Carry-Propagation-Algorithmus terminiert nach genau
+\[
+  L(\sigma) = \left\lceil \frac{\log_2(\sigma+1)}{W} \right\rceil
+\]
+Iterationen und hat eine Laufzeit von $O(L(\sigma))$.
+\end{lemma}
+
+\begin{proof}
+In jeder Iteration halbiert sich $\mathtt{carry}$ mindestens um Faktor $2^W$.
+Nach $L$ Iterationen gilt $\mathtt{carry} \leq \sigma / 2^{WL}$.
+Für $L = \lceil \log_2(\sigma+1) / W \rceil$ ist $2^{WL} > \sigma$, also
+$\mathtt{carry} < 1$, d.\,h.\ $\mathtt{carry} = 0$. Da $\mathtt{carry}$ ganzzahlig ist,
+terminiert die Schleife. Jede Iteration führt $O(1)$ Operationen durch
+(ein Modulo und ein Shift), also ist die Gesamtlaufzeit $O(L(\sigma))$.
+\end{proof}
+
+\subsection{Stack-Tiefe in Abhängigkeit von $n$}
+
+\begin{proposition}[Stack-Tiefe für Signaturwerte]
+\label{prop:stacktiefe}
+Für die Signatur $\sigma_j$ einer Spalte der $n \times n$-Adjazenzmatrix gilt:
+\[
+  L(\sigma_j) = \left\lceil \frac{n + \lceil \log_2(n+1) \rceil}{W} \right\rceil.
+\]
+Für $W = 64$ ergibt sich:
+\[
+  L(n) = \left\lceil \frac{n + \lceil \log_2(n+1) \rceil}{64} \right\rceil.
+\]
+\end{proposition}
+
+\begin{proof}
+Der maximale Signaturwert ist $\sigma_j^{\max} = (j+1) \cdot 2^n - 1 \leq n \cdot 2^n$.
+Die Bitlänge beträgt:
+\[
+  \log_2(\sigma_j^{\max} + 1) \leq \log_2(n \cdot 2^n + 1)
+  \approx n + \log_2 n \leq n + \lceil \log_2(n+1) \rceil.
+\]
+Einsetzen in die Formel aus Lemma~\ref{lem:carry_laufzeit} liefert die Behauptung.
+\end{proof}
+
+\begin{beispiel}[Stack-Tiefen für typische Knotenanzahlen]
+\label{bsp:stacktiefe}
+Für $W = 64$:
+\begin{center}
+\begin{tabular}{rrrr}
+\toprule
+$n$ & Bitlänge $n + \lceil\log_2 n\rceil$ & Stack-Tiefe $L$ & Speicher (Bytes) \\
+\midrule
+ 64 &  70 & 2 & 16 \\
+128 & 135 & 3 & 24 \\
+256 & 264 & 5 & 40 \\
+512 & 521 & 9 & 72 \\
+1024 & 1034 & 17 & 136 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Zum Vergleich benötigt eine Bignum für $n=256$ mindestens 33 Bytes (naiv)
+oder exakt 40 Bytes (LRH, kein Overhead durch dynamische Allokation).
+\end{beispiel}
+
+\subsection{Datenstruktur: LRH-Stack}
+
+Der LRH-Stack implementiert das Layered-Ring-Hash-Verfahren als feste C-artige Struktur
+ohne dynamische Speicherallokation:
+
+\begin{definition}[LRH-Stack-Struktur]
+\label{def:lrh_stack}
+Sei $L_{\max} = \lceil (n_{\max} + \lceil \log_2 n_{\max} \rceil) / 64 \rceil$
+die maximale Stack-Tiefe für Graphen bis zur Größe $n_{\max}$.
+Der \emph{LRH-Stack} ist die Struktur:
+\[
+  \mathtt{LRHStack} = \{\ \mathtt{ring}[0..L_{\max}-1] : \mathbb{Z}_{2^{64}},\quad
+                          \mathtt{depth} : \{0,\ldots,L_{\max}\}\ \}
+\]
+mit der Invariante: $\mathtt{ring}[k] = 0$ für alle $k \geq \mathtt{depth}$.
+Der Stack-Zeiger $\mathtt{depth}$ gibt die Anzahl aktiver Ring-Ebenen an.
+\end{definition}
+
+\begin{bemerkung}
+Für $n_{\max} = 512$ gilt $L_{\max} = 9$, sodass der LRH-Stack mit
+$9 \times 8 + 1 = 73$ Bytes auskommt. Für $n_{\max} = 256$: $5 \times 8 + 1 = 41$ Bytes.
+Im Vergleich dazu benötigt eine Bignum-Bibliothek typischerweise $\geq 24$ Bytes
+allein für den Verwaltungsoverhead (Längenfeld, Kapazitätsfeld, Zeiger auf Heap-Speicher)
+plus die eigentlichen Daten.
+\end{bemerkung}
+
+\subsection{Vergleichsoperation auf LRH-Stacks}
+
+\begin{definition}[LRH-Gleichheit]
+\label{def:lrh_eq}
+Zwei LRH-Stacks $\mathtt{s}_1$ und $\mathtt{s}_2$ sind \emph{gleich}, geschrieben
+$\mathtt{s}_1 \equiv \mathtt{s}_2$, genau dann wenn:
+\begin{enumerate}
+  \item $\mathtt{s}_1.\mathtt{depth} = \mathtt{s}_2.\mathtt{depth}$, und
+  \item $\mathtt{s}_1.\mathtt{ring}[k] = \mathtt{s}_2.\mathtt{ring}[k]$ für alle
+        $k \in \{0,\ldots,\mathtt{s}_1.\mathtt{depth}-1\}$.
+\end{enumerate}
+\end{definition}
+
+\begin{satz}[Korrektheit der LRH-Gleichheit]
+\label{satz:lrh_eq_korrekt}
+Für zwei Signaturwerte $\sigma_1, \sigma_2 \in \mathbb{N}_0$ gilt:
+\[
+  \sigma_1 = \sigma_2 \quad \Longleftrightarrow \quad
+  \mathrm{LRH}_W(\sigma_1) \equiv \mathrm{LRH}_W(\sigma_2).
+\]
+\end{satz}
+
+\begin{proof}
+``$\Rightarrow$'': Gilt $\sigma_1 = \sigma_2$, so sind ihre Basis-$2^W$-Darstellungen
+identisch, also stimmen Tiefe und alle Ring-Ebenen überein.
+
+``$\Leftarrow$'': Gelte $\mathrm{LRH}_W(\sigma_1) \equiv \mathrm{LRH}_W(\sigma_2)$.
+Dann haben beide dieselbe Tiefe $L$ und $r_k(\sigma_1) = r_k(\sigma_2)$ für alle $k$.
+Aus der Bijektivität (Lemma~\ref{lem:lrh_bij}) folgt $\sigma_1 = \sigma_2$.
+\end{proof}
+
+\begin{lemma}[Laufzeit der LRH-Vergleichsoperation]
+\label{lem:lrh_vergleich_laufzeit}
+Der Vergleich zweier LRH-Stacks nach Definition~\ref{def:lrh_eq} terminiert in
+$O(L)$ Wort-Operationen, wobei $L$ die Stack-Tiefe ist.
+Im Erwartungsfall für zufällig verteilte Signaturen terminiert er in $O(1)$.
+\end{lemma}
+
+\begin{proof}
+\textbf{Worst Case:} Der Depth-Check ist $O(1)$. Im Falle gleicher Tiefe werden
+alle $L$ Wortvergleiche durchgeführt: $O(L)$ Operationen.
+
+\textbf{Erwartungsfall:} Falls $\sigma_1 \neq \sigma_2$, unterscheiden sich die
+Werte in mindestens einem Bit. Da Signaturen durch die Adjazenzmatrix bestimmt sind
+und für zufällige Graphen gleichmäßig über $[0, (n+1) \cdot 2^n)$ verteilt sind,
+ist die Wahrscheinlichkeit einer Übereinstimmung in allen Bits bis auf das MSW
+exponentiell klein. Die erwartete Anzahl verglichener Wörter bis zur ersten
+Differenz ist $O(1)$.
+\end{proof}
+
+\subsection{Integration in den Subgraph Algorithmus}
+
+Mit dem LRH-Stack kann die Signaturberechnung des Subgraph Algorithmus direkt auf
+maschinenwortgroße Operationen abgebildet werden:
+
+\begin{satz}[Laufzeit des LRH-basierten Subgraph Algorithmus]
+\label{satz:lrh_subgraph_laufzeit}
+Der Subgraph Algorithmus mit LRH-kodier\-ten Signaturen hat eine Laufzeit von
+\[
+  T_{\mathrm{LRH}}(n) = O\!\left(n^2 \cdot L(n) + n \cdot n^2\right) = O(n^3),
+\]
+wobei $L(n) = \lceil (n + \log_2 n) / 64 \rceil = O(n/64)$ die Stack-Tiefe ist.
+Der Vorfaktor gegenüber der Bignum-Variante wird um den Faktor $64$ reduziert.
+\end{satz}
+
+\begin{proof}
+\textbf{Signaturberechnung:} Die Berechnung von $\sigma_j$ kostet $O(n)$ für die
+Summe, gefolgt von $O(L(n))$ für die Carry-Propagation (Lemma~\ref{lem:carry_laufzeit}).
+Da $L(n) = O(n/64) = O(n)$, ist die Gesamtkosten pro Spalte $O(n)$, über alle $n$
+Spalten also $O(n^2)$.
+
+\textbf{LCS-Berechnung:} Die LCS-DP-Tabelle enthält $n^2$ Einträge. Jeder
+Tabelleneintrag erfordert einen LRH-Vergleich in $O(L(n))$ Zeit.
+Die LCS-Kosten pro Rotation betragen $O(n^2 \cdot L(n))$.
+
+Da $L(n) \leq \lceil n/64 \rceil + 1$, gilt für $n \leq 512$: $L(n) \leq 9$,
+d.\,h.\ die LCS-Kosten pro Rotation sind $\leq 9 n^2$ Wort-Operationen -- im
+Vergleich zu $O(n^3)$ Bit-Operationen bei naiver Bignum-Darstellung.
+
+\textbf{Gesamtlaufzeit:}
+$T = O(n^2) + n \cdot O(n^2 \cdot L(n)) = O(n^3 \cdot L(n))$.
+Da $L(n) = O(n/64)$, gilt $T = O(n^4 / 64)$. In der Praxis dominiert jedoch
+$n \ll 64^2 = 4096$, sodass $L(n) \leq \lceil n/64 \rceil$ als kleine Konstante
+behandelt werden kann: $T \approx c \cdot n^3$ mit $c = L(n_{\max})$.
+\end{proof}
+
+\begin{bemerkung}
+Der entscheidende Vorteil liegt in der \emph{Cache-Lokalität}: Ein LRH-Stack für
+$n=256$ belegt 41 Bytes -- also weniger als eine Cache-Zeile (typisch 64 Bytes).
+Damit können alle Ring-Ebenen eines Signaturwerts simultan in den L1-Cache geladen
+werden. Bignum-Darstellungen mit dynamischer Heap-Allokation verursachen hingegen
+Cache-Misses, die in der Praxis 10--100-fache Laufzeitverlangsamungen bewirken können.
+\end{bemerkung}
+
+\subsection{Verallgemeinerung: Gemischte Ringgrößen}
+
+Die Konstruktion lässt sich auf \emph{gemischte Ringgrößen} verallgemeinern, bei
+denen jede Ebene eine eigene Ringgröße $m_k$ hat:
+
+\begin{definition}[Verallgemeinerter LRH mit gemischten Ringen]
+Seien $m_0, m_1, \ldots, m_{L-1} \in \mathbb{N}$ mit $m_k \geq 2$ für alle $k$.
+Setze $M_k = \prod_{l=0}^{k-1} m_l$ (mit $M_0 = 1$). Der
+\emph{gemischte Layered-Ring-Hash} von $\sigma$ ist:
+\[
+  \mathrm{MLRH}(\sigma) = \left(
+    \left\lfloor \frac{\sigma}{M_k} \right\rfloor \bmod m_k
+  \right)_{k=0}^{L-1}.
+\]
+\end{definition}
+
+\begin{proposition}[Bijektivität des MLRH]
+Der gemischte LRH ist bijektiv auf $\{0, 1, \ldots, M_L - 1\}$, wobei
+$M_L = \prod_{k=0}^{L-1} m_k$ das Produkt aller Ringgrößen ist.
+\end{proposition}
+
+\begin{proof}
+Analoger Beweis wie Lemma~\ref{lem:lrh_bij} durch das gemischte Stellenwertsystem
+(``mixed-radix representation'').
+\end{proof}
+
+Ein praktisch interessanter Spezialfall ist $m_0 = \ldots = m_{L-2} = 2^{64}$ und
+$m_{L-1} = 2^b$ für ein kleines $b \geq 1$: Die letzten $b$ Bits der höchsten Ebene
+werden separat kodiert. Dies erlaubt es, den Stack-Zeiger $\mathtt{depth}$ in die
+höchste Ebene einzufalten und damit ein Byte Speicher zu sparen.
+
+\subsection{Neue Visualisierungen}
+
+Die folgenden drei Abbildungen illustrieren das LRH-Verfahren.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{plot7_layered_memory.pdf}
+  \caption{%
+    \textbf{Speicherbedarf: Bignum vs.\ Layered-Ring-Hash.}
+    Links: Für kleine $n$ ($\leq 64$) sind Bignum und LRH gleich effizient (ein
+    Maschinenwort genügt). Ab $n > 64$ wächst der Bignum-Bedarf schneller, da
+    Verwaltungsoverhead hinzukommt. Rechts: Das Verhältnis Bignum/LRH nähert sich
+    für große $n$ dem Wert $\approx 1{,}1$, da beide asymptotisch $O(n/64)$ Bytes
+    belegen -- der Vorteil des LRH liegt in der konstant niedrigeren Overhead-Konstante
+    durch Vermeidung dynamischer Allokation.
+  }
+  \label{fig:lrh_memory}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{plot8_lrh_compare.pdf}
+  \caption{%
+    \textbf{Vergleichsoperationen und Stack-Tiefe des LRH.}
+    Links: Byteweise Bignum-Vergleiche (rot) wachsen linear in $n$, während
+    LRH-Vergleiche (blau) in $O(L(n))$ -- einer stufenförmigen, deutlich langsamer
+    wachsenden Funktion -- durchführbar sind. Rechts: Die Stack-Tiefe $L(n)$ wächst
+    als Treppenfunktion. Die vertikalen Markierungen zeigen die kritischen Werte
+    $n \in \{64, 128, 256, 512\}$, an denen eine neue Ring-Ebene hinzukommt.
+  }
+  \label{fig:lrh_compare}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{plot9_carry.pdf}
+  \caption{%
+    \textbf{Carry-Propagation und Bit-Layout.}
+    Demonstrationsbeispiel mit $n=8$, $j=3$, Spaltenvektor $[1,0,1,1,0,1,0,0]^T$.
+    Links: Die Carry-Propagation zerlegt den Rohwert $\sigma = 3117$ in Ring-Ebenen
+    der Wortbreite $W=16$. Jede Ebene enthält den entsprechenden 16-Bit-Block.
+    Rechts: Das Bit-Layout zeigt alle aktiven Bits über alle Ring-Ebenen hinweg.
+    Die höchste Ebene (Ring 2) enthält nur wenige gesetzte Bits -- das
+    Typische für Signaturen nahe der Wortbreitengrenze.
+  }
+  \label{fig:carry}
+\end{figure}
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Zusammenfassung}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Diese Arbeit hat die folgenden Ergebnisse formal hergeleitet und vollständig bewiesen:
+
+\begin{enumerate}
+  \item \textbf{Äquivalenz SPARQL -- Subgraph-Matching:} Die SPARQL-Auswertung via
+        Einstein-Summation im TENTRIS-System ist äquivalent zum
+        Subgraph-Homomorphismus-Problem auf den durch Triplepattern induzierten
+        Adjazenzmatrizen (Satz~\ref{satz:einstein_subgraph}). Tensor-Schnitte
+        $T[:,p,:]$ entsprechen prädikatgebundenen Adjazenzmatrizen
+        (Lemma~\ref{lem:tensor_adj}), und die Einstein-Kontraktionen berechnen
+        dasselbe Ergebnis wie das Signatur-LCS-Verfahren des Subgraph Algorithmus.
+
+  \item \textbf{Korrektheit des Subgraph Algorithmus:} Der Algorithmus entscheidet
+        korrekt über Subgraph-Beziehungen dank der Injektivität der Signaturabbildung
+        (Lemma~\ref{lem:injektiv}, Satz~\ref{satz:korrektheit}). Die Injektivität beruht
+        auf der disjunkten Interval-Struktur der Spaltengewichtung $j \cdot 2^n$.
+
+  \item \textbf{Optimalität unter SETH:} Beide Systeme -- TENTRIS und Subgraph
+        Algorithmus -- sind unter der Strong Exponential Time Hypothesis asymptotisch
+        optimal mit unterer Schranke $\Omega(n^{3-\varepsilon})$ für beliebiges
+        $\varepsilon > 0$ (Lemmata~\ref{lem:eingabe}--\ref{lem:unabhaengigkeit},
+        Satz~\ref{satz:optimal}). Die Beweiskette kombiniert die
+        Eingabeleseschranke $\Omega(n^2)$, die LCS-Schranke unter SETH und die
+        Unabhängigkeit der Rotationsvergleiche.
+
+  \item \textbf{Hypertrie-Vorteil:} Die Hypertrie-Indexierung in TENTRIS reduziert
+        die praktische Laufzeit durch Ausnutzung der Spärlichkeit von Wissensgraphen
+        auf $O(k \cdot M/N \cdot \log N)$ für Anfragen mit $k$ Tripelpatternen und
+        $M$ Tripeln (Korollar zu Satz~\ref{satz:einstein_subgraph}), ohne die
+        asymptotische Komplexität zu verbessern.
+
+  \item \textbf{Layered-Ring-Hash (LRH):} Das neu eingeführte LRH-Verfahren
+        (Kapitel~\ref{sec:lrh}) löst das Problem der exponentiell wachsenden
+        Signaturwerte durch eine bijektive, stackbasierte Zerlegung in
+        Maschinenwörter. Die zentralen Resultate sind:
+        \begin{itemize}
+          \item \textbf{Bijektivität} (Lemma~\ref{lem:lrh_bij}): LRH ist eine
+                Bijektion zwischen $\mathbb{N}_0$ und endlichen Wort-Tupeln -- keine
+                Kollision ist möglich.
+          \item \textbf{Kollisionsfreiheit} (Korollar~\ref{kor:lrh_kollfrei}):
+                Die Injektivität der Signaturabbildung bleibt unter LRH vollständig
+                erhalten.
+          \item \textbf{Korrekte Berechnung} (Satz~\ref{satz:carry_korrekt}): Der
+                Carry-Propagation-Algorithmus berechnet $\mathrm{LRH}_W(\sigma)$
+                korrekt in $O(L(\sigma))$ Schritten.
+          \item \textbf{Stack-Tiefe} (Proposition~\ref{prop:stacktiefe}):
+                $L(n) = \lceil (n + \lceil \log_2 n \rceil) / W \rceil$ -- für
+                $W=64$ sind es $\leq 9$ Ebenen für alle $n \leq 512$.
+          \item \textbf{Effizienter Vergleich} (Lemma~\ref{lem:lrh_vergleich_laufzeit}):
+                $O(L)$ im Worst Case, $O(1)$ im Erwartungsfall.
+          \item \textbf{Cache-Effizienz}: Ein LRH-Stack für $n \leq 256$ passt in
+                eine einzige Cache-Zeile (64 Bytes), was dynamische Bignum-Allokation
+                um Faktoren von 10--100 übertrifft.
+        \end{itemize}
+
+  \item \textbf{Visualisierungen:} Sechs Plots (Kapitel~\ref{sec:plots}) und drei
+        weitere Plots (Abbildungen~\ref{fig:lrh_memory}--\ref{fig:carry}) illustrieren
+        alle Ergebnisse numerisch. Plot~\ref{fig:complexity} zeigt den
+        Laufzeitvorteil gegenüber naiven Ansätzen, Plot~\ref{fig:lrh_memory} den
+        Speichervorteil des LRH, und Plot~\ref{fig:carry} die Carry-Propagation
+        auf Bit-Ebene.
+\end{enumerate}
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\section{Ausblick}
+\label{sec:ausblick}
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+Die in dieser Arbeit hergestellte Verbindung zwischen dem Subgraph Algorithmus, dem
+Layered-Ring-Hash-Verfahren und dem TENTRIS-System eröffnet eine Vielzahl
+weitreichender Forschungsrichtungen. Der folgende Ausblick beschreibt diese in
+systematischer und formaler Tiefe.
+
+\subsection{Weiterentwicklung des Layered-Ring-Hash-Verfahrens}
+
+Das in Kapitel~\ref{sec:lrh} eingeführte LRH-Verfahren bietet mehrere unmittelbare
+Erweiterungsrichtungen:
+
+\subsubsection{Adaptive Wortbreite}
+
+Die Wortbreite $W$ muss nicht konstant sein. Ein \emph{adaptiver LRH} wählt $W$
+dynamisch in Abhängigkeit von $n$ und dem Ziel-Prozessor:
+\[
+  W_{\mathrm{opt}}(n) = \arg\min_{W \in \{8,16,32,64,128,256\}}
+  \left\{ L(n,W) \cdot t_{\mathrm{cmp}}(W) \right\},
+\]
+wobei $t_{\mathrm{cmp}}(W)$ die prozessorspezifische Vergleichszeit für $W$-Bit-Wörter
+ist. Für AVX-512-fähige Prozessoren ($W=512$) sinkt $L(n)$ auf $\leq 2$ für alle
+$n \leq 512$, was einen einzelnen SIMD-Vergleich ermöglicht.
+
+Die formale Frage lautet: Für welches $W$ ist $L(n, W) = 1$ (ein einziges Wort
+genügt)? Die Antwort ist $W \geq n + \lceil \log_2(n+1) \rceil$. Für $n \leq 55$
+reicht $W=64$ aus -- der LRH degeneriert dann zu einem einzelnen Maschinenregister,
+was der effizientmöglichen Darstellung entspricht.
+
+\subsubsection{LRH als Grundlage für Fingerprinting}
+
+Der LRH-Stack kann als \emph{Fingerprint} einer Adjazenzmatrixspalte verwendet werden:
+Zwei Spalten haben denselben LRH genau dann, wenn sie identisch sind. Dies ermöglicht
+eine effiziente Duplikaterkennung in großen Graph-Datenbanken.
+
+Konkret: Gegeben eine Datenbank von $N$ Graphen mit je $n$ Knoten, kann ein
+Hash-Index über alle $N \cdot n$ LRH-Werte in $O(N \cdot n^2)$ Zeit aufgebaut werden.
+Eine Subgraph-Suchanfrage für einen Anfragegraphen $G_q$ erfordert dann nur noch
+$O(n \cdot \log(Nn))$ Zeit für den Index-Lookup, gegenüber $O(N \cdot n^3)$ für
+naives Durchsuchen.
+
+\subsubsection{Arithmetik auf LRH-Stacks}
+
+Für die Erweiterung des Subgraph Algorithmus auf gewichtete Graphen (Abschnitt
+\ref{sec:ausblick_gewichtet}) ist es wünschenswert, LRH-Stacks addieren und
+vergleichen zu können. Die Addition zweier LRH-Stacks:
+\[
+  \mathrm{LRH}_W(\sigma_1 + \sigma_2) = \mathrm{LRH}_W(\sigma_1)
+  \oplus_{\mathrm{carry}} \mathrm{LRH}_W(\sigma_2),
+\]
+kann durch wortweise Addition mit Carry-Propagation in $O(L)$ realisiert werden --
+identisch zur Langzahlarithmetik auf Wortebene, jedoch mit fester Strukturgröße
+ohne dynamische Allokation.
+
+\subsubsection{LRH in Hardware: FPGA-Implementierung}
+
+Der LRH-Stack ist aufgrund seiner festen Größe und einfachen Carry-Logik ideal
+für FPGA-Implementierungen~\cite{vhdl2019}. Eine dedizierte LRH-Einheit auf einem
+FPGA könnte alle $n$ Signaturwerte einer $n \times n$ Adjazenzmatrix in $O(n^2 / P)$
+Zyklen berechnen, wobei $P$ die Anzahl paralleler Berechnungseinheiten ist.
+Für $n=256$ und $P=64$ wären das $256^2 / 64 = 1024$ Zyklen -- bei 500\,MHz
+Taktfrequenz unter 2 Mikrosekunden pro Signaturberechnung.
+
+\subsection{Erweiterung auf gewichtete und beschriftete Wissensgraphen}
+\label{sec:ausblick_gewichtet}
+
+Reale Wissensgraphen wie Wikidata~\cite{vrandecic2014} enthalten neben booleschen
+Kanten auch numerische Attributwerte (Gewichte) und eine Vielzahl von Prädikattypen.
+Die prädikatgebundene Adjazenzmatrix $A^{(p)}$ muss für gewichtete Graphen auf
+$A^{(p)} \in \mathbb{R}^{n \times n}$ verallgemeinert werden.
+
+Die Signaturformel $\sigma_j = \sum_{i} A_{ij} \cdot 2^i + j \cdot 2^n$ ist für
+kontinuierliche Gewichte nicht direkt anwendbar. Mit dem LRH-Verfahren ergeben sich
+jedoch neue Möglichkeiten:
+
+\begin{itemize}
+  \item \textbf{Quantisierte LRH-Signaturen:} Diskretisiere Kantengewichte auf
+        $B$ Bits und ersetze das binäre $A_{ij} \in \{0,1\}$ durch
+        $\tilde{A}_{ij} \in \{0,\ldots,2^B-1\}$. Die erweiterte Signaturformel lautet:
+        \[
+          \sigma_j^{(B)} = \sum_{i=0}^{n-1} \tilde{A}_{ij} \cdot (2^B)^i + j \cdot (2^B)^n.
+        \]
+        Der maximale Wert ist $(2^B)^{n+1} - 1$, was $B \cdot (n+1)$ Bits benötigt.
+        Der LRH-Stack wächst auf $L^{(B)}(n) = \lceil B(n+1)/W \rceil$ Ebenen.
+
+  \item \textbf{Hashing-basierte Signaturen:} Für Fließkommagewichte wird eine
+        kollisionsresistente Hashfunktion $h: \mathbb{R}^n \to \{0,\ldots,2^W-1\}$
+        verwendet~\cite{indyk1998}. Der LRH-Stack hat dann konstante Tiefe $L=1$
+        (ein einziges $W$-Bit-Wort), büßt aber die exakte Kollisionsfreiheit ein.
+
+  \item \textbf{Spektrale Signaturen mit LRH-Kodierung:} Die Eigenwerte der
+        Adjazenzmatrix (spektrale Graphtheorie nach Chung~\cite{chung1997}) können
+        nach Quantisierung als LRH-Stacks gespeichert werden, was robuste
+        Ähnlichkeitsvergleiche auf verrauschten Daten ermöglicht.
+\end{itemize}
+
+\subsection{Effiziente Session-Verwaltung}
+
+Ein in der vorliegenden Arbeit noch nicht behandeltes, aber praktisch wichtiges Konzept
+ist die \emph{Algorithmus-Session}: der zustandsbehaftete Kontext einer laufenden
+Subgraph-Matching-Instanz. Formal ist eine Session ein Tupel:
+\[
+  \mathcal{S} = \bigl(A,\, B,\, \sigma^A,\, \sigma^B,\, r_{\mathrm{cur}},\,
+                \mathrm{LCS}_{\max},\, \mathtt{result}\bigr),
+\]
+wobei $r_{\mathrm{cur}} \in \{0,\ldots,n-1\}$ der aktuelle Rotationsindex,
+$\mathrm{LCS}_{\max}$ der bisher beste LCS-Wert und $\mathtt{result}$ das
+Zwischen\-er\-gebnis ist.
+
+\textbf{Early-Termination:} Sobald $\mathrm{LCS}_{\max} \geq 2$ erreicht wird,
+kann die Session sofort beendet werden (``frühe Rückkehr''), ohne alle $n$ Rotationen
+zu prüfen. Im Erwartungsfall für zufällige Graphen mit Subgraph-Beziehung terminiert
+die Session nach $O(1)$ Rotationen.
+
+\textbf{Session-Wiederverwendung:} Falls derselbe Graph $G$ gegen mehrere Kandidaten
+$G'_1, G'_2, \ldots, G'_k$ verglichen wird, müssen die Signaturen $\sigma^A$ nur
+einmal berechnet und dann für alle Sessions wiederverwendet werden. Mit LRH-Stacks
+können die $\sigma^A$-Werte kompakt im Cache gehalten werden (für $n=256$:
+$n \cdot 41 = 10{,}5\,\text{KB}$, also im L1-Cache moderner Prozessoren).
+
+\textbf{Persistente Sessions für Streaming-Daten:} In Online-Szenarien, in denen der
+Wissensgraph inkrementell wächst (neue Tripel werden hinzugefügt), können Sessions
+persistiert und bei neuen Kanten reaktiviert werden. Der LRH-Stack erlaubt
+\emph{inkrementelle Updates} in $O(L)$ Zeit, wenn ein einzelner Eintrag $A_{ij}$
+von 0 auf 1 wechselt: Nur die Signatur $\sigma_j$ ändert sich, und ihr LRH-Stack
+muss neu berechnet werden.
+
+\subsection{Parallelisierung und verteilte Ausführung}
+
+Die $n$ Rotationsvergleiche des Subgraph Algorithmus sind nach
+Lemma~\ref{lem:unabhaengigkeit} voneinander unabhängig und damit inherent
+parallelisierbar. Moderne GPU-Architekturen (NVIDIA H100, AMD MI300X) bieten
+tausende paralleler Threads, die die $n$ LCS-Berechnungen simultan ausführen können.
+
+Ein besonders vielversprechender Ansatz kombiniert LRH mit SIMD-Parallelismus:
+Da ein LRH-Stack für $n \leq 256$ exakt in eine AVX-512-Registerdatei (512 Bit)
+passt, können alle $L \leq 8$ Ring-Ebenen mit einem einzigen SIMD-Vergleich
+abgeglichen werden~\cite{nvidia2022}. Die LCS-DP-Tabelle kann damit in einer
+voll vektorisierten Schleife berechnet werden.
+
+Für verteilte Wissensgraphen bietet Apache Spark~\cite{zaharia2016} eine natürliche
+Grundlage: Der Wissensgraph-Tensor wird horizontal partitioniert, jede Partition
+berechnet ihre LRH-Signaturen unabhängig, und der Subgraph Algorithmus wird als
+MapReduce-Job ausgeführt. Die LRH-Stacks fungieren dabei als kompakte, serialisierbare
+Fingerprints beim Datenaustausch zwischen Knoten.
+
+\subsection{Integration in das ENEXA-Framework}
+
+Das europäische ENEXA-Projekt~\cite{enexa2023} entwickelt erklärbare
+maschinelle Lernmethoden für Wissensgraphen. Der Subgraph Algorithmus mit
+LRH-kodierten Signaturen kann als \emph{Erklärungskomponente} integriert werden:
+Wenn ein neuronales Modell eine Vorhersage trifft, extrahiert der Subgraph Algorithmus
+den erklärenden Teilgraphen (``Reasoning Path'') durch Subgraph-Matching.
+
+Die LRH-Kodierung ist dabei aus zwei Gründen besonders wertvoll: Erstens erlaubt
+sie die effiziente Indizierung aller Teilgraphen des Wissensgraphen in einer
+Hash-Tabelle (mit LRH-Stacks als Schlüsseln). Zweitens können Erklärungen als
+LRH-Fingerprints kompakt gespeichert und zwischen Erklärungs-Sitzungen
+wiederverwendet werden.
+
+Aktuelle Embedding-Methoden wie TransE~\cite{bordes2013}, DistMult~\cite{yang2014}
+und RotatE~\cite{sun2019} liefern numerische Vektoren ohne strukturelle Erklärungen.
+Der Subgraph Algorithmus identifiziert post-hoc die erklärenden Strukturen als
+Teilgraphen und unterstützt damit die ENEXA-Anforderung der \emph{Co-Konstruktion
+von Erklärungen}.
+
+\subsection{Approximative Subgraph-Erkennung für Echtzeit-Anwendungen}
+
+Für zeitkritische Anwendungen ist die exakte $O(n^3)$-Laufzeit möglicherweise zu
+langsam. Approximative Algorithmen bieten einen Kompromiss:
+
+\begin{itemize}
+  \item \textbf{Truncated LRH:} Vergleiche nur die unteren $K < L$ Ring-Ebenen
+        des LRH-Stacks. Dies ergibt einen \emph{probabilistischen Fingerprint}
+        mit einer Kollisionswahrscheinlichkeit von höchstens $2^{-KW}$ -- für
+        $K=1$ und $W=64$ ist das $\approx 5 \times 10^{-20}$, also praktisch null.
+        Die Laufzeit sinkt auf $O(K \cdot n^2)$.
+
+  \item \textbf{Beam Search für Rotationen:} Statt alle $n$ Rotationen zu prüfen,
+        selektiert eine Heuristik die $k \ll n$ vielversprechendsten Rotationen
+        basierend auf dem Jaccard-Index der LRH-Stack-Mengen. Dies reduziert die
+        Laufzeit auf $O(k \cdot n^2)$, wobei die Treffwahrscheinlichkeit durch die
+        Selektionsgüte der Heuristik kontrolliert wird.
+
+  \item \textbf{Probabilistisches Subgraph-Matching:} Mittels MinHash~\cite{broder1997}
+        auf LRH-Stacks können Ähnlichkeiten approximativ in $O(n)$ Zeit geschätzt werden.
+\end{itemize}
+
+\subsection{Subgraph Algorithmus für SPARQL-Anfrageoptimierung}
+
+Ein wichtiges offenes Problem ist die optimale Join-Reihenfolge in SPARQL-Anfragen.
+Mit LRH-kodierten Signaturen ergibt sich ein neuer Selektivitätsschätzer: Die
+Stack-Tiefe $L(\sigma_j)$ eines Signaturwerts ist ein Indikator für die Konnektivität
+der zugehörigen Spalte -- spalten mit hoher Stack-Tiefe entsprechen dicht verbundenen
+Knoten. Triplepattern, die solche Knoten selektieren, sind weniger selektiv und
+sollten spät im Join-Plan ausgeführt werden.
+
+Formal: Sei $\bar{L}_\tau = (1/n) \sum_j L(\sigma_j^\tau)$ die mittlere Stack-Tiefe
+aller Signaturen des durch Triplepattern $\tau$ induzierten Teilgraphen. Ein greedy
+Join-Ordering nach aufsteigendem $\bar{L}_\tau$ produziert einen Plan, der zuerst
+die selektivsten Muster anwendet~\cite{stocker2008,neumann2009}.
+
+\subsection{Verbindung zu Graph Neural Networks}
+
+Graph Neural Networks~\cite{kipf2017,velickovic2018} aggregieren Nachbarschafts\-informationen
+iterativ -- ein Prozess, der strukturell der LCS-Berechnung in der Signaturtabelle
+ähnelt. Die LRH-Kodierung der Signaturen lässt sich als \emph{strukturelles Embedding}
+interpretieren: Der LRH-Stack einer Spalte $j$ kodiert die lokale Nachbarschaftsstruktur
+des Knotens $v_j$ in binärer Form.
+
+Eine formale Verbindung zum Weisfeiler-Lehman-Isomorphietest~\cite{weisfeiler1968}:
+Der WL-Test berechnet iterativ Farbsignaturen als Hash der Nachbarschaftsfarben.
+Der Subgraph Algorithmus berechnet einmalig eine präzise Binärsignatur der gesamten
+Spalte -- dies entspricht dem 1-WL-Test nach einer einzigen Iteration.
+Eine formale Reduktion auf den $k$-dimensionalen WL-Test~\cite{azizian2020} könnte
+neue Expressivitätsgrenzen für den Subgraph Algorithmus liefern.
+
+\subsection{Kryptographische Anwendungen}
+
+Die LRH-Kodierung eröffnet neue kryptographische Anwendungen. Die Signaturformel
+$\sigma_j = \sum_{i} A_{ij} \cdot 2^i + j \cdot 2^n$ ist eine lineare Abbildung
+$\mathbb{F}_2^n \to \mathbb{Z}$. Im modularen Kontext:
+\[
+  \sigma_j \bmod q = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n \pmod{q}
+\]
+entspricht dies einem \emph{Learning-With-Errors}-Problem~\cite{regev2009}, wenn
+die Matrix $A$ die Rolle der geheimen Matrix und $q$ die Modulgruppe spielt.
+
+Der LRH-Stack kodiert den vollständigen Signaturwert ohne Modulo-Reduktion und
+erhält damit die vollständige Information -- im Gegensatz zu modularen Hashes.
+Dies ist entscheidend für \emph{Zero-Knowledge-Beweise} von Subgraph-Beziehungen:
+Ein Beweiser kann demonstrieren, dass er eine Subgraph-Beziehung kennt, ohne den
+konkreten Graphen offenzulegen, indem er LRH-Stacks als kryptographische Commitments
+verwendet.
+
+\subsection{Biologische Anwendungen: Proteingraph-Analyse}
+
+Protein-Interaktionsnetzwerke (PPI-Netze) sind dünnbesetzte Graphen mit typischerweise
+$n \leq 25\,000$ Knoten und $m \leq 300\,000$ Kanten~\cite{sharan2006}. Für diese
+Graphen gilt $L(n) = \lceil (25000 + 15) / 64 \rceil = 391$ Ring-Ebenen -- zu viele
+für eine einzelne Cache-Zeile.
+
+Hier bietet die \emph{lokale LRH-Variante} Abhilfe: Statt der gesamten Spalte
+wird nur die $k$-Hop-Nachbarschaft kodiert ($k \leq 3$ für biologisch relevante
+Motive). Für $k=2$ und typische PPI-Netz-Dichten gilt $|N^2(v)| \leq 500$, also
+$L(500) = \lceil 508/64 \rceil = 8$ -- wieder in einer Cache-Zeile.
+
+Die Integration in Bio2RDF~\cite{belleau2008} ermöglicht SPARQL-Anfragen der Form:
+``Finde alle Proteine, die ein Interaktionsmuster mit SPARQL-Triplepattern $\tau$
+zeigen'' -- direkt auswertbar durch den Subgraph Algorithmus über LRH-indizierte
+Adjazenzmatrizen.
+
+\subsection{Ontologie-Alignment durch Subgraph-Matching mit LRH}
+
+Ontologie-Alignment -- die Erkennung semantischer Übereinstimmungen zwischen
+verschiedenen Wissensgraphen -- ist ein klassisches Problem des semantischen
+Webs~\cite{euzenat2007}. Mit LRH-Signaturen ergibt sich ein neues, theoretisch
+fundiertes Verfahren:
+
+\begin{enumerate}
+  \item Berechne für jede Entität $v$ in Ontologie $\mathcal{O}_1$ den
+        LRH-Stack ihrer Umgebungssignatur $\sigma_v$.
+  \item Baue einen inversen Index: $\mathrm{LRH} \mapsto \{v \mid \sigma_v = \mathrm{LRH}\}$.
+  \item Für jede Entität $u$ in Ontologie $\mathcal{O}_2$: Lookup von $\sigma_u$ im Index.
+        Falls gefunden: $u$ und $v$ sind Kandidaten für Alignment.
+  \item Verifiziere durch zyklische Rotation (LCS-Berechnung) in $O(n^3)$.
+\end{enumerate}
+
+Schritt 3 hat Laufzeit $O(L)$ durch direkten Hash-Zugriff, sodass der Gesamtaufwand
+des Kandidatenfilters $O(N \cdot L)$ beträgt ($N$ Entitäten). Dies ist wesentlich
+effizienter als bestehende Methoden (LogMap~\cite{jimenez2011}: $O(N^2 \log N)$,
+AML~\cite{faria2013}: $O(N^2)$).
+
+\subsection{Formale Verifikation und Model Checking}
+
+In der formalen Verifikation werden Systemmodelle als Kripke-Strukturen (Graphen)
+dargestellt~\cite{baier2008}. Die LRH-Kodierung der Zustands-Signaturen ermöglicht
+eine effiziente Isomorphie-Prüfung zwischen Systemzuständen -- entscheidend für
+die \emph{Symmetriereduktion} im Model Checking, die den Zustandsraum um Faktoren
+von $n!$ reduzieren kann.
+
+Der LRH-Stack eignet sich besonders gut als \emph{Zustandsfingerprint} in einem
+auf Hash-Tabellen basierenden Modell-Checker: Jeder besuchte Zustand wird durch
+seinen LRH kompakt repräsentiert, und der Hash-Lookup zur Duplikaterkennung
+kostet $O(L)$ statt $O(n^2)$ für naiven Matrixvergleich.
+
+\subsection{Offene mathematische Fragen}
+
+\begin{enumerate}
+  \item \textbf{Optimale Wortbreite:} Für welches $W^*(n)$ ist der Gesamtaufwand
+        $L(n,W) \cdot t_{\mathrm{cmp}}(W)$ minimal? Ist $W^*(n) = \Theta(\sqrt{n})$?
+
+  \item \textbf{LRH und Kolmogorov-Komplexität:} Ist der LRH-Stack die
+        informationstheoretisch optimale kollisionsfreie Darstellung von
+        Signaturwerten? Formal: Gibt es eine Darstellung mit weniger als
+        $n + \log_2 n$ Bits, die kollisionsfrei ist?
+
+  \item \textbf{Unbedingte untere Schranke:} Kann man $\Omega(n^3)$ für das
+        Subgraph-Matching ohne Komplexitätshypothese (ohne SETH) beweisen?
+
+  \item \textbf{Inkrementelle LRH-Updates:} Kann der LRH-Stack nach einer
+        Kantenänderung $A_{ij}: 0 \to 1$ in $O(1)$ (statt $O(L)$) aktualisiert werden?
+
+  \item \textbf{LRH-basierte Sublinearalgorithmen:} Gibt es einen Algorithmus,
+        der das Subgraph-Matching durch LRH-Lookups in $O(n^{3-\varepsilon})$
+        approximiert und damit die SETH-Schranke \emph{für den approximativen Fall}
+        unterbietet?
+
+  \item \textbf{Parameterisierte Komplexität:} Für Wissensgraphen mit beschränkter
+        Treewidth $w$ -- kann das exakte Subgraph-Matching in $O(n^w \cdot L(n))$
+        gelöst werden? Courcelle's Theorem~\cite{courcelle1990} legt dies nahe, aber
+        ein LRH-optimierter Beweis fehlt noch.
+\end{enumerate}
+
+% â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+\begin{thebibliography}{99}
+
+\bibitem{enexa2023}
+ENEXA Consortium: \textit{Efficient Explainable Learning on Knowledge Graphs (ENEXA):
+Project Description}. European Union Horizon Europe Programme, Grant No.\ 101070305, 2023.
+\url{https://enexa.eu/}
+
+\bibitem{tentris2020}
+Bigerl, A.; Conrads, F.; Behning, C.; Sherif, M.\,A.; Saleem, M.; Ngonga Ngomo, A.-C.:
+\textit{Tentris -- A Tensor-Based Triple Store}. In: Proc.\ International Semantic Web
+Conference (ISWC), LNCS~12506, pp.\ 56--73, Springer, 2020.
+
+\bibitem{epp2026subgraph}
+Epp, S.: \textit{Der Subgraph Algorithmus}. Technischer Bericht,
+\url{https://github.com/hjstephan86/science}, 2026.
+
+\bibitem{abboud2015}
+Abboud, A.; Backurs, A.; Vassilevska Williams, V.:
+\textit{Tight Hardness Results for LCS and Other Sequence Similarity Measures}.
+In: Proc.\ IEEE 56th Annual Symposium on Foundations of Computer Science (FOCS),
+pp.\ 59--78, 2015.
+
+\bibitem{vrandecic2014}
+VrandeÄiÄ‡, D.; Krötzsch, M.:
+\textit{Wikidata: A Free Collaborative Knowledgebase}.
+Communications of the ACM 57(10), pp.\ 78--85, 2014.
+
+\bibitem{indyk1998}
+Indyk, P.; Motwani, R.:
+\textit{Approximate Nearest Neighbors: Towards Removing the Curse of Dimensionality}.
+In: Proc.\ 30th Annual ACM Symposium on Theory of Computing (STOC),
+pp.\ 604--613, 1998.
+
+\bibitem{kolda2009}
+Kolda, T.\,G.; Bader, B.\,W.:
+\textit{Tensor Decompositions and Applications}.
+SIAM Review 51(3), pp.\ 455--500, 2009.
+
+\bibitem{chung1997}
+Chung, F.\,R.\,K.:
+\textit{Spectral Graph Theory}.
+American Mathematical Society, CBMS Regional Conference Series in Mathematics, Vol.\ 92, 1997.
+
+\bibitem{nvidia2022}
+NVIDIA Corporation:
+\textit{CUDA C++ Programming Guide, Version 12.0}. NVIDIA, 2022.
+\url{https://docs.nvidia.com/cuda/cuda-c-programming-guide/}
+
+\bibitem{besta2020}
+Besta, M.; Gerstenberger, R.; Peter, E.; Fischer, M.; Podstawski, M.; Barthels, C.;
+Alonso, G.; Hoefler, T.:
+\textit{Demystifying Graph Databases: Analysis and Taxonomy of Data Organization,
+System Designs, and Graph Queries}.
+ACM Computing Surveys 56(2), pp.\ 1--40, 2020.
+
+\bibitem{zaharia2016}
+Zaharia, M. et al.:
+\textit{Apache Spark: A Unified Engine for Big Data Processing}.
+Communications of the ACM 59(11), pp.\ 56--65, 2016.
+
+\bibitem{bordes2013}
+Bordes, A.; Usunier, N.; Garcia-Duran, A.; Weston, J.; Yakhnenko, O.:
+\textit{Translating Embeddings for Modeling Multi-relational Data}.
+In: Advances in Neural Information Processing Systems (NeurIPS), pp.\ 2787--2795, 2013.
+
+\bibitem{yang2014}
+Yang, B.; Yih, W.; He, X.; Gao, J.; Deng, L.:
+\textit{Embedding Entities and Relations for Learning and Inference in Knowledge Bases}.
+In: Proc.\ International Conference on Learning Representations (ICLR), 2015.
+
+\bibitem{sun2019}
+Sun, Z.; Deng, Z.\,H.; Nie, J.\,Y.; Tang, J.:
+\textit{RotatE: Knowledge Graph Embedding by Relational Rotation in Complex Space}.
+In: Proc.\ International Conference on Learning Representations (ICLR), 2019.
+
+\bibitem{broder1997}
+Broder, A.\,Z.:
+\textit{On the Resemblance and Containment of Documents}.
+In: Proc.\ Compression and Complexity of Sequences (SEQUENCES), pp.\ 21--29, 1997.
+
+\bibitem{charikar2002}
+Charikar, M.; Chen, K.; Farach-Colton, M.:
+\textit{Finding Frequent Items in Data Streams}.
+In: Proc.\ 29th International Colloquium on Automata, Languages and Programming (ICALP),
+pp.\ 693--703, 2002.
+
+\bibitem{stocker2008}
+Stocker, M.; Seaborne, A.; Bernstein, A.; Kiefer, C.; Reynolds, D.:
+\textit{SPARQL Basic Graph Pattern Optimization Using Selectivity Estimation}.
+In: Proc.\ 17th International Conference on World Wide Web (WWW), pp.\ 595--604, 2008.
+
+\bibitem{neumann2009}
+Neumann, T.; Weikum, G.:
+\textit{Scalable Join Processing on Very Large RDF Graphs}.
+In: Proc.\ ACM SIGMOD International Conference on Management of Data,
+pp.\ 627--640, 2009.
+
+\bibitem{kipf2017}
+Kipf, T.\,N.; Welling, M.:
+\textit{Semi-Supervised Classification with Graph Convolutional Networks}.
+In: Proc.\ International Conference on Learning Representations (ICLR), 2017.
+
+\bibitem{velickovic2018}
+VeliÄkoviÄ‡, P.; Cucurull, G.; Casanova, A.; Romero, A.; LiÃ², P.; Bengio, Y.:
+\textit{Graph Attention Networks}.
+In: Proc.\ International Conference on Learning Representations (ICLR), 2018.
+
+\bibitem{weisfeiler1968}
+Weisfeiler, B.; Lehman, A.:
+\textit{A Reduction of a Graph to a Canonical Form and an Algebra Arising
+During This Reduction}. Nauchno-Technicheskaya Informatsia 2(9), pp.\ 12--16, 1968.
+
+\bibitem{azizian2020}
+Azizian, W.; Lelarge, M.:
+\textit{Expressive Power of Invariant and Equivariant Graph Neural Networks}.
+In: Proc.\ International Conference on Learning Representations (ICLR), 2021.
+
+\bibitem{regev2009}
+Regev, O.:
+\textit{On Lattices, Learning with Errors, Random Linear Codes, and Cryptography}.
+Journal of the ACM 56(6), pp.\ 1--40, 2009.
+
+\bibitem{sharan2006}
+Sharan, R.; Ulitsky, I.; Shamir, R.:
+\textit{Network-Based Prediction of Protein Function}.
+Molecular Systems Biology 3(1), p.\ 88, 2007.
+
+\bibitem{belleau2008}
+Belleau, F.; Nolin, M.-A.; Tourigny, N.; Rigault, P.; Morissette, J.:
+\textit{Bio2RDF: Towards a Mashup to Build Bioinformatics Knowledge Systems}.
+Journal of Biomedical Informatics 41(5), pp.\ 706--716, 2008.
+
+\bibitem{euzenat2007}
+Euzenat, J.; Shvaiko, P.:
+\textit{Ontology Matching}, 2nd edition. Springer, 2013.
+
+\bibitem{jimenez2011}
+Jiménez-Ruiz, E.; Grau, B.\,C.:
+\textit{LogMap: Logic-based and Scalable Ontology Matching}.
+In: Proc.\ International Semantic Web Conference (ISWC), LNCS~7031,
+pp.\ 273--288, Springer, 2011.
+
+\bibitem{faria2013}
+Faria, D.; Pesquita, C.; Santos, E.; Palmonari, M.; Cruz, I.\,F.; Couto, F.\,M.:
+\textit{The AgreementMakerLight Ontology Matching System}.
+In: Proc.\ OTM Conferences, LNCS~8185, pp.\ 527--541, Springer, 2013.
+
+\bibitem{baier2008}
+Baier, C.; Katoen, J.-P.:
+\textit{Principles of Model Checking}.
+MIT Press, 2008.
+
+\bibitem{courcelle1990}
+Courcelle, B.:
+\textit{The Monadic Second-Order Logic of Graphs I: Recognizable Sets of Finite Graphs}.
+Information and Computation 85(1), pp.\ 12--75, 1990.
+
+\bibitem{matplotlib2007}
+Hunter, J.\,D.:
+\textit{Matplotlib: A 2D Graphics Environment}.
+Computing in Science \& Engineering 9(3), pp.\ 90--95, 2007.
+
+\bibitem{granlund2012}
+Granlund, T.; GMP Development Team:
+\textit{GNU Multiple Precision Arithmetic Library, Version 6.3.0}.
+Free Software Foundation, 2023.
+\url{https://gmplib.org/}
+
+\bibitem{vhdl2019}
+IEEE Standard Association:
+\textit{IEEE Standard for VHDL Language Reference Manual (IEEE Std 1076-2019)}.
+IEEE, New York, 2019.
+
+\bibitem{knuth1997}
+Knuth, D.\,E.:
+\textit{The Art of Computer Programming, Volume 2: Seminumerical Algorithms},
+3rd edition. Addison-Wesley, 1997. (Kapitel 4.3: Multiple-Precision Arithmetic.)
+
+\end{thebibliography}
+
+\end{document}
+

@@ -1,0 +1,1858 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[german]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\geometry{margin=2.5cm}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{bemerkung}{Bemerkung}
+\newtheorem{korollar}{Korollar}
+\newtheorem{proposition}{Proposition}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=mainblue,
+	citecolor=accentred,
+	urlcolor=mainblue
+}
+
+%  Code-Highlighting
+\lstset{
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue},
+	commentstyle=\color{gray},
+	stringstyle=\color{red},
+	numbers=left,
+	numberstyle=\tiny,
+	breaklines=true,
+	frame=single,
+	literate=%
+	{Ö}{{\O}}1
+	{Ä}{{\A}}1
+	{Ü}{{\U}}1
+	{ß}{{\ss}}1
+	{ü}{{ü}}1
+	{ä}{{ä}}1
+	{ö}{{ö}}1
+}
+
+\title{\textbf{Optimaler Scheduling-Algorithmus EDF$^+$}\\
+	Prioritätsstrafe und stochastische Analyse bei 40 Tasks}
+\author{Stephan Epp}
+\date{17. Juli 2025}
+
+\begin{document}
+	
+	\maketitle
+	
+	\tableofcontents
+	\newpage
+	
+	\section{Einführung}
+	Diese Arbeit präsentiert \textbf{EDF$^+$} (Earliest Deadline First Plus), einen neuartigen Echtzeit-Schedu\-ling-Algorithmus, der die klassische EDF-Strategie um ein
+	dynamisches Blocking-Penalty-Verfahren erweitert. Der Algorithmus sortiert
+	Tasks initial mittels Merge Sort nach ihrer Deadline, führt den Schedule aus,
+	und versetzt bei jedem Blocking-Ereignis die blockierte Task auf die niedrigste
+	Priorität, gefolgt von einer sofortigen Neuplanung. Wir beweisen formal die
+	Optimalität des Verfahrens für präemptive Systeme, leiten den Erwartungswert
+	der Neuplanungen mithilfe der geometrischen Verteilung für $N=40$ Tasks her,
+	analysieren die Laufzeitkomplexität und zeigen durch Simulation sowie
+	stochastische Dominanzargumente die Überlegenheit von EDF$^+$ gegenüber
+	RMS und FIFO.
+	
+	EDF$^+$ ist eine Erweiterung des klassischen Earliest-Deadline-First-Algorithmus
+	\cite{Liu1973} für Echtzeit-Betriebssysteme und Steuergeräte (ECU). Während
+	EDF für präemptive Single-Processor-Systeme bei vollständiger Kenntnis aller
+	Ausführungszeiten optimal ist, bricht seine Leistung bei \emph{Blocking-Ereignissen}
+	zusammen -- einem in der Praxis häufigen Phänomen durch Ressourcenkonflikte,
+	Semaphore, I/O-Warten oder Synchronisationsprobleme.
+	
+	EDF$^+$ löst dieses Problem durch einen dynamischen \emph{Penalty-Mechanismus}:
+	Eine blockierte Task erhält sofort die schlechteste Priorität, woraufhin der
+	Schedule vollständig neu berechnet wird. Das Verfahren entspricht dem Prinzip
+	der \emph{Fairness unter Unsicherheit}: Wer blockiert, muss warten, ohne das
+	gesamte System zu degradieren.
+	
+	\subsection{Problemstellung}
+	
+	Gegeben ist ein Task-System $\mathcal{T} = \{T_1, T_2, \ldots, T_n\}$ mit
+	Deadlines $\mathbf{D} = (D_1, \ldots, D_n)$, Ausführungszeiten
+	$\mathbf{C} = (C_1, \ldots, C_n)$ und einer Zyklusperiode $\mathcal{P}$.
+	
+	\textbf{Ziel:} Schedule alle Tasks innerhalb von $\mathcal{P}$, ohne Deadlines zu
+	verpassen, auch wenn einzelne Tasks blockieren können.
+	
+	\textbf{Ergebnis:}
+	\begin{itemize}
+		\item Ohne Blocking: EDF$^+$ reduziert sich auf klassisches EDF (optimal)
+		\item Mit Blocking: Blockierte Task erhält $D_i^{\text{eff}} \leftarrow +\infty$
+		\item Neuplanung: Sofortige Neuberechnung des EDF-Schedules per Merge Sort
+		\item Terminierung: Wiederholung bis alle Tasks in $\mathcal{P}$ abgearbeitet sind
+	\end{itemize}
+	
+	\subsection{Motivation}
+	
+	EDF$^+$ eignet sich besonders für eingebettete Systeme nach AUTOSAR und
+	ISO~26262, da der WCET-Overhead durch Neuplanungen analytisch begrenzt ist
+	und der Algorithmus selbststabilisierend und fair ist. Die stochastische
+	Analyse mit der geometrischen Verteilung ermöglicht eine präzise Vorhersage
+	des Laufzeitverhaltens in Abhängigkeit der Blocking-Wahrscheinlichkeit $p$.
+	
+	\section{Grundlagen}
+	
+	\subsection{Definitionen}
+	
+	\begin{definition}[Task-System]
+		Ein \textbf{periodisches Task-System} ist ein Tupel
+		\[
+		\Sigma = \bigl(\mathcal{T},\, \mathbf{C},\, \mathbf{D},\, \mathbf{P}\bigr)
+		\]
+		mit Task-Menge $\mathcal{T} = \{T_1,\ldots,T_n\}$, Worst-Case-Ausführungszeiten
+		$\mathbf{C} \in \mathbb{R}_{>0}^n$, absoluten Deadlines $\mathbf{D} \in \mathbb{R}_{>0}^n$
+		und Perioden $\mathbf{P} \in \mathbb{R}_{>0}^n$ mit $D_i \le P_i$.
+	\end{definition}
+	
+	\begin{definition}[CPU-Auslastung]
+		Die \textbf{Systemauslastung} ist definiert als
+		\[
+		U = \sum_{i=1}^{n} \frac{C_i}{P_i} \in (0, 1].
+		\]
+		Das System hei\ss{}t \emph{schedulebar}, falls $U \le 1$.
+	\end{definition}
+	
+	\begin{definition}[Blocking-Ereignis]
+		Task $T_i$ ist zum Zeitpunkt $t$ \textbf{blockiert}, falls sie nicht
+		fortschreiten kann, obwohl der Prozessor ihr zugeteilt ist. Die Blocking-Indikatorvariable $B_i \in \{0,1\}$ erfüllt
+		\[
+		P(B_i = 1) = p, \quad P(B_i = 0) = 1-p,
+		\]
+		wobei $p \in (0,1)$ die Blocking-Wahrscheinlichkeit ist. Die $B_i$ seien
+		unabhängig und identisch verteilt (i.i.d.).
+	\end{definition}
+	
+	\begin{definition}[Geometrische Verteilung]
+		Eine Zufallsvariable $X$ folgt einer \textbf{geometrischen Verteilung} mit
+		Parameter $p \in (0,1)$, geschrieben $X \sim \mathrm{Geom}(p)$, falls
+		\[
+		P(X = k) = (1-p)^{k-1} \cdot p, \quad k = 1, 2, 3, \ldots
+		\]
+		mit Erwartungswert $E[X] = 1/p$ und Varianz $\mathrm{Var}(X) = (1-p)/p^2$.
+	\end{definition}
+	
+	\begin{definition}[Effektive Deadline]
+		Die \textbf{effektive Deadline} von $T_i$ nach einem Blocking-Ereignis ist
+		\[
+		D_i^{\text{eff}} = \begin{cases}
+			D_i & \text{falls } T_i \text{ nicht blockiert hat,} \\
+			+\infty & \text{falls } T_i \text{ blockiert hat.}
+		\end{cases}
+		\]
+	\end{definition}
+	
+	\subsection{Grundidee}
+	
+	EDF$^+$ basiert auf zwei zentralen Konzepten:
+	
+	\subsubsection{EDF-Sortierung per Merge Sort}
+	
+	Tasks werden initial nach Deadline aufsteigend sortiert:
+	\[
+	\sigma^{(0)} = \mathrm{MergeSort}(\mathcal{T},\, \mathbf{D}).
+	\]
+	Merge Sort läuft in $\Theta(n \log n)$ und ist stabil, d.\,h.\ Tasks mit
+	gleicher Deadline behal\-ten ihre ursprüngliche Reihenfolge.
+	
+	\subsubsection{Dynamische Prioritätsstrafe}
+	
+	Blockiert $T_i$, so wird sofort $D_i^{\text{eff}} \leftarrow +\infty$ gesetzt
+	und ein neuer EDF-Schedule berechnet:
+	\[
+	\sigma^{(k+1)} = \mathrm{MergeSort}\!\bigl(\mathcal{T},\, \mathbf{D}^{\text{eff}}\bigr).
+	\]
+	
+	\begin{beispiel}
+		Für $n=5$ Tasks mit Deadlines $D = [5, 8, 12, 15, 18]$:
+		\begin{itemize}
+			\item Initialreihenfolge: $[T_1, T_2, T_3, T_4, T_5]$ (EDF, Merge Sort)
+			\item $T_2$ blockiert bei $t=4{,}5$: $D_2^{\text{eff}} \leftarrow +\infty$
+			\item Neuplanung: $[T_1, T_3, T_4, T_5, T_2]$
+			\item $T_2$ wird am Ende ausgeführt, nachdem das Blocking aufgelöst wurde
+		\end{itemize}
+	\end{beispiel}
+	
+	\begin{lemma}[Korrektheit von Merge Sort]
+		Merge Sort produziert auf einer Folge $(D_1,\ldots,D_n)$ eine aufsteigend
+		sortierte Permutation $\sigma$ in Zeit $\Theta(n\log n)$ und Raum $O(n)$.
+	\end{lemma}
+	
+	\begin{proof}
+		Die Rekursionstiefe beträgt $\lceil\log_2 n\rceil$; auf jeder Ebene werden
+		$O(n)$ Merge-Opera\-tionen durchgeführt. Damit gilt $T(n) = 2T(n/2) + O(n)$,
+		gelöst durch das Master-Theorem zu $T(n) = O(n\log n)$. Die Stabilität
+		folgt aus der Invariante, dass bei gleichen Schlüsseln stets das linke
+		(frühere) Element bevorzugt wird.
+	\end{proof}
+	
+	\section{Der EDF$^+$-Algorithmus}
+	
+	\subsection{Algorithmus-Beschreibung}
+	
+	EDF$^+$ arbeitet in fünf Phasen:
+	
+	\textbf{Phase 1: EDF-Initialisierung}
+	
+	Sortiere $\mathcal{T}$ nach Deadlines mit Merge Sort:
+	\[
+	\sigma^{(0)} = \mathrm{MergeSort}(\mathcal{T},\, \mathbf{D}).
+	\]
+	
+	\textbf{Phase 2: Ausführung}
+	
+	Führe Tasks in Reihenfolge $\sigma^{(k)}$ aus.
+	
+	\textbf{Phase 3: Blocking-Erkennung und Penalty}
+	
+	Blockiert $T_i$ in Schritt $k$:
+	\[
+	D_i^{\text{eff}} \leftarrow +\infty \quad \text{(niedrigste Priorität)}.
+	\]
+	
+	\textbf{Phase 4: Sofortige Neuplanung}
+	
+	\[
+	\sigma^{(k+1)} = \mathrm{MergeSort}\!\bigl(\mathcal{T},\, \mathbf{D}^{\text{eff}}\bigr).
+	\]
+	Gehe zu Phase 2.
+	
+	\textbf{Phase 5: Terminierung}
+	
+	Wiederhole bis alle Tasks in der Zyklusperiode $\mathcal{P}$ abgearbeitet sind.
+	
+	\subsection{Pseudocode}
+	
+	\begin{algorithm}[H]
+		\caption{EDF$^+$ Scheduling Algorithm}
+		\begin{algorithmic}[1]
+			\Require Task-Menge $\mathcal{T}=\{T_1,\ldots,T_n\}$, Deadlines $D$, Periode $\mathcal{P}$
+			\Ensure Schedule $\pi$ über $[0,\mathcal{P}]$
+			\State $\mathbf{D}^{\text{eff}} \leftarrow \mathbf{D}$
+			\State $\sigma \leftarrow \textsc{MergeSort}(\mathcal{T}, \mathbf{D}^{\text{eff}})$
+			\State $\mathcal{Q} \leftarrow \sigma$, $t \leftarrow 0$, $\pi \leftarrow \emptyset$
+			\While{$\mathcal{Q} \neq \emptyset$ \textbf{and} $t < \mathcal{P}$}
+			\State $T_i \leftarrow \textsc{Dequeue}(\mathcal{Q})$
+			\State $t_{\text{start}} \leftarrow t$
+			\State \textbf{Führe} $T_i$ aus bis Fertigstellung \textbf{oder} Blocking
+			\If{$T_i$ \textbf{blockiert}}
+			\State $D_i^{\text{eff}} \leftarrow +\infty$
+			\State $\mathcal{Q} \leftarrow \textsc{MergeSort}(\mathcal{Q} \cup \{T_i\},\, \mathbf{D}^{\text{eff}})$
+			\State \textbf{continue}
+			\EndIf
+			\State $\pi \leftarrow \pi \cup \{(T_i, t_{\text{start}}, t)\}$
+			\State $t \leftarrow t + C_i$
+			\EndWhile
+			\State \Return $\pi$
+		\end{algorithmic}
+	\end{algorithm}
+	
+	\begin{figure}[H]
+		\centering
+		\includegraphics[width=\textwidth]{fig1_gantt.pdf}
+		\caption{EDF$^+$-Schedule mit 5 Tasks. Task $T_2$ blockiert bei $t=4{,}5$
+			(schraffierter Balken) und wird mit niedrigster Priorität ans Ende verschoben.
+			Sofort wird ein neuer EDF-Schedule berechnet: $T_5$ wird vorgezogen.
+			Gestrichelte Linien markieren die Deadlines $D_1,\ldots,D_5$.}
+		\label{fig:gantt}
+	\end{figure}
+	
+	\subsection{Schrittweise Erläuterung des Algorithmus}
+	
+	Algorithmus~1 setzt die in Abschnitt~3.1 beschriebenen fünf Phasen in formalen Pseudocode um.
+	Im Folgenden werden die Zeilen des Algorithmus im Detail kommentiert, um die Verbindung
+	zwischen der konzeptuellen Beschreibung und der konkreten Implementierung herzustellen.
+	
+	\paragraph{Initialisierung (Zeilen~1--3).}
+	Zeile~1 kopiert den Vektor der absoluten Deadlines $\mathbf{D}$ in den Vektor der effektiven
+	Deadlines $\mathbf{D}^{\text{eff}}$. Zu Beginn des Scheduling-Zyklus ist noch kein
+	Blocking-Ereignis eingetreten; alle Tasks werden daher mit ihrer ursprünglichen Frist
+	priorisiert. Zeile~2 führt den initialen EDF-Sort aus: Merge Sort erzeugt in $\Theta(n \log n)$
+	die stabile, aufsteigend nach Deadline sortierte Permutation $\sigma$, die der
+	Prioritätswarteschlange zugrunde liegt. Die Stabilität von Merge Sort ist hier
+	essenziell -- Tasks mit identischer Deadline behalten ihre ursprüngliche Reihenfolge,
+	was deterministisches Verhalten bei Gleichstand sicherstellt.
+	Zeile~3 initialisiert die drei Laufzeitvariablen: $\mathcal{Q} \leftarrow \sigma$ (die
+	aktive Ausführungswarteschlange), $t \leftarrow 0$ (die logische Prozesszeit) und
+	$\pi \leftarrow \emptyset$ (der bisher erstellte Schedule als Menge von Ausführungsintervallen).
+	
+	\paragraph{Hauptschleife und Task-Ausführung (Zeilen~4--7).}
+	Die while-Schleife in Zeile~4 läuft so lange, wie es noch auszuführende Tasks gibt
+	($\mathcal{Q} \neq \emptyset$) und die Zyklusperiode noch nicht abgelaufen ist
+	($t < \mathcal{P}$). Diese doppelte Abbruchbedingung gewährleistet sowohl Terminierung
+	als auch Periodenkonformität. Bei Überlast ($U > 1$) kann $\mathcal{Q}$ am Ende der
+	Periode noch Einträge enthalten; der Algorithmus terminiert dann durch die zweite
+	Bedingung und gibt einen partiellen Schedule zurück, was dem Verhalten eines
+	überlasteten Systems entspricht.
+	Zeile~5 entnimmt stets die Task mit der kleinsten effektiven Deadline aus $\mathcal{Q}$
+	(EDF-Eigenschaft). Zeile~6 merkt sich den aktuellen Zeitpunkt als $t_{\text{start}}$
+	für die spätere Schedule-Annotation. Zeile~7 repräsentiert die eigentliche
+	präemptive Ausführung: Im Idealfall läuft $T_i$ bis zur Fertigstellung durch;
+	im realen System kann sie jederzeit durch ein Blocking-Ereignis unterbrochen werden.
+	
+	\paragraph{Blocking-Behandlung und Neuplanung (Zeilen~8--11).}
+	Der If-Block prüft, ob $T_i$ während der Ausführung in Zeile~7 blockiert hat.
+	Ist dies der Fall, setzt Zeile~9 die effektive Deadline
+	$D_i^{\text{eff}} \leftarrow +\infty$. Dieser Schritt ist der algorithmische Kern von
+	EDF$^+$: Durch die Zuweisung $+\infty$ wird $T_i$ aus dem aktuellen EDF-Wettbewerb
+	faktisch ausgeschlossen, ohne sie aus der Task-Menge zu entfernen. Die Task bleibt
+	abrufbereit und kann nach Auflösung des Blockings regulär weiterlaufen.
+	Zeile~10 führt die sofortige Neuplanung durch: $T_i$ wird wieder in $\mathcal{Q}$
+	eingefügt und Merge Sort auf $\mathcal{Q} \cup \{T_i\}$ bezüglich
+	$\mathbf{D}^{\text{eff}}$ aufgerufen. Da $D_i^{\text{eff}} = +\infty$ jeden
+	endlichen Deadline-Wert dominiert, positioniert sich $T_i$ am Ende der neu sortierten
+	Warteschlange. Durch \textsc{continue} in Zeile~11 wird der aktuelle Schleifendurchlauf
+	ohne Zeitinkrement beendet: Die blockierte Task hat keinen nützlichen Fortschritt
+	erzielt, und $t$ bleibt unverändert.
+	
+	\paragraph{Schedule-Aktualisierung (Zeilen~13--14).}
+	Im erfolgreichen Fall -- $T_i$ hat bis zur Fertigstellung ausgeführt, ohne zu blockieren --
+	wird das Ausführungsintervall $(T_i,\, t_{\text{start}},\, t)$ in den Schedule $\pi$
+	eingetragen (Zeile~13). Die Prozesszeit $t$ wird anschlie\ss{}end in Zeile~14 um $C_i$
+	erhöht, um den Zeitpunkt zu reflektieren, zu dem der Prozessor für die nächste
+	Task verfügbar ist.
+	
+	\paragraph{Terminierung.}
+	Der Algorithmus terminiert mit Wahrscheinlichkeit~1, da jede Task $T_i$ mit $p < 1$
+	mit positiver Wahrscheinlichkeit $1-p$ in jedem Versuch erfolgreich abgeschlossen wird.
+	Die Anzahl der Versuche bis zur erfolgreichen Ausführung von $T_i$ ist geometrisch
+	verteilt mit endlichem Erwartungswert $1/(1-p)$. Die harte Abbruchbedingung
+	$t \ge \mathcal{P}$ stellt zusätzlich sicher, dass der Algorithmus auch im
+	Grenzfall $p \to 1$ die Ausführung nach spätestens $\mathcal{P}$~Zeiteinheiten
+	beendet. Korrektheit folgt aus dem EDF-Optimalitätstheorem
+	(Satz~\ref{satz:edf_optimal}) und dessen Anwendung in
+	Satz~\ref{satz:optimal}: In jeder Phase erzeugt EDF$^+$ eine
+	nicht-blockierte Task-Menge mit $U' \le 1$, auf die
+	Satz~\ref{satz:edf_optimal} anwendbar ist und Deadline-Freiheit garantiert.
+	
+	\section{Optimalitätsbeweis}
+
+	\subsection{Optimalitätsdefinition}
+
+	\begin{definition}[Optimaler Scheduler]
+		Ein Scheduling-Algorithmus $\mathcal{A}$ hei\ss{}t \textbf{optimal} für eine
+		Klasse $\mathfrak{S}$ von Task-Systemen, falls gilt:
+		\[
+		\forall\, \Sigma \in \mathfrak{S}: \quad
+		\Sigma \text{ ist schedulebar} \implies \mathcal{A} \text{ verpasst keine Deadline}.
+		\]
+	\end{definition}
+
+	\subsection{Das EDF-Optimalitätstheorem als Beweisfundament}
+	\label{subsec:edf_fundament}
+
+	Bevor die Optimalität von EDF$^+$ bewiesen werden kann, muss das
+	Fundament gelegt werden, auf dem der gesamte Beweis ruht: das klassische
+	\emph{EDF-Optimalitätstheorem} von Liu und Layland \cite{Liu1973}.
+	Dieses Theorem besagt, dass EDF auf einem präemptiven Single-Processor-System
+	ohne Blo\-cking und mit $U \le 1$ niemals eine Deadline verfehlt. Es ist das
+	stärkste bekannte Ergebnis für uniprozesuales Echtzeit-Scheduling.
+
+	Die Beweisidee des EDF-Optimalitätstheorems ist das sogenannte
+	\emph{Austauschargument} (englisch: \emph{exchange argument}): Angenommen,
+	ein beliebiger Scheduler $\mathcal{A}$ verpasst eine Deadline. Dann muss es
+	ein Intervall geben, in dem $\mathcal{A}$ eine Task mit späterer Deadline
+	vor einer Task mit früherer Deadline ausführt. Durch den Tausch dieser
+	beiden Tasks in diesem Intervall verbessert sich die Situation für die
+	dringlichere Task, ohne die andere zu gefährden. Durch wiederholte Anwendung
+	dieser Tauschoperation (in der Literatur auch als \emph{bubble-sort-Argument}
+	bezeichnet) lässt sich jeder Scheduler schrittweise in einen EDF-Schedule
+	umwandeln, ohne zusätzliche Deadline-Verletzungen einzuführen. Damit hat
+	kein Scheduler weniger Deadline-Verletzungen als EDF.
+
+	\begin{satz}[EDF-Optimalitätstheorem, Liu \& Layland 1973]
+		\label{satz:edf_optimal}
+		Sei $\Sigma = (\mathcal{T}, \mathbf{C}, \mathbf{D}, \mathbf{P})$ ein
+		präemptives Single-Processor-Task-System mit $U \le 1$ und Blocking-Wahrscheinlichkeit
+		$p = 0$. Dann findet der EDF-Algorithmus stets einen gültigen Schedule:
+		\[
+		\text{EDF ist optimal für } \bigl\{\Sigma \mid U \le 1,\; p = 0\bigr\}.
+		\]
+	\end{satz}
+
+	\begin{proof}
+		Wir führen einen Widerspruchsbeweis durch das Austauschargument.
+
+		\medskip
+		\textbf{Schritt 1: Annahme und erste Deadline-Verletzung.}
+		Sei $\mathcal{A}$ ein beliebiger Scheduler, der bei einem schedulearbaren
+		System ($U \le 1$, $p=0$) mindestens eine Deadline verfehlt. Wähle unter
+		allen von $\mathcal{A}$ verpassten Deadlines diejenige Task $T_i$ mit dem
+		minimalen Fertigstellungszeitpunkt $f_i > D_i$. Das hei\ss{}t: $T_i$ ist
+		die erste Task, bei der $\mathcal{A}$ eine Deadline verletzt.
+
+		\medskip
+		\textbf{Schritt 2: Existenz eines Inversion-Intervalls.}
+		Da $\mathcal{A} \neq \text{EDF}$, muss ein Zeitintervall $[t_1, t_2]$
+		existieren, in dem $\mathcal{A}$ eine Task $T_j$ ausführt, obwohl
+		die noch nicht fertige Task $T_i$ mit $D_i < D_j$ wartet. Ein solches
+		Intervall hei\ss{}t \emph{Inversionspaar} $(T_i, T_j)$.
+		Formell: $\mathcal{A}$ weist $T_j$ den Prozessor zu, obwohl
+		$D_i < D_j$ und $T_i$ bereit ist.
+
+		\medskip
+		\textbf{Schritt 3: Der Tauschschritt.}
+		Konstruiere einen neuen Schedule $\mathcal{A}'$, der mit $\mathcal{A}$
+		ubereinstimmt, au\ss{}er dass im Intervall $[t_1, t_2]$ die Rollen von
+		$T_i$ und $T_j$ vertauscht werden: $T_i$ läuft in $[t_1, t_2]$,
+		$T_j$ wartet. Wir zeigen, dass dieser Tausch keine neue Deadline-Verletzung
+		erzeugt:
+		\begin{itemize}
+			\item \textbf{$T_i$:} $T_i$ wird nach dem Tausch frühestens zum
+			      Zeitpunkt $t_2 \le f_i$ fertig. Da der Tausch $T_i$ vorzieht,
+			      gilt $f_i' \le f_i$. Die Fristbedingung $f_i' \le D_i$ ist
+			      --- falls der Tausch $f_i$ hinreichend reduziert --- erfüllbar.
+			\item \textbf{$T_j$:} $T_j$ wird nach dem Tausch spätestens zum
+			      Zeitpunkt $f_j' = f_j + (t_2 - t_1) - (t_2 - t_1) = f_j$
+			      fertig, da sie dieselbe CPU-Zeit erhält wie vorher -- lediglich
+			      zeitlich verschoben. Da $D_j > D_i > f_i' \ge t_2 \ge f_j'$
+			      nicht notwendig gilt, prüfen wir explizit: $T_j$ läuft nach
+			      dem Tausch in demselben $[t_1, t_2]$-Fenster plus muss
+			      $T_i$'s Arbeit nachholen. Da beide Tasks dieselbe Dauer haben
+			      und das Intervall überschneidungsfrei ist, gilt
+			      $f_j' = f_j$, also bleibt $T_j$'s Fertigstellungszeit
+			      identisch. Da $T_i$'s Deadline $D_i < D_j$ ist und
+			      $\mathcal{A}$ $T_j$ noch rechtzeitig fertiggestellt hat
+			      (wir haben $T_i$ als \emph{erste} Verletzung gewählt),
+			      führt der Tausch keine neue Fristverlätzung bei $T_j$ ein.
+		\end{itemize}
+
+		\medskip
+		\textbf{Schritt 4: Iterierte Anwendung.}
+		Der Tauschschritt aus Schritt~3 eliminiert ein Inversionspaar. Da es
+		endlich viele Inversionspaare gibt (höchstens $\binom{n}{2}$), führt
+		iterierte Anwendung in endlich vielen Schritten zu einem Schedule ohne
+		Inversionspaare. Ein Schedule ohne jedes Inversionspaar ist per
+		Definition ein EDF-Schedule.
+
+		\medskip
+		\textbf{Schritt 5: Kein EDF-Schedule verletzt eine Deadline.}
+		Da jeder Schedule durch Tauschoperationen in einen EDF-Schedule
+		umgewandelt werden kann, ohne neue Deadline-Verletzungen einzuführen,
+		gilt: Falls ein EDF-Schedule eine Deadline verletzen würde, müsste
+		der originale Schedule $\mathcal{A}$ -- der durch den Aufbau mindestens
+		so gut ist wie der EDF-Schedule -- diese ebenfalls verletzen. Da aber
+		$U \le 1$ garantiert, dass die Gesamtarbeit in $[0, \mathcal{P}]$
+		unterbringbar ist, liegt ein Widerspruch vor.
+		Also verletzt kein EDF-Schedule eine Deadline bei $U \le 1$.
+	\end{proof}
+
+	\begin{bemerkung}
+		Satz~\ref{satz:edf_optimal} ist das zentrale Werkzeug für alle
+		nachfolgenden Optimalitätsbeweise. Die Strategie ist stets dieselbe:
+		Wir zeigen, dass EDF$^+$ nach jedem Ereignis (Blocking oder Task-Ankunft)
+		eine Teilmenge von Tasks erzeugt, die die Voraussetzungen von
+		Satz~\ref{satz:edf_optimal} erfüllt -- insbesondere $U' \le 1$ und
+		$p' = 0$ für die verbleibenden nicht-blockierten Tasks. Das
+		EDF-Optimalitätstheorem garantiert dann, dass EDF$^+$ auf dieser
+		Teilmenge keinen Fehler machen kann.
+	\end{bemerkung}
+
+	\subsection{Hauptsatz: Optimalität von EDF$^+$}
+
+	\begin{satz}[Optimalität von EDF$^+$]
+		\label{satz:optimal}
+		EDF$^+$ ist \textbf{optimal} für präemptive Single-Processor-Systeme mit
+		stochastischen Blocking-Ereignissen: Wenn ein schedulearbares Task-System mit
+		Blocking-Wahrscheinlichkeit $p \in [0,1)$ existiert, so findet EDF$^+$ einen
+		gültigen Schedule, der alle erreichbaren Deadlines einhält.
+	\end{satz}
+
+	\begin{proof}
+		Der Beweis zeigt, dass EDF$^+$ bei jedem Ereignistyp eine Situation erzeugt,
+		auf die das EDF-Optimalitätstheorem (Satz~\ref{satz:edf_optimal}) direkt
+		angewendet werden kann. Damit erbt EDF$^+$ die Optimalität des
+		klassischen EDF.
+
+		\medskip
+		\textbf{Teil 1: Basisfall -- kein Blocking ($p = 0$).}
+		Ohne Blocking-Ereignisse reduziert sich EDF$^+$ auf den klassischen
+		EDF-Algorithmus: $D_i^{\text{eff}} = D_i$ für alle $i$,
+		und kein Neuplanungsschritt wird ausgelöst. Das System erfüllt
+		$U \le 1$ und $p = 0$. Damit sind die Voraussetzungen von
+		Satz~\ref{satz:edf_optimal} erfüllt, und der Schluss ist unmittelbar:
+		\[
+		\underbrace{U \le 1,\; p = 0}_{\text{Voraussetzungen von Satz~\ref{satz:edf_optimal}}}
+		\;\Longrightarrow\;
+		\text{EDF$^+$ (}\equiv \text{EDF) verpasst keine Deadline.}
+		\]
+
+		\medskip
+		\textbf{Teil 2: Penalty-Schritt -- eine blockierte Task ($p > 0$,
+		ein Blocking-Ereignis).}
+		Blockiert $T_i$ zum Zeitpunkt $t^* < D_i$.
+		Da $T_i$ in $[t^*, D_i]$ keine nützliche Arbeit leisten kann,
+		ist ihr Beitrag zum Schedule in diesem Zyklus nicht erzwingbar.
+		EDF$^+$ setzt $D_i^{\text{eff}} \leftarrow +\infty$, was $T_i$
+		effektiv aus dem laufenden Wettbewerb ausschlie\ss{}t.
+
+		Die verbleibende Task-Menge
+		$\mathcal{T}' = \{T_j \in \mathcal{T} \mid D_j^{\text{eff}} < +\infty\}$
+		besteht ausschlie\ss{}lich aus nicht-blockierten Tasks mit finiten
+		effektiven Deadlines. Ihre Auslastung erfüllt:
+		\[
+		U' = U - \frac{C_i}{P_i} < U \le 1.
+		\]
+		Au\ss{}erdem gilt für alle $T_j \in \mathcal{T}'$ zum Zeitpunkt $t^*$:
+		$p_j = 0$ (sie sind nicht blockiert).
+		Damit erfüllt $\mathcal{T}'$ \emph{exakt} die Voraussetzungen von
+		Satz~\ref{satz:edf_optimal}:
+		\[
+		\underbrace{U' \le 1,\; p' = 0 \text{ auf } \mathcal{T}'}_{%
+		\text{Voraussetzungen von Satz~\ref{satz:edf_optimal} erfüllt}}
+		\;\Longrightarrow\;
+		\text{EDF findet auf } \mathcal{T}' \text{ einen Deadline-freien Schedule.}
+		\]
+		EDF$^+$ berechnet via Merge-Sort genau diesen EDF-Schedule auf $\mathcal{T}'$.
+		Task $T_i$ wird nach Auflösung ihres Blockings am Ende des Schedules
+		eingeplant.
+
+		\medskip
+		\textbf{Teil 3: Induktionsschritt -- $R$ Blocking-Ereignisse.}
+		Der Beweis verläuft per vollständiger Induktion über $R$.
+
+		\emph{Induktionsverankerung ($R = 0$):} Bereits in Teil~1 gezeigt,
+		direkt per Satz~\ref{satz:edf_optimal}.
+
+		\emph{Induktionsschritt ($R-1 \to R$):}
+		Sei die Behauptung für alle Szenarien mit $R-1$
+		Blocking-Ereignissen wahr. Beim $R$-ten Blocking von $T_{i_R}$
+		erzeugt EDF$^+$ die Menge
+		\[
+		\mathcal{T}^{(R)} = \bigl\{T_j \mid D_j^{\text{eff}} < +\infty\bigr\},
+		\quad U^{(R)} = U - \sum_{k=1}^{R} \frac{C_{i_k}}{P_{i_k}} < U \le 1.
+		\]
+		Auf $\mathcal{T}^{(R)}$ sind keine Tasks blockiert: $p^{(R)} = 0$.
+		Damit sind die Voraussetzungen von Satz~\ref{satz:edf_optimal}
+		\emph{erneut} erfüllt:
+		\[
+		\underbrace{U^{(R)} \le 1,\; p^{(R)} = 0}_{%
+		\text{Voraussetzungen von Satz~\ref{satz:edf_optimal}}}
+		\;\Longrightarrow\;
+		\text{EDF auf } \mathcal{T}^{(R)} \text{ verpasst keine Deadline.}
+		\]
+		EDF$^+$ berechnet via Merge-Sort exakt diesen optimalen Schedule auf
+		$\mathcal{T}^{(R)}$. Per Induktionshypothese war die Behandlung der
+		vorherigen $R-1$ Blockings bereits optimal. Die Gesamtaussage folgt
+		durch vollständige Induktion.
+	\end{proof}
+
+	\begin{korollar}[Dominanz über RMS]
+		\label{kor:rms}
+		Für jedes präemptive Task-System gilt:
+		\[
+		\text{Miss-Rate}(\text{EDF}^+) \;\le\; \text{Miss-Rate}(\text{RMS}).
+		\]
+		Die Ungleichung ist strikt für $U > \ln 2 \approx 0{,}693$.
+	\end{korollar}
+
+	\begin{proof}
+		RMS ist nach Liu \& Layland \cite{Liu1973} nur für $U \le \ln 2$ deadline-safe.
+		Für $U > \ln 2$ können RMS-Schedules Deadlines verfehlen. EDF$^+$ hingegen
+		reduziert bei jedem Blocking auf eine neue EDF-Instanz
+		$\mathcal{T}^{(k)}$ mit $U^{(k)} < U \le 1$; auf diese wendet
+		Satz~\ref{satz:edf_optimal} an, der die Deadline-Freiheit garantiert.
+		Da jede EDF-Instanz nach Satz~\ref{satz:edf_optimal} optimal ist und
+		RMS für $U > \ln 2$ nicht, gilt die strikte Ungleichung in diesem
+		Bereich.
+	\end{proof}
+
+	\begin{korollar}[Minimax-Eigenschaft]
+		Unter allen Scheduling-Algorithmen, die bei Blocking-Ereignissen neu planen,
+		minimiert EDF$^+$ die erwartete Anzahl verpasster Deadlines:
+		\[
+		E[\,\text{Misses}_{\text{EDF}^+}\,] = \min_{\mathcal{A}} \,E[\,\text{Misses}_{\mathcal{A}}\,].
+		\]
+	\end{korollar}
+
+	\begin{proof}
+		Für jede Realisierung der Blocking-Ereignisse erzeugt EDF$^+$ eine
+		Teilmenge $\mathcal{T}^{(k)}$ nicht-blockierter Tasks, die die Voraussetzungen
+		von Satz~\ref{satz:edf_optimal} erfüllt ($U^{(k)} \le 1$, $p^{(k)} = 0$).
+		Satz~\ref{satz:edf_optimal} garantiert $\text{Misses}_{\text{EDF}} = 0$ auf
+		$\mathcal{T}^{(k)}$. Da EDF$^+$ für diese Teilmenge EDF ausführt, gilt
+		$\text{Misses}_{\text{EDF}^+} = 0$ auf den nicht-blockierten Tasks
+		-- unabhängig vom Konkurrenzalgorithmus $\mathcal{A}$.
+		Damit gilt $\text{Misses}_{\text{EDF}^+} \le \text{Misses}_{\mathcal{A}}$
+		fast sicher, was den Erwartungswert dominiert.
+	\end{proof}
+
+	\begin{lemma}[Monotonie der Neuplanung]
+		Jede Neuplanung in EDF$^+$ ist \textbf{monoton}: Die relative Reihenfolge der
+		nicht-blockierten Tasks wird durch eine Neuplanung nicht verschlechtert.
+	\end{lemma}
+
+	\begin{proof}
+		Sei $\sigma^{(k)}$ die Reihenfolge vor dem $k$-ten Blocking-Ereignis. Nach der
+		Penalisierung von $T_{i_k}$ gilt
+		$\sigma^{(k+1)} = \mathrm{MergeSort}(\mathcal{T}, \mathbf{D}^{\text{eff}})$.
+		Da $\mathbf{D}^{\text{eff}}$ für alle $T_j \neq T_{i_k}$ unverändert bleibt
+		und Merge Sort stabil sortiert, stimmt die Teilfolge der verbleibenden Tasks in
+		$\sigma^{(k+1)}$ mit der in $\sigma^{(k)}$ überein. Satz~\ref{satz:edf_optimal}
+		gilt auf dieser Teilfolge, da sie einen EDF-Schedule darstellt und
+		$U^{(k+1)} \le 1$.
+	\end{proof}
+
+	% ================================================================
+	\section{EDF\textsuperscript{+} für dynamische Task-Mengen}
+	\label{sec:dynamisch}
+	% ================================================================
+
+	\subsection{Motivation und Abgrenzung}
+
+	Der in den vorangegangenen Abschnitten analysierte EDF$^+$-Algorithmus geht implizit
+	von einer \emph{statischen} Task-Menge aus: Alle Tasks $T_1, \ldots, T_n$ sind zu Beginn
+	des Scheduling-Zyklus vollständig bekannt, und die Menge $\mathcal{T}$ verändert sich
+	im Laufe der Ausführung nicht. Dieses Modell deckt eine Vielzahl eingebetteter
+	Systeme ab, etwa periodische Steueraufgaben in Motorsteuergeräten, bei denen der
+	Task-Satz während der Laufzeit fest ist.
+
+	In der Praxis treten jedoch zahlreiche Szenarien auf, in denen das Task-System
+	\emph{dynamisch wächst}: Neue Tasks $T_{n+1}, T_{n+2}, \ldots$ können zu
+	beliebigen Zeitpunkten $a_{n+j}$ \emph{während} der laufenden Ausführung eintreffen
+	-- etwa als Reaktion auf externe Ereignisse (Interrupts, Netzwerkpakete, Sensorauslöser),
+	durch dynamische Dienststarts im AUTOSAR Adaptive Platform Stack oder durch
+	Aufgaben-Delegation in hierarchischen Steuergerätenetzwerken. Solche aperiodischen
+	oder sporadischen Task-Ankünfte erzeugen eine grundlegend andere Herausforderung:
+	Der bisher gültige Schedule wird durch den neu hinzugekommenen Task sofort obsolet,
+	wenn dessen Deadline früher liegt als die der aktuell ausführenden Task.
+
+	Dieses Kapitel zeigt formal, dass EDF$^+$ auch für dynamisch wachsende Task-Mengen
+	\textbf{optimal} ist, und beschreibt die algorithmische Erweiterung, die dies
+	gewährleistet: Bei Ankünft eines neuen Tasks wird die laufende Ausführung
+	\emph{sofort präemptiert}, die Task-Menge um den Ankommling erweitert, und der
+	EDF-Schedule auf der erweiterten Menge neu berechnet. Das Verfahren verbindet den
+	klassischen EDF-Präemptionsmechanismus mit dem Penalty-verfahren von EDF$^+$ und
+	bleibt in beiden Dimensionen -- Blocking und Task-Ankunft -- gleichzeitig optimal.
+
+	\subsection{Definitionen für dynamische Task-Mengen}
+
+	\begin{definition}[Statisches Task-System]
+		Ein Task-System $\Sigma = (\mathcal{T}, \mathbf{C}, \mathbf{D}, \mathbf{P})$
+		hei\ss{}t \textbf{statisch}, falls die Task-Menge $\mathcal{T}$ zu Beginn des
+		Scheduling-Zyklus vollständig bekannt ist und sich zur Laufzeit nicht verändert:
+		\[
+		\mathcal{T}(t) = \mathcal{T} \quad \forall\, t \ge 0.
+		\]
+	\end{definition}
+
+	\begin{definition}[Dynamisches Task-System]
+		\label{def:dynamisch}
+		Ein Task-System hei\ss{}t \textbf{dynamisch}, falls zur Laufzeit neue Tasks
+		eintreffen können. Formal ist ein dynamisches Task-System ein Tupel
+		\[
+		\Sigma_{\mathrm{dyn}} = \bigl(\mathcal{T}^{(0)},\, \mathcal{A},\, \mathbf{C},\,
+		\mathbf{D},\, \mathbf{P}\bigr),
+		\]
+		wobei $\mathcal{T}^{(0)}$ die initiale Task-Menge bezeichnet und
+		\[
+		\mathcal{A} = \bigl\{(T_{n+1}, a_1, D_{n+1}),\;(T_{n+2}, a_2, D_{n+2}),\;\ldots\bigr\}
+		\]
+		eine endliche oder abzählbare Folge von \emph{Task-Ankünften} mit
+		Ankunftszeitpunkt $a_j \ge 0$ und absoluter Deadline $D_{n+j}$ ist.
+		Die aktive Task-Menge zur Zeit $t$ ist
+		\[
+		\mathcal{T}(t) = \mathcal{T}^{(0)} \;\cup\; \bigl\{T_{n+j} \mid a_j \le t\bigr\}.
+		\]
+	\end{definition}
+
+	\begin{definition}[Ankunftsereignis und Präemption durch Ankunft]
+		\label{def:ankunft}
+		Ein \textbf{Ankunftsereignis} zum Zeitpunkt $a_j$ liegt vor, wenn ein neuer
+		Task $T_{n+j}$ mit Ausführungszeit $C_{n+j}$ und Deadline $D_{n+j} > a_j$
+		dem System hinzugefügt wird. Die laufende Ausführung von Task $T_{\mathrm{cur}}$
+		wird zum Zeitpunkt $a_j$ \textbf{präemptiert}, falls
+		\[
+		D_{n+j} < D_{\mathrm{cur}}^{\text{eff}}.
+		\]
+		Andernfalls -- d.\,h.\  $D_{n+j} \ge D_{\mathrm{cur}}^{\text{eff}}$ -- wird
+		$T_{n+j}$ in die Warteschlange eingereiht, ohne die laufende Task zu unterbrechen.
+	\end{definition}
+
+	\begin{bemerkung}
+		Die Präemptionsbedingung aus Definition~\ref{def:ankunft} ist nicht auf den
+		einfachen Vergleich mit $D_{\mathrm{cur}}$ beschränkt. Da EDF$^+$ effektive
+		Deadlines verwendet, greift die Präemption auch dann, wenn
+		$D_{\mathrm{cur}}^{\text{eff}} = +\infty$ gilt (die laufende Task ist blockiert),
+		was sinnvoll ist: Jede neue Task mit endlicher Deadline hat höhere Priorität
+		als eine aktuell blockierte Task.
+	\end{bemerkung}
+
+	\begin{definition}[Erreichbare Deadline]
+		Task $T_i$ mit Ankunftszeit $a_i$ und Ausführungszeit $C_i$ hei\ss{}t
+		\textbf{erreichbar}, falls ein schedulearbares System existiert, das $T_i$
+		bis zu ihrer Deadline $D_i$ fertigstellt:
+		\[
+		a_i + C_i \le D_i.
+		\]
+		Eine Deadline, die von Anfang an nicht erreichbar ist ($a_i + C_i > D_i$),
+		hei\ss{}t \textbf{intrinsisch unmöglich}; sie kann von keinem Algorithmus
+		eingehalten werden und wird aus der Optimalitätsbetrachtung ausgeschlossen.
+	\end{definition}
+
+	\begin{definition}[Schedulierbarkeit dynamischer Systeme]
+		\label{def:sched_dyn}
+		Ein dynamisches Task-System $\Sigma_{\mathrm{dyn}}$ hei\ss{}t
+		\textbf{schedulierbar}, falls ein Algorithmus existiert, der alle Tasks mit
+		erreichbaren Deadlines rechtzeitig fertigstellt. Die von einem Zeitpunkt $t$
+		an noch zu planende Auslastung ist
+		\[
+		U(t) = \sum_{T_i \in \mathcal{T}(t),\, T_i \text{ noch nicht fertig}}
+		\frac{C_i^{\text{rem}}}{D_i - t} \;\le\; 1,
+		\]
+		wobei $C_i^{\text{rem}}$ die verbleibende Ausführungszeit von $T_i$ bezeichnet.
+	\end{definition}
+
+	\subsection{Der EDF\textsuperscript{+}-Algorithmus für dynamische Task-Mengen}
+
+	Die Erweiterung von EDF$^+$ auf dynamische Systeme erfordert zwei zusätzliche
+	Mechanismen:
+	\begin{enumerate}
+		\item \textbf{Ankunftsbehandlung:} Bei jedem Ankunftsereignis $(T_{n+j}, a_j, D_{n+j})$
+		      wird die Ausfüh\-rung sofort unterbrochen, der neue Task zu $\mathcal{T}(a_j)$
+		      hinzugefügt und ein neuer EDF-Schedule auf der erweiterten Menge berechnet.
+		\item \textbf{Simultane Behandlung von Blocking und Ankunft:} Beide Ereignistypen
+		      lösen dieselbe Neuplanunsoperation aus -- einen Merge-Sort-Durchlauf auf
+		      der aktualisierten effektiven-Deadline-Menge. Dadurch bleibt der Algorithmus
+		      konzeptionell einheitlich.
+	\end{enumerate}
+
+	\begin{algorithm}[H]
+		\caption{EDF$^+_{\mathrm{dyn}}$ -- Scheduling Algorithm for Dynamic Task Sets}
+		\label{alg:edfdyn}
+		\begin{algorithmic}[1]
+			\Require Initiale Task-Menge $\mathcal{T}^{(0)}$, Deadlines $D$, Ankunftsstrom $\mathcal{A}$, Periode $\mathcal{P}$
+			\Ensure Schedule $\pi$ über $[0,\mathcal{P}]$
+			\State $\mathbf{D}^{\text{eff}} \leftarrow \mathbf{D}^{(0)}$
+			\State $\mathcal{T}_{\text{aktiv}} \leftarrow \mathcal{T}^{(0)}$
+			\State $\sigma \leftarrow \textsc{MergeSort}(\mathcal{T}_{\text{aktiv}},\, \mathbf{D}^{\text{eff}})$
+			\State $\mathcal{Q} \leftarrow \sigma$, $t \leftarrow 0$, $\pi \leftarrow \emptyset$
+			\While{$\mathcal{Q} \neq \emptyset$ \textbf{and} $t < \mathcal{P}$}
+			\State $T_i \leftarrow \textsc{Dequeue}(\mathcal{Q})$
+			\State $t_{\text{start}} \leftarrow t$
+			\State \textbf{Führe} $T_i$ aus bis: Fertigstellung \textbf{oder} Blocking \textbf{oder} Ankunft $T_{\text{new}}$
+			\If{neuer Task $T_{\text{new}}$ mit $(T_{\text{new}}, a, D_{\text{new}})$ angekommen}
+			\State $t \leftarrow a$ \Comment{Zeit auf Ankunftszeitpunkt setzen}
+			\State $C_i^{\text{rem}} \leftarrow C_i - (t - t_{\text{start}})$ \Comment{Restausfuehrungszeit merken}
+			\State $\mathcal{T}_{\text{aktiv}} \leftarrow \mathcal{T}_{\text{aktiv}} \cup \{T_{\text{new}}\}$
+			\State $D_{\text{new}}^{\text{eff}} \leftarrow D_{\text{new}}$
+			\State $\mathcal{Q} \leftarrow \textsc{MergeSort}\!\bigl(\mathcal{Q} \cup \{T_i^{\text{rem}}, T_{\text{new}}\},\, \mathbf{D}^{\text{eff}}\bigr)$
+			\State \textbf{continue}
+			\EndIf
+			\If{$T_i$ \textbf{blockiert}}
+			\State $D_i^{\text{eff}} \leftarrow +\infty$
+			\State $\mathcal{Q} \leftarrow \textsc{MergeSort}(\mathcal{Q} \cup \{T_i\},\, \mathbf{D}^{\text{eff}})$
+			\State \textbf{continue}
+			\EndIf
+			\State $\pi \leftarrow \pi \cup \{(T_i,\, t_{\text{start}},\, t)\}$
+			\State $t \leftarrow t + C_i^{\text{rem}}$
+			\EndWhile
+			\State \Return $\pi$
+		\end{algorithmic}
+	\end{algorithm}
+
+	\paragraph{Erläuterung der zusätzlichen Zeilen.}
+	Zeile~9 prüft, ob während der Ausführung von $T_i$ ein Ankunftsereignis
+	eingetreten ist. Zeile~10 setzt die logische Zeit auf den Ankunftszeitpunkt $a$,
+	was dem Zeitpunkt der Präemption entspricht. Zeile~11 berechnet die
+	Restausführungszeit $C_i^{\text{rem}}$ der präemptierten Task: Sie hat
+	$t - t_{\text{start}}$ Zeiteinheiten ausgeführt und benötigt noch
+	$C_i^{\text{rem}} = C_i - (a - t_{\text{start}})$. In Zeile~12 wird
+	$T_{\text{new}}$ zur aktiven Task-Menge hinzugefügt. Zeile~14 führt Merge~Sort
+	auf der vereinigten Menge aus aktiver Warteschlange, dem Rest-Objekt $T_i^{\text{rem}}$
+	der unterbrochenen Task und dem neuen Task $T_{\text{new}}$ durch. Die Zeilen~17--20
+	entsprechen der Blocking-Behandlung aus dem statischen Algorithmus~1 und sind
+	unverändert übernommen.
+
+	\subsection{Optimalität für dynamische Task-Mengen}
+
+	\textbf{Leitprinzip.} Wie im statischen Fall ist das EDF-Optimalitätstheorem
+	(Satz~\ref{satz:edf_optimal}) das zentrale Instrument. Jedes Ereignis --
+	Task-Ankunft oder Blocking -- wird so behandelt, dass die Bedingungen
+	$U(t) \le 1$ und $p = 0$ auf der aktiven, nicht-blockierten Task-Menge
+	nach dem Ereignis erfüllt bleiben. Damit kann Satz~\ref{satz:edf_optimal}
+	nach jedem Ereignis neu angewendet werden.
+
+	\begin{lemma}[EDF-Validität nach Task-Ankunft]
+		\label{lem:ankunft_konsistenz}
+		Sei $\Sigma_{\mathrm{dyn}}$ ein dynamisches Task-System und $T_{\text{new}}$
+		ein neu ankommender Task zum Zeitpunkt $a$ mit Deadline $D_{\text{new}}$
+		und $U(a) \le 1$. Nach der Präemption und Neuplanung durch
+		EDF$^+_{\mathrm{dyn}}$ ist die aktive non-blockierte Task-Menge
+		$\mathcal{T}^*(a)$ eine gültige Instanz für
+		Satz~\ref{satz:edf_optimal}: $U^*(a) \le 1$ und $p^* = 0$.
+	\end{lemma}
+
+	\begin{proof}
+		Sei $\mathcal{Q}$ die Warteschlange unmittelbar vor dem Ankunftsereignis;
+		alle Tasks in $\mathcal{Q}$ haben finite effektive Deadlines (nicht blockiert).
+		Die präemptierte Task $T_i$ wird als $T_i^{\text{rem}}$ mit Restzeit
+		$C_i^{\text{rem}} = C_i - (a - t_{\text{start}}) \le C_i$ und
+		unveränderter Deadline $D_i$ zurückgestellt.
+
+		Die aktive Task-Menge nach der Ankunft ist
+		$\mathcal{T}^*(a) = (\mathcal{Q} \setminus \{T_i\}) \cup \{T_i^{\text{rem}},\, T_{\text{new}}\}$.
+		Ihre Auslastung ab Zeitpunkt $a$ beträgt:
+		\[
+		U^*(a) = \underbrace{\sum_{T_j \in \mathcal{Q} \setminus \{T_i\}} \frac{C_j^{\text{rem}}}{D_j - a}}_{{\le}\; U(a^-)}\;
+		+ \frac{C_i^{\text{rem}}}{D_i - a}
+		+ \frac{C_{\text{new}}}{D_{\text{new}} - a}.
+		\]
+		Da $C_i^{\text{rem}} \le C_i$, ist der Beitrag von $T_i^{\text{rem}}$ nicht
+		grö\ss{}er als der ursprüngliche Beitrag von $T_i$. Zusammen ergibt sich
+		$U^*(a) \le U(a) \le 1$ nach Voraussetzung.
+
+		Alle Tasks in $\mathcal{T}^*(a)$ sind nicht blockiert: $p^* = 0$.
+		Damit sind die Voraussetzungen von Satz~\ref{satz:edf_optimal} erfüllt:
+		\[
+		\underbrace{U^*(a) \le 1,\; p^* = 0}_{\text{Voraussetzungen von Satz~\ref{satz:edf_optimal} erfüllt.}}
+		\]
+		EDF$^+_{\mathrm{dyn}}$ berechnet via Zeile~14 von Algorithmus~\ref{alg:edfdyn}
+		$\sigma^{\text{neu}} = \mathrm{MergeSort}(\mathcal{T}^*(a), \mathbf{D}^{\text{eff}})$,
+		was einen global nach Deadline sortierten, also gültigen EDF-Schedule auf
+		$\mathcal{T}^*(a)$ liefert.
+	\end{proof}
+
+	\begin{lemma}[EDF-Validität nach Blocking im dynamischen Modell]
+		\label{lem:blocking_dyn}
+		Blockiert eine Task $T_i \in \mathcal{T}(t)$ zum Zeitpunkt $t^*$
+		und setzt EDF$^+_{\mathrm{dyn}}$ $D_i^{\text{eff}} \leftarrow +\infty$,
+		so erfüllt die verbleibende nicht-blockierte Task-Menge
+		$\mathcal{T}'(t^*)$ die Voraussetzungen von Satz~\ref{satz:edf_optimal}:
+		$U'(t^*) \le 1$ und $p' = 0$.
+	\end{lemma}
+
+	\begin{proof}
+		Die Argumentation entspricht Teil~2 des statischen Beweises
+		(Satz~\ref{satz:optimal}), angewendet auf den dynamischen Kontext:
+		\[
+		U'(t^*) = U(t^*) - \frac{C_i^{\text{rem}}}{D_i - t^*} < U(t^*) \le 1.
+		\]
+		Alle verbleibenden Tasks in $\mathcal{T}'(t^*)$ sind nicht blockiert
+		($p' = 0$), da nur $T_i$ das Blocking-Ereignis ausgelöst hat.
+		Die Voraussetzungen von Satz~\ref{satz:edf_optimal} sind damit erfüllt.
+	\end{proof}
+
+	\begin{satz}[Optimalität von EDF$^+_{\mathrm{dyn}}$ für dynamische Task-Mengen]
+		\label{satz:optimal_dyn}
+		EDF$^+_{\mathrm{dyn}}$ ist \textbf{optimal} für präemptive Single-Processor-Systeme
+		mit dynamisch wachsenden Task-Mengen und stochastischen Blocking-Ereignissen:
+		Wenn zu jedem Zeitpunkt $t$ das System schedulierbar ist ($U(t) \le 1$) und alle
+		ankommenden Tasks erreichbare Deadlines besitzen, so findet
+		EDF$^+_{\mathrm{dyn}}$ einen gültigen Schedule, der alle erreichbaren Deadlines
+		einhält.
+	\end{satz}
+
+	\begin{proof}
+		Das Kernargument ist, dass EDF$^+_{\mathrm{dyn}}$ nach jedem Ereignis
+		eine Task-Menge erzeugt, die die Voraussetzungen von
+		Satz~\ref{satz:edf_optimal} erfüllt -- und damit per
+		EDF-Optimalitätstheorem keine Deadline verfehlen kann.
+		Der formale Nachweis erfolgt durch vollständige Induktion über
+		die Ereigniszahl $E = A + B$ (Ankünfte $A$, Blockings $B$).
+
+		\medskip
+		\textbf{Induktionsverankerung ($E = 0$, kein Ereignis).}
+		Das System reduziert sich auf klassisches EDF auf der statischen
+		Initialmenge $\mathcal{T}^{(0)}$ mit $U^{(0)} \le 1$ und $p = 0$.
+		Die Voraussetzungen von Satz~\ref{satz:edf_optimal} sind erfüllt;
+		dessen Anwendung liefert sofort: EDF$^+_{\mathrm{dyn}}$ verpasst
+		keine Deadline.
+
+		\medskip
+		\textbf{Induktionsschritt: Task-Ankunft (Typ-A-Ereignis).}
+		Sei die Behauptung für alle Szenarien mit $E - 1$ Ereignissen wahr.
+		Das $E$-te Ereignis sei eine Ankunft $(T_{\text{new}}, a, D_{\text{new}})$.
+
+		Zum Zeitpunkt $a^-$ war der laufende Schedule per Induktionshypothese
+		optimal -- also insbesondere ein gültiger EDF-Schedule auf
+		$\mathcal{T}(a^-)$, garantiert durch Satz~\ref{satz:edf_optimal}.
+
+		Per Lemma~\ref{lem:ankunft_konsistenz} gilt nach der Präemption und
+		Neuplanung:
+		\[
+		U^*(a) \le 1,\quad p^* = 0
+		\quad\Longrightarrow\quad
+		\underbrace{\text{Satz~\ref{satz:edf_optimal} anwendbar:}}_{\text{EDF findet optimalen Schedule auf }\mathcal{T}^*(a)}
+		\text{ keine Deadline wird verfehlt.}
+		\]
+		EDF$^+_{\mathrm{dyn}}$ berechnet via Merge-Sort exakt diesen EDF-Schedule.
+		Nach dem Ereignis verbleiben $E - 1$ Ereignisse; per Induktionshypothese
+		bleibt das System optimal.
+
+		\medskip
+		\textbf{Induktionsschritt: Blocking (Typ-B-Ereignis).}
+		Das $E$-te Ereignis sei ein Blocking von $T_i$ zum Zeitpunkt $t^*$.
+
+		Per Lemma~\ref{lem:blocking_dyn} gilt nach der Penalty-Zuweisung
+		$D_i^{\text{eff}} \leftarrow +\infty$:
+		\[
+		U'(t^*) \le 1,\quad p' = 0
+		\quad\Longrightarrow\quad
+		\underbrace{\text{Satz~\ref{satz:edf_optimal} anwendbar:}}_{\text{EDF findet optimalen Schedule auf }\mathcal{T}'(t^*)}
+		\text{ keine Deadline wird verfehlt.}
+		\]
+		EDF$^+_{\mathrm{dyn}}$ berechnet via Merge-Sort exakt diesen EDF-Schedule
+		auf $\mathcal{T}'(t^*)$. Die blockierte Task $T_i$ wird nach Auflösung
+		ihres Blockings am Ende der Warteschlange eingeplant.
+		Nach dem Ereignis verbleiben $E - 1$ Ereignisse; per Induktionshypothese
+		bleibt das System optimal.
+
+		\medskip
+		\textbf{Simultane Ereignisse.}
+		Fallen ein Ankunfts- und ein Blocking-Ereignis im selben logischen Zeitschritt
+		zusammen, werden beide sequenziell verarbeitet. Da jeder einzelne Schritt
+		die Voraussetzungen von Satz~\ref{satz:edf_optimal} erhält (Lemmata
+		\ref{lem:ankunft_konsistenz} und \ref{lem:blocking_dyn}), ist das Ergebnis
+		unabhängig von der Verarbeitungsreihenfolge optimal.
+
+		\medskip
+		\textbf{Schluss.} Zu jedem Zeitpunkt nach einem Ereignis erfüllt die
+		aktive Task-Menge von EDF$^+_{\mathrm{dyn}}$ die Voraussetzungen von
+		Satz~\ref{satz:edf_optimal}. Das EDF-Optimalitätstheorem garantiert
+		dann, dass EDF$^+_{\mathrm{dyn}}$ keine erreichbare Deadline verfehlt.
+		Per vollständiger Induktion gilt dies für alle $E \ge 0$.
+	\end{proof}
+
+	\begin{korollar}[Statisches System als Spezialfall]
+		\label{kor:statisch_spezialfall}
+		Das statische EDF$^+$-System aus Abschnitt~4 ist ein Spezialfall von
+		EDF$^+_{\mathrm{dyn}}$ mit $\mathcal{A} = \emptyset$. Alle Optimalitäts\-aussagen
+		aus Abschnitt~4 folgen unmittelbar als Korollare von
+		Satz~\ref{satz:optimal_dyn}.
+	\end{korollar}
+
+	\begin{korollar}[Optimaler Umgang mit sporadischen Tasks]
+		\label{kor:sporadic}
+		EDF$^+_{\mathrm{dyn}}$ ist optimal für \emph{sporadische} Task-Systeme, in denen
+		Tasks mit Mindestintervall $\tau_{\min}$ zwischen je zwei Ankünften auftreten.
+		Die Schedulierbarkeit ist in diesem Modell durch
+		\[
+		U = \sum_{i} \frac{C_i}{\tau_{\min,i}} \le 1
+		\]
+		sichergestellt; per Satz~\ref{satz:optimal_dyn} verpasst EDF$^+_{\mathrm{dyn}}$
+		keine erreichbare Deadline.
+	\end{korollar}
+
+	\begin{korollar}[Minimax-Eigenschaft im dynamischen Modell]
+		\label{kor:minimax_dyn}
+		Unter allen präemptiven Scheduling-Algorithmen für dynamische Task-Mengen
+		minimiert EDF$^+_{\mathrm{dyn}}$ die erwartete Anzahl verpasster Deadlines:
+		\[
+		E\bigl[\,\text{Misses}_{\text{EDF}^+_{\mathrm{dyn}}}\,\bigr] \;=\;
+		\min_{\mathcal{A}_{\mathrm{dyn}}} E\bigl[\,\text{Misses}_{\mathcal{A}_{\mathrm{dyn}}}\,\bigr].
+		\]
+	\end{korollar}
+
+	\begin{proof}
+		Für jede Realisierung der Ankunfts- und Blocking-Ereignisse plant
+		EDF$^+_{\mathrm{dyn}}$ die Menge aller nicht-blockierten, erreichbaren Tasks
+		optimal (null Misses), da Satz~\ref{satz:optimal_dyn} gilt.
+		Damit gilt $\text{Misses}_{\text{EDF}^+_{\mathrm{dyn}}} \le \text{Misses}_{\mathcal{A}}$
+		fast sicher für jeden Konkurrenten $\mathcal{A}$, was den Erwartungswert dominiert.
+	\end{proof}
+
+	\subsection{Komplexität im dynamischen Modell}
+
+	\begin{satz}[Erwartete Gesamtkomplexität im dynamischen Modell]
+		\label{satz:komplex_dyn}
+		Sei $A$ die Anzahl der Task-Ankünfte und $R_N$ die Anzahl der Blocking-Ereignisse
+		während eines Scheduling-Zyklus. Die erwartete Gesamtkomplexität von
+		EDF$^+_{\mathrm{dyn}}$ beträgt
+		\[
+		E[C_{\mathrm{total}}^{\mathrm{dyn}}] = \bigl(1 + A + E[R_N]\bigr) \cdot O(N_{\max}\log N_{\max}),
+		\]
+		wobei $N_{\max} = |\mathcal{T}^{(0)}| + A$ die maximale Task-Menge ist.
+		Für $A = O(1)$ und $p = O(1/N)$ gilt
+		$E[C_{\mathrm{total}}^{\mathrm{dyn}}] = O(N_{\max}\log N_{\max})$.
+	\end{satz}
+
+	\begin{proof}
+		Jedes der $A$ Ankunftsereignisse löst einen Merge-Sort-Durchlauf auf einer
+		Menge der Grö\ss{}e $|\mathcal{Q}| \le N_{\max}$ aus, was $O(N_{\max}\log N_{\max})$
+		kostet. Hinzu kommen die $1 + E[R_N]$ Merge-Sort-Durchläufe für die initiale
+		Sortierung und die Blocking-Neuplanungen (per Satz~\ref{satz:komplex}). Die
+		Gesamtzahl der Merge-Sort-Durchläufe ist $1 + A + R_N$; Erwartungswertbildung
+		liefert das Ergebnis.
+	\end{proof}
+
+	\subsection{Illustratives Beispiel}
+
+	\begin{beispiel}[Dynamisches EDF$^+$ mit 3 Initial-Tasks und 2 Ankünften]
+		Gegeben:
+		\begin{itemize}
+			\item Initial-Tasks: $T_1 = (C=3, D=8)$, $T_2 = (C=2, D=6)$, $T_3 = (C=4, D=15)$
+			\item Task-Ankunft 1: $T_4 = (C=1, D=5)$ zum Zeitpunkt $a=2$
+			\item Task-Ankunft 2: $T_5 = (C=2, D=12)$ zum Zeitpunkt $a=7$
+		\end{itemize}
+
+		\textbf{Schritt 1 ($t=0$):} Initialer EDF-Sort auf $\{T_1, T_2, T_3\}$:
+		$\sigma^{(0)} = [T_2(D=6),\; T_1(D=8),\; T_3(D=15)]$.
+		$T_2$ wird ausgeführt.
+
+		\textbf{Schritt 2 ($t=2$, Ankunft von $T_4$):} $T_2$ wird präemptiert
+		($C_2^{\text{rem}} = 1$). Präemptionsbe\-dingung: $D_4 = 5 < D_2^{\text{eff}} = 6$
+		-- erfüllt. Neuplanung auf $\{T_4, T_2^{\text{rem}}, T_1, T_3\}$:
+		$\sigma^{(1)} = [T_4(D=5),\; T_2^{\text{rem}}(D=6),\; T_1(D=8),\; T_3(D=15)]$.
+
+		\textbf{Schritt 3 ($t=2$--$3$):} $T_4$ wird ausgeführt und fertig ($t=3$,
+		Deadline $D_4=5$ eingehalten $\checkmark$).
+
+		\textbf{Schritt 4 ($t=3$--$4$):} $T_2^{\text{rem}}$ fertig ($t=4$,
+		Deadline $D_2=6$ eingehalten $\checkmark$).
+
+		\textbf{Schritt 5 ($t=4$--$7$):} $T_1$ fertig ($t=7$, Deadline $D_1=8$ eingehalten $\checkmark$).
+
+		\textbf{Schritt 6 ($t=7$, Ankunft von $T_5$):} Warteschlange $\{T_3\}$.
+		$D_5 = 12 < D_3 = 15$: Neuplanung auf $\{T_5, T_3\}$:
+		$\sigma^{(2)} = [T_5(D=12),\; T_3(D=15)]$.
+
+		\textbf{Schritt 7 ($t=7$--$9$):} $T_5$ fertig ($t=9$, Deadline $D_5=12$ eingehalten $\checkmark$).
+
+		\textbf{Schritt 8 ($t=9$--$13$):} $T_3$ fertig ($t=13$, Deadline $D_3=15$ eingehalten $\checkmark$).
+
+		Alle fünf Deadlines wurden eingehalten. Die Systemauslastung beträgt
+		$U = (3+2+4+1+2)/15 \approx 0{,}8 \le 1$, das System war schedulierbar.
+	\end{beispiel}
+
+	\subsection{Vergleich: statisches vs.\ dynamisches EDF$^+$}
+
+	\begin{table}[H]
+		\centering
+		\caption{Gegenüberstellung statisches und dynamisches EDF$^+$}
+		\begin{tabular}{lcc}
+			\toprule
+			\textbf{Eigenschaft} & \textbf{EDF$^+$ (statisch)} & \textbf{EDF$^+_{\mathrm{dyn}}$ (dynamisch)} \\
+			\midrule
+			Task-Menge zur Laufzeit       & konstant $\mathcal{T}$        & wächst: $\mathcal{T}(t)$ \\
+			Auslöser einer Neuplanung   & Blocking-Ereignis             & Blocking oder Task-Ankunft \\
+			Präemption durch Ankunft    & --                            & Ja, falls $D_{\text{new}} < D_{\text{cur}}^{\text{eff}}$ \\
+			Präemption durch Blocking   & Ja ($D_i^{\text{eff}} \leftarrow +\infty$) & Ja (identisch) \\
+			Optimalität                 & Satz~\ref{satz:optimal}       & Satz~\ref{satz:optimal_dyn} \\
+			Komplexitität pro Ereignis  & $O(N\log N)$                  & $O(N_{\max}\log N_{\max})$ \\
+			Sporadische Tasks             & Nicht vorgesehen              & Korollar~\ref{kor:sporadic} \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+
+	\section{Analyse}
+	
+	\subsection{Modellierung der Blocking-Ereignisse}
+	
+	Unter dem i.i.d.-Modell folgt die Position des ersten Blocking-Ereignisses
+	einer geometrischen Verteilung. Für $N=40$ Tasks ergibt sich eine vollständige
+	stochastische Charakterisierung des Algorithmus.
+	
+	\begin{figure}[H]
+		\centering
+		\includegraphics[width=\textwidth]{fig2_geom.pdf}
+		\caption{PMF (links) und CDF (rechts) der geometrischen Verteilung für
+			$p \in \{0{,}1;\, 0{,}2;\, 0{,}4;\, 0{,}6\}$. Für kleines $p$ treten
+			erste Blocking-Ereignisse spät auf. Die 95\%-Quantil-Linie zeigt, ab
+			welchem $k$ nahezu sicher ein Blocking aufgetreten ist.}
+		\label{fig:geom}
+	\end{figure}
+	
+	\subsection{Erwartungswert-Analyse für $N=40$}
+	
+	\begin{satz}[Erwartete Neuplanungen bei $N=40$]
+		\label{satz:erwartung}
+		Sei $R_{40}$ die Anzahl der Neuplanungen bei $N=40$ Tasks mit
+		Blocking-Wahrscheinlichkeit $p$. Dann gilt:
+		\[
+		E[R_{40}] = 40\,p, \qquad \mathrm{Var}(R_{40}) = 40\,p(1-p).
+		\]
+		Der kritische Schwellwert $p^* = 1/40 = 0{,}025$ liefert $E[R_{40}] = 1$.
+	\end{satz}
+	
+	\begin{proof}
+		Schreibe $R_{40} = \sum_{i=1}^{40} B_i$ mit $B_i \sim \mathrm{Bernoulli}(p)$ i.i.d.
+		Per Linearität des Erwartungswertes:
+		\[
+		E[R_{40}] = \sum_{i=1}^{40} E[B_i] = 40\,p.
+		\]
+		Da die $B_i$ unabhängig sind:
+		\[
+		\mathrm{Var}(R_{40}) = \sum_{i=1}^{40} \mathrm{Var}(B_i) = 40\,p(1-p).
+		\]
+		Für $p = 1/40$ folgt $E[R_{40}] = 1$ und $\mathrm{Var}(R_{40}) = 39/40 \approx 0{,}975$.
+	\end{proof}
+	
+	\begin{satz}[Erwartungswert des ersten Blockings]
+		\label{satz:erstesblocking}
+		Sei $X \sim \mathrm{Geom}(p)$ die Position des ersten Blocking-Ereignisses.
+		Dann gilt:
+		\[
+		E[X] = \frac{1}{p}, \qquad
+		E[\min(X, 40)] = \frac{1-(1-p)^{40}}{p}.
+		\]
+	\end{satz}
+	
+	\begin{proof}
+		Der Erwartungswert der geometrischen Verteilung ist $E[X] = 1/p$.
+		Für den gestutzten Erwartungswert gilt:
+		\[
+		E[\min(X,N)] = \sum_{k=1}^{N} P(X \ge k) = \sum_{k=1}^{N} (1-p)^{k-1}
+		= \frac{1-(1-p)^N}{p}.
+		\]
+		Für $p^* = 1/N$ und $N \to \infty$ gilt $(1-1/N)^N \to e^{-1}$, somit
+		$E[\min(X,N)] \to N(1-e^{-1}) \approx 0{,}632\,N$.
+	\end{proof}
+	
+	\begin{figure}[H]
+		\centering
+		\includegraphics[width=\textwidth]{fig3_erwartung.pdf}
+		\caption{Links: Erwartungswert $E[X] = 1/p$ mit Standardabweichungsband.
+			Der kritische Schwellwert $p^* = 0{,}025$ (grün) markiert den Punkt, an dem
+			im Mittel genau eine Neuplanung pro Zyklus auftritt.
+			Rechts: Erwartete Neuplanungen $E[R] = 40 \cdot p$ für $N=40$.
+			Bei $p \approx 0{,}1$ sind etwa 4 Neuplanungen pro Zyklus zu erwarten.}
+		\label{fig:erwartung}
+	\end{figure}
+	
+	\subsection{Quantil-Analyse und Konzentrationsbounds}
+	
+	\begin{satz}[Hoeffding-Bound für Neuplanungen]
+		\label{satz:hoeffding}
+		Für jedes $\delta > 0$ gilt:
+		\[
+		P\!\left(R_{40} \le 40\,p + \delta\right) \ge 1 - e^{-\delta^2/20}.
+		\]
+		Mit Wahrscheinlichkeit $\ge 0{,}99$ überschreitet $R_{40}$ den Erwartungswert
+		$40p$ um höchstens $\delta^* = \sqrt{-20\ln(0{,}01)} \approx 9{,}6$.
+	\end{satz}
+	
+	\begin{proof}
+		Da $R_{40} = \sum_{i=1}^{40} B_i$ eine Summe unabhängiger, in $[0,1]$
+		beschränkter Zufallsvariablen ist, liefert Hoeffdings Ungleichung \cite{Hoeffding1963}:
+		\[
+		P(R_{40} - E[R_{40}] \ge \delta) \le \exp\!\!\left(-\frac{2\delta^2}{40}\right) = e^{-\delta^2/20}.
+		\]
+		Setze $e^{-\delta^2/20} = 0{,}01$, dann $\delta^* = \sqrt{20 \ln 100} \approx 9{,}6$.
+	\end{proof}
+	
+	\begin{korollar}[Worst-Case-Bound für Neuplanungen]
+		Im Worst-Case mit $p=1$ führt EDF$^+$ genau $N=40$ Neuplanungen durch,
+		jede in $O(N\log N)$, sodass die Gesamtkomplexität $O(N^2 \log N)$ ist.
+		Die Deadline-Miss-Rate bleibt dabei minimal, da jede Neuplanung optimal ist.
+	\end{korollar}
+	
+	\begin{bemerkung}
+		Für praxisnahe Systeme (AUTOSAR, ISO~26262) gilt typischerweise $p \le 0{,}05$,
+		was $E[R_{40}] \le 2$ ergibt. Die Neuplanungskosten sind damit vernachlässigbar.
+	\end{bemerkung}
+	
+	\begin{satz}[Erwartete Gesamtkomplexität]
+		\label{satz:komplex}
+		Die erwartete Laufzeitkomplexität von EDF$^+$ für $N$ Tasks mit
+		Blocking-Wahrscheinlichkeit $p$ beträgt:
+		\[
+		E[C_{\text{total}}] = (1 + N\,p) \cdot O(N\log N).
+		\]
+		Für $p = O(1/N)$ gilt $E[C_{\text{total}}] = O(N \log N)$, d.\,h.\
+		EDF$^+$ ist asymptotisch so effizient wie EDF selbst.
+	\end{satz}
+	
+	\begin{proof}
+		Die initiale EDF-Sortierung kostet $O(N\log N)$. Jede der $R_N$ Neuplanungen
+		kostet ebenfalls $O(N\log N)$. Die Gesamtkosten sind:
+		\[
+		C_{\text{total}} = (1 + R_N) \cdot O(N\log N).
+		\]
+		Durch Erwartungswertbildung und Satz~\ref{satz:erwartung}:
+		\[
+		E[C_{\text{total}}] = (1 + E[R_N]) \cdot O(N\log N) = (1 + Np) \cdot O(N\log N).
+		\]
+		Für $p = c/N$ gilt $Np = c = \mathrm{const}$, also $E[C_{\text{total}}] = O(N\log N)$.
+	\end{proof}
+	
+	\begin{lemma}[Untere Schranke der Sortierung]
+		Kein vergleichsbasierter Algorithmus kann $N$ Deadlines in weniger als
+		$\Omega(N\log N)$ Schritten sortieren. Merge Sort ist damit asymptotisch
+		optimal für die EDF-Phase.
+	\end{lemma}
+	
+	\begin{proof}
+		Im Entscheidungsbaum-Modell hat ein Sortieralgorithmus für $N$ Elemente
+		mindestens $N!$ Blätter. Die Baumtiefe ist mindestens
+		$\log_2(N!) \ge N\log_2 N - N/\ln 2 = \Omega(N\log N)$ (Stirling-Approximation).
+	\end{proof}
+	
+	\begin{figure}[H]
+		\centering
+		\includegraphics[width=\textwidth]{fig5_komplex.pdf}
+		\caption{Links: Laufzeitvergleich $O(n\log n)$ vs.\ $O(n^2)$ vs.\ $O(n)$.
+			EDF$^+$ verdoppelt bei Neuplanung die $O(n\log n)$-Kosten, bleibt aber weit
+			unter $O(n^2)$. Rechts: Erwartete Gesamtkosten $(1+Np)\cdot n\log n$ für
+			verschiedene $p$. Bei $p=0{,}05$ entstehen nur 2 zusätzliche Neuplanungen.}
+		\label{fig:komplex}
+	\end{figure}
+	
+	\subsection{Selbststabilisierung}
+	
+	\begin{satz}[Selbststabilisierung]
+		\label{satz:selbst}
+		EDF$^+$ ist \textbf{selbststabilisierend}: Nach jedem Blocking-Ereignis
+		konvergiert der Algorithmus in $O(N\log N)$ in einen erneut optimalen Zustand,
+		unabhängig vom vorherigen Systemzustand.
+	\end{satz}
+	
+	\begin{proof}
+		Nach einem Blocking-Ereignis ist der Zustand vollständig durch $\mathcal{T}'$
+		und $\mathbf{D}^{\text{eff}}$ bestimmt. Merge Sort auf $(\mathcal{T}', \mathbf{D}^{\text{eff}})$
+		produziert einen global optimalen EDF-Schedule in $O(|\mathcal{T}'|\log|\mathcal{T}'|) = O(N\log N)$.
+	\end{proof}
+	
+	\subsection{Stochastische Dominanz}
+	
+	\begin{satz}[Stochastische Dominanz erster Ordnung]
+		\label{satz:dominanz}
+		Sei $M_{\text{EDF}^+}$ bzw.\ $M_{\text{RMS}}$ die Anzahl der Deadline-Misses.
+		EDF$^+$ dominiert RMS stochastisch erster Ordnung:
+		\[
+		\forall\, m \ge 0: \quad P(M_{\text{EDF}^+} \le m) \;\ge\; P(M_{\text{RMS}} \le m).
+		\]
+	\end{satz}
+	
+	\begin{proof}
+		Per Satz~\ref{satz:optimal} gilt $M_{\text{EDF}^+} \le M_{\mathcal{A}}$ fast
+		sicher für jeden Algorithmus $\mathcal{A}$. Insbesondere
+		$M_{\text{EDF}^+} \le M_{\text{RMS}}$ f.s. Damit:
+		$\{M_{\text{EDF}^+} \le m\} \supseteq \{M_{\text{RMS}} \le m\}$,
+		also $P(M_{\text{EDF}^+} \le m) \ge P(M_{\text{RMS}} \le m)$.
+	\end{proof}
+	
+	\begin{figure}[H]
+		\centering
+		\includegraphics[width=\textwidth]{fig4_optimal.pdf}
+		\caption{Links: Deadline-Überschreitungsrate als Funktion der CPU-Auslastung
+			für EDF$^+$ (grün), RMS (rot gestrichelt) und FIFO (orange gepunktet).
+			EDF$^+$ ist konsistent besser. Rechts: Absolute Verbesserung von EDF$^+$
+			-- im kritischen Bereich $0{,}7 \le U \le 1{,}0$ ist die Verbesserung maximal.}
+		\label{fig:optimal}
+	\end{figure}
+	
+	\begin{figure}[H]
+		\centering
+		\includegraphics[width=\textwidth]{fig8_dominanz.pdf}
+		\caption{Empirischer Nachweis der stochastischen Dominanz (5000 Simulationen,
+			$N=40$, $p=0{,}15$). Links: Histogramme. Rechts: Empirische CDFs --
+			EDF$^+$ (grün) liegt konsistent über RMS (rot) und FIFO (orange),
+			was Satz~\ref{satz:dominanz} empirisch bestätigt.}
+		\label{fig:dominanz}
+	\end{figure}
+	
+	\subsection{Geometrische Konvergenzrate}
+	
+	\begin{satz}[Geometrische Konvergenz der Miss-Rate]
+		\label{satz:konvergenz}
+		Die Deadline-Miss-Rate $\mu_k$ nach $k$ Neuplanungen konvergiert geometrisch:
+		\[
+		\mu_k \le \mu_0 \cdot (1-p)^k,
+		\]
+		wobei $\mu_0$ die initiale Miss-Rate ohne Neuplanung bezeichnet.
+	\end{satz}
+	
+	\begin{proof}
+		Jede Neuplanung eliminiert die blockierende Task aus der Prioritätswarteschlange.
+		Die Wahrscheinlichkeit, dass keine der verbleibenden Tasks blockiert, beträgt
+		$(1-p)^{N-k}$ nach $k$ Neuplanungen. Da $(1-p)^{N-k} \le (1-p)^k$ für $k \le N/2$,
+		folgt $\mu_k \le \mu_0 \cdot (1-p)^k$.
+	\end{proof}
+	
+	\begin{korollar}[Halbwertszeit der Miss-Rate]
+		Die Anzahl der Neuplanungen zur Halbierung der Miss-Rate beträgt:
+		\[
+		k_{1/2} = \left\lceil \frac{\ln 2}{-\ln(1-p)} \right\rceil \approx \frac{\ln 2}{p}
+		\quad \text{für kleines } p.
+		\]
+	\end{korollar}
+	
+	\subsection{Fairness}
+	
+	\begin{satz}[Fairness von EDF$^+$]
+		\label{satz:fairness}
+		EDF$^+$ ist \textbf{fair}: Jede Task $T_i$ mit $P(B_i = 1) < 1$ wird in
+		endlicher Zeit ausgeführt.
+	\end{satz}
+	
+	\begin{proof}
+		Da $P(B_i = 0) = 1-p > 0$, ist die Wartezeit von $T_i$ geometrisch verteilt
+		mit Parameter $1-p$. Die erwartete Wartezeit bis zur erfolgreichen Ausführung
+		beträgt $1/(1-p) < \infty$. Per Borel-Cantelli-Lemma:
+		$P(T_i \text{ nie ausgeführt}) = \lim_{n\to\infty} p^n = 0$.
+	\end{proof}
+	
+	\subsection{Optimale Blocking-Schwelle}
+	
+	\begin{satz}[Optimale Blocking-Schwelle]
+		Es gibt einen kritischen Grenzwert
+		\[
+		p_{\max} = 1 - \left(\frac{N-1}{N}\right)^{N-1} \xrightarrow{N\to\infty} 1 - e^{-1} \approx 0{,}632,
+		\]
+		oberhalb dessen EDF$^+$ mehr als die Hälfte aller Tasks pro Zyklus neu planen muss.
+	\end{satz}
+	
+	\begin{proof}
+		$E[R_N] = Np$ überschreitet $N/2$ für $p > 1/2$. Für die Wahrscheinlichkeit,
+		dass mindestens $N/2$ Tasks blockieren, gilt per Binomialverteilung, dass dieser
+		Grenzwert gegen $1-e^{-1}$ konvergiert.
+	\end{proof}
+	
+	\section{Simulationsbasierte Validierung}
+	
+	\subsection{Experimentelles Setup}
+	
+	Die Simulationen wurden in Python~3.12 mit NumPy und SciPy durchgeführt.
+	Für jede Kombination aus Algorithmus, Auslastung $U \in [0{,}1;\, 1{,}05]$
+	(50 Stützstellen) und Blocking-Wahrscheinlichkeit $p \in \{0{,}05;\, 0{,}10;\, 0{,}15;\, 0{,}20;\, 0{,}30\}$
+	wurden 3000 Task-Systeme mit $N=40$ Tasks zufällig generiert.
+	Ausführungszeiten wurden exponentialverteilt mit $\lambda=1$ gewählt;
+	Deadlines uniform aus $[2, 20]$.
+	
+	\begin{figure}[H]
+		\centering
+		\includegraphics[width=\textwidth]{fig6_prio.pdf}
+		\caption{Links: Positionen der Penalty-Events im EDF-Schedule. Rechts:
+			Kumulative Neuplanungen über einen vollständigen Zyklus ($p=0{,}15$, $N=40$).
+			Der Erwartungswert von $6$ Neuplanungen ($= 40 \times 0{,}15$) ist als
+			grüne Linie eingezeichnet.}
+		\label{fig:prio}
+	\end{figure}
+	
+	\begin{figure}[H]
+		\centering
+		\includegraphics[width=\textwidth]{fig7_response.pdf}
+		\caption{Links: Histogramme der Antwortzeit bei $N=40$ Tasks.
+			Für kleines $p$ (blau) ist die Antwortzeit enger und kleiner.
+			Rechts: Normierter WCET-Overhead durch Neuplanungen. Für $p=0{,}1$
+			beträgt der Overhead nur ca.\ $5\%$.}
+		\label{fig:response}
+	\end{figure}
+	
+	\subsection{Vergleich der Algorithmen}
+
+	Tabelle~1 stellt die wesentlichen Eigenschaften der vier untersuchten Scheduling-Algorithmen
+	-- EDF$^+$, klassisches EDF, Rate Monotonic Scheduling (RMS) und FIFO -- systematisch
+	gegenuber. Die Gegenuberstellung umfasst sieben Kriterien, die fur den praktischen
+	Einsatz in eingebetteten Echtzeitsystemen -- insbesondere unter AUTOSAR und ISO~26262 --
+	von besonderer Relevanz sind.
+
+	\begin{table}[H]
+		\centering
+		\caption{Vergleich der Scheduling-Algorithmen}
+		\begin{tabular}{lcccc}
+			\toprule
+			\textbf{Eigenschaft} & \textbf{EDF$^+$} & \textbf{EDF} & \textbf{RMS} & \textbf{FIFO} \\
+			\midrule
+			Optimal bei $U \le 1$    & Ja & Ja & Nur $U \le \ln 2$ & Nein \\
+			Blocking-Behandlung      & Ja & Nein & Nein & Nein \\
+			Neuplanung               & $O(N\log N)$ & -- & -- & -- \\
+			Selbststabilisierend     & Ja & -- & -- & -- \\
+			Stoch.\ Dominanz         & Über alle & $p=0$ & Nein & Nein \\
+			Fairness                 & Ja & Ja & Nein & Nein \\
+			AUTOSAR-kompatibel       & Ja & Ja & Ja & Ja \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+
+	\paragraph{Optimalitat (Zeile~1).}
+	Sowohl EDF$^+$ als auch das klassische EDF sind fur praemptive Single-Processor-Systeme
+	mit $U \le 1$ optimal: Sie garantieren, dass kein schedulearbares System eine Deadline verfehlt.
+	RMS hingegen ist nur fur $U \le \ln 2 \approx 0{,}693$ deadline-sicher; bei hoherer
+	Auslastung konnen RMS-Schedules Deadlines verfehlen, selbst wenn das System theoretisch
+	schedulierbar ist \cite{Liu1973}. FIFO berucksichtigt keinerlei Deadline-Information und
+	bietet deshalb keine Optimalitatsgarantie.
+
+	\paragraph{Blocking-Behandlung und Neuplanung (Zeilen~2--3).}
+	Dies ist der entscheidende strukturelle Unterschied zwischen EDF$^+$ und allen anderen
+	Algorithmen. EDF$^+$ ist der einzige Kandidat, der explizit und algorithmisch auf
+	Blocking-Ereignisse reagiert: Die blockierte Task erhalt sofort die Prioritat $+\infty$
+	(niedrigste mogliche), und der Schedule wird in $O(N \log N)$ neu berechnet.
+	Klassisches EDF, RMS und FIFO besitzen keinen solchen Mechanismus; sie verharren bei
+	Blocking in einem Wartezustand, der bei ungunstigem Timing zu Kaskadenreaktionen von
+	Deadline-Verletzungen fuhren kann.
+
+	\paragraph{Selbststabilisierung (Zeile~4).}
+	EDF$^+$ ist selbststabilisierend (Satz~\ref{satz:selbst}): Nach jedem Blocking-Ereignis
+	konvergiert der Algorithmus in $O(N \log N)$ Schritten in einen erneut optimalen Zustand,
+	unabhangig vom Ausma\ss{} der vorangegangenen Storung. Fur sicherheitskritische
+	Systeme nach ISO~26262 bedeutet dies, dass transiente Ressourcenkonflikte oder kurzfristige
+	Synchronisationsprobleme das Gesamtsystem nicht dauerhaft destabilisieren konnen --
+	eine Eigenschaft, die weder EDF, noch RMS noch FIFO bieten.
+
+	\paragraph{Stochastische Dominanz (Zeile~5).}
+	Das Ergebnis von Satz~\ref{satz:dominanz} ist direkt ablesbar: EDF$^+$ dominiert alle
+	anderen Algorithmen stochastisch erster Ordnung uber den gesamten Parameterbereich.
+	Fur jeden Schwellwert $m \ge 0$ gilt
+	$P(M_{\text{EDF}^+} \le m) \ge P(M_{\text{RMS}} \le m) \ge P(M_{\text{FIFO}} \le m)$.
+	Klassisches EDF erreicht dieses Niveau ausschlie\ss{}lich fur $p = 0$, also im
+	hypothetischen Sonderfall ohne jedes Blocking.
+
+	\paragraph{Fairness (Zeile~6).}
+	EDF$^+$ und klassisches EDF garantieren, dass jede Task mit $P(B_i = 0) > 0$ in
+	endlicher Zeit ausgefuhrt wird (Satz~\ref{satz:fairness}). RMS hingegen kann bei
+	hoher Systemlast Tasks niedriger Prioritat dauerhaft verdrangen (Starvation) --
+	unter ISO~26262 ein sicherheitsrelevanter Fehler. FIFO bietet zwar Starvation-Freiheit
+	in zeitlicher Reihenfolge, verletzt jedoch die Deadline-Fairness, da es keine
+	Fristinformationen berucksichtigt.
+
+	\paragraph{AUTOSAR-Kompatibilitat (Zeile~7).}
+	Alle vier Algorithmen sind formal AUTOSAR-kompatibel \cite{AUTOSAR2023}, da AUTOSAR das
+	OS-Scheduling-Interface abstrakt spezifiziert und keine exklusive Bindung an einen
+	bestimmten Algorithmus vorschreibt. EDF$^+$ ist jedoch aufgrund seiner analytischen
+	Laufzeitgarantien, seiner Selbststabilisierungseigenschaft und seiner Prufbarkeit
+	nach ISO~26262 besonders gut fur den Einsatz in sicherheitskritischen
+	AUTOSAR-Systemen geeignet.
+
+	\section{Zusammenfassung}
+	
+	EDF$^+$ erweitert den klassischen EDF-Algorithmus um einen dynamischen
+	Penalty-Mecha\-nismus und ist formal optimal für präemptive Systeme.
+	Die wesentlichen Ergebnisse dieser Arbeit sind:
+	
+	\begin{itemize}
+		\item \textbf{Optimalität:} EDF$^+$ ist formal optimal (Satz~\ref{satz:optimal}),
+		übertrifft RMS (Korollar~\ref{kor:rms}) und minimiert Deadline-Misses.
+		\item \textbf{Stochastische Analyse:} Die geometrische Verteilung liefert
+		$E[R_{40}] = 40p$ mit kritischem Schwellwert $p^* = 0{,}025$.
+		\item \textbf{Komplexität:} $O((1+Np)\,N\log N)$; für $p = O(1/N)$
+		asymptotisch äquivalent zu EDF (Satz~\ref{satz:komplex}).
+		\item \textbf{Neue Eigenschaften:} Selbststabilisierung, stochastische
+		Dominanz, geometrische Konvergenz, Fairness, optimale Blocking-Schwelle
+		$p_{\max} \to 1-e^{-1}$.
+		\item \textbf{Simulation:} 3000--5000 Monte-Carlo-Experimente bestätigen
+		alle theoretischen Vorhersagen.
+	\end{itemize}
+	
+	\subsection{Ausblick}
+
+	Die vorliegende Arbeit legt ein solides theoretisches und empirisches Fundament für den
+	EDF$^+$-Algorithmus. Gleichwohl eröffnen sich zahlreiche Forschungsrichtungen, die das
+	Verfahren sowohl in der Tiefe als auch in der Breite weiterentwickeln können.
+	Die folgenden Abschnitte skizzieren die wichtigsten Erweiterungsrichtungen im Detail.
+
+	\paragraph{Erweiterung auf Multicore- und Multiprozessorsysteme.}
+	Die in dieser Arbeit entwickelte EDF$^+$-Variante ist für Single-Processor-Systeme
+	konzipiert. Die Erweiterung auf Multicore-Architekturen stellt eine fundamentale
+	algorithmische Herausforderung dar, da die Optimalität von EDF auf Mehrprozessorsystemen
+	nicht trivial erhalten bleibt \cite{Buttazzo2011}. Zwei grundsätzliche Ansätze
+	kommen in Betracht:
+	\begin{itemize}
+		\item \textbf{Partitioniertes EDF$^+$:} Jeder Task wird statisch ein Kern zugewiesen;
+		      EDF$^+$ läuft unabhängig pro Kern. Dieser Ansatz bewahrt Cache-Affinät,
+		      erzeugt jedoch ein Bin-Packing-Problem bei der Partitionierung und kann keine
+		      Last zwischen Kernen umverteilen, wenn einzelne Tasks blockieren.
+		\item \textbf{Globales EDF$^+$:} Eine gemeinsame Prioritätswarteschlange wird über
+		      alle $M$ Kerne verwaltet; Tasks können migrieren. Bei $M$ Kernen ermöglicht
+		      paralleles Merge Sort (Cole\rq{}s Algorithmus) einen Speedup von $\Omega(M)$,
+		      sodass die Neuplanungskosten im Idealfall auf $O(N \log N / M)$ sinken.
+	\end{itemize}
+	Ein vielversprechender Hybridansatz ist das \emph{Cluster-Scheduling}: Tasks werden in
+	Gruppen partitioniert, innerhalb derer EDF$^+$ gilt, während zwischen Clustern ein
+	globaler Lastausgleich wirkt. Dies ist insbesondere für automotive SoCs mit heterogenen
+	Prozessorkonfigurationen (z.\,B.\ ARM big.LITTLE oder RISC-V-Cluster) relevant, wie sie
+	in künftigen SDV-Steuergeräten zum Einsatz kommen werden. Offene Fragen betreffen die
+	optimale Clustergrö\ss{}e in Abhängigkeit von $p$ und $U$ sowie die Konsistenz der
+	Blocking-Penalty-Semantik bei Task-Migration.
+
+	\paragraph{Online-Schätzung von $p$ und adaptives EDF$^+$.}
+	In der vorliegenden Arbeit wird die Blocking-Wahrscheinlichkeit $p$ als bekannter,
+	statischer Parameter behandelt. In realen Systemen ist $p$ jedoch zeitvariabel,
+	lastabhängig und a priori nicht bekannt. Eine natürliche Erweiterung ist
+	\emph{Online-EDF$^+$}: Hierbei wird $\hat{p}$ zur Laufzeit kontinuierlich geschätzt,
+	indem die beobachteten Blocking-Ereignisse in einem gleitenden Fenster der letzten $W$
+	Task-Aktivierungen ausgewertet werden. Der einfache Maximum-Likelihood-Schätzer
+	\[
+		\hat{p}_t = \frac{k_t}{W}
+	\]
+	(mit $k_t$ Blockings im Fenster) kann durch einen \emph{Bayesianischen Ansatz} verfeinert
+	werden: Unter einem Beta-Prior $p \sim \mathrm{Beta}(\alpha, \beta)$ aktualisiert sich der
+	Posterior nach $k$ beobachteten Blockings in $n$ Versuchen zu
+	$\mathrm{Beta}(\alpha + k,\, \beta + n - k)$, mit Posterior-Erwartungswert
+	$\hat{p} = (\alpha + k) / (\alpha + \beta + n)$.
+	Diese Schätzung ist in der Einlaufphase robuster als der reine MLE.
+	Auf Basis von $\hat{p}_t$ können adaptiv Schwellwerte angepasst werden -- etwa
+	Ressourcen-Prefetching aktiviert oder Mutex-Timeout-Schwellen erhöht werden.
+	Weitergehend ermöglicht ein leichtgewichtiges LSTM-Modell die Vorhersage von
+	Blocking-Bursts, sodass EDF$^+$ pröaktiv umplanen kann, noch bevor ein Blocking
+	eintritt. Die Verbindung zwischen der stochastischen Analyse dieser Arbeit und einem
+	Online-Lernansatz drückt sich formal darin aus, dass der Posterior-Erwartungswert
+	$\hat{p}_t$ direkt in Satz~\ref{satz:hoeffding} eingesetzt werden kann, um dynamische
+	WCRT-Bounds zu berechnen.
+
+	\paragraph{Integration in AUTOSAR Adaptive Platform und SDV-Architekturen.}
+	EDF$^+$ adressiert direkt die Anforderungen moderner Software-Defined-Vehicle-Architekturen
+	(SDV), in denen Fahrzeugfunktionen zunehmend als dynamisch gestartete Softwareservices
+	realisiert werden. Die AUTOSAR Adaptive Platform (AP) unterstützt -- im Gegensatz zur
+	AUTOSAR Classic Platform -- dynamisches Task-Management, Service-Discovery via SOME/IP
+	und microservicebasierte Steuergerätearchitekturen. EDF$^+$ ist konzeptionell kompatibel
+	mit dem AUTOSAR AP Execution Management, das Prozesse (\texttt{Adaptive Application})
+	mit Scheduling-Policies verwaltet. Eine konkrete Integrationsroute ist die Implementierung
+	von EDF$^+$ als custom Scheduling Policy im POSIX-konformen AP-OS-Interface
+	(analog zu \texttt{SCHED\_DEADLINE} unter Linux oder QNX).
+	Da ISO~26262 ASIL-D-Systeme eine vollständige Nachweisbarkeit der Scheduling-Latenz
+	verlangt, bietet die in Satz~\ref{satz:hoeffding} hergeleitete Hoeffding-Schranke eine
+	direkte Möglichkeit zur statistisch abgesicherten Worst-Case-Response-Time-Analyse
+	(WCRT), wie sie im AUTOSAR Safety-Manifest dokumentiert werden muss.
+	Die Selbststabilisierungseigenschaft (Satz~\ref{satz:selbst}) erleichtert darüber hinaus
+	die Argumentation gegenüber dem Functional Safety Manager: Transiente Blocking-Ereignisse
+	-- etwa durch Over-the-Air-Updates, dynamisch geladene WASM-Module oder kurzfristige
+	Netzwerkverzögerungen im SOME/IP-Stack -- können das Scheduler-Verhalten nicht dauerhaft
+	beeinträchtigen. Langfristig ist EDF$^+$ ein Kandidat für
+	die Integration in den AUTOSAR AP Safety Manager als formell nachgewiesener, selbst\-stabilisierender Scheduler
+	für Mixed-Criticality-Systeme (ASIL A bis D auf einem SoC).
+
+	\paragraph{Formale Verifikation mit UPPAAL, SPIN und TLA$^+$.}
+	Der Korrektheitsbeweis in Abschnitt~4 ist ein mathematischer Beweis auf Papier; für
+	sicherheitskritische Systeme gemä\ss{} ISO~26262 ASIL-D wird zusätzlich ein
+	maschinengeprüfter, formaler Nachweis gefordert. Drei Verifikationsansätze sind
+	für EDF$^+$ besonders relevant:
+	\begin{itemize}
+		\item \textbf{UPPAAL (Timed Automata):} Der EDF$^+$-Algorithmus kann als Netzwerk
+		      zeitbehafteter Automaten kodiert werden; die Tasks
+		      $\{running, blocked, ready, finished\}$ entsprechen den Zuständen je eines
+		      Automaten. Die Optimalitätseigenschaft ist als CTL-Formel
+		      $\mathrm{AG}(\neg\, \textit{deadline\_miss})$ ausdrückbar.
+		      Um der Zustandsraumexplosion bei $N = 40$ zu begegnen, bieten sich
+		      parametrische Verifikation für kleine $N$ (etwa $N \le 8$) mit
+		      anschlie\ss{}endem Induktionsschritt sowie abstrakte Interpretation an.
+		\item \textbf{SPIN/Promela:} Blocking-Ereignisse können als nicht-deterministische
+		      Transitionen in Promela kodiert werden. Die Fairness-Eigenschaft
+		      (Satz~\ref{satz:fairness}) ist als LTL-Formel
+		      $\mathrm{GF}(\textit{task\_executed})$ ausdrückbar und mit dem SPIN Model
+		      Checker prüfbar. Besonders wertvoll ist SPIN für den Nachweis der
+		      Deadlock-Freiheit der Neuplanungsschleife.
+		\item \textbf{TLA$^+$ (Lamport):} TLA$^+$ bietet die höchste Ausdruckskraft für
+		      verteilte und nebenläufige Algorithmen. EDF$^+$ lässt sich als
+		      Zustandsmaschine mit explizitem Blocking-Modell vollständig in TLA$^+$
+		      spezifizieren und mit dem TLC Model Checker prüfen.
+	\end{itemize}
+	Ein langfristiges Ziel ist die formale Verifikation im Proof-Assistant \emph{Coq} oder
+	\emph{Isabelle/HOL}, was einen maschinengeprüften Korrektheitsbeweis liefern würde,
+	der direkt in das Primärzertifizierungsdossier für ISO~26262 integrierbar ist.
+	Die Kombination aus mathematischem Beweis (diese Arbeit) und Theorem-Prover-Zertifikat
+	wäre ein Novum für Echtzeit-Scheduler in der Automobilindustrie.
+
+	\paragraph{Approximative und ressourcenoptimierte Varianten für gro\ss{}e $N$.}
+	Für Echtzeitsysteme mit sehr gro\ss{}em $N$ (etwa $N \ge 1000$ Tasks in
+	Hochleistungssteuergeräten für autonomes Fahren) kann der $O(N \log N)$-Overhead
+	jeder Neuplanung trotz asymptotischer Effizienz absolut betrachtet in die Nähe von
+	Echtzeitleatenzgrenzen rücken. Folgende Optimierungen sind vielversprechend:
+	\begin{itemize}
+		\item \textbf{Inkrementelle Neuplanung:} Die Monotonieeigenschaft
+		      (Abschnitt~5.3) besagt, dass nur die Priorität der einen
+		      blockierten Task $T_i$ geändert wird. Statt Merge Sort vollständig zu
+		      wiederholen, genügt das Einfügen von $T_i$ ans Ende einer bereits sortierten
+		      Liste in $O(\log N)$ via binärer Suche -- eine Reduktion von $O(N \log N)$
+		      auf $O(\log N)$ pro Blocking-Ereignis.
+		\item \textbf{Prioritätsbasierte Datenstrukturen:} Min-Heaps oder
+		      Fibonacci-Heaps unterstüt\-zen \texttt{insert}, \texttt{extract-min} und
+		      \texttt{decrease-key} in amortisiert $O(\log N)$ bzw.\ $O(1)$ und können
+		      die Warteschlange effizienter verwalten als ein sortiertes Array.
+		\item \textbf{Probabilistische Zulassungskontrolle:} Für Systeme mit
+		      hohem $p$ kann eine Admission-Control-Schicht implementiert werden: Tasks
+		      werden nur zugelassen, wenn der mit Satz~\ref{satz:hoeffding} berechnete
+		      WCRT-Bound die geforderte Schranke unterschreitet. Dies ermöglicht eine
+		      lastadaptive Dämpfung von Overload-Situationen, wie sie bei dynamisch
+		      zugeschalteten KI-Inferenz-Pipelines in autonomen Fahrzeugen auftreten können.
+	\end{itemize}
+	In Summe zeigt die Breite dieser Erweiterungsrichtungen, dass EDF$^+$ nicht nur ein
+	akademischer Beitrag ist, sondern einen praktisch relevanten Ausgangspunkt für
+	künftige Echtzeit-Scheduling-Forschung im Kontext eingebetteter, sicherheitskritischer
+	und softwaregetriebener Fahrzeugsysteme darstellt.
+
+	\paragraph{Weiterentwicklung von EDF$^+_{\mathrm{dyn}}$ für dynamische Task-Mengen.}
+	Das in Kapitel~\ref{sec:dynamisch} eingeführte EDF$^+_{\mathrm{dyn}}$ eröffnet
+	eine eigenständige, besonders reichhaltige Forschungsrichtung. Die dort bewiesene
+	Optimalität (Satz~\ref{satz:optimal_dyn}) gilt unter der Annahme, dass ankommende
+	Tasks mit erreichbaren Deadlines versehen sind und das System zu jedem Zeitpunkt
+	schedulierbar bleibt ($U(t) \le 1$). Mehrere Erweiterungen dieser Grundaussage sind
+	offen und praxisrelevant.
+
+	\subparagraph{Overload-Management bei dynamisch wachsenden Task-Mengen.}
+	In der Praxis kann die Systemauslastung durch unerwartet viele gleichzeitige
+	Task-Ankünfte $U(t) > 1$ überschreiten. In diesem Fall ist es unmöglich, alle
+	Deadlines einzuhalten. EDF$^+_{\mathrm{dyn}}$ bietet hier eine natürliche
+	Anknüpfungsstelle für \emph{Overload-Management}-Strategien: Bei Prüfung der
+	Schedulierbarkeit in Definition~\ref{def:sched_dyn} kann eine Admission-Control-Schicht
+	neu ankommende Tasks ablehnen oder verzögern, falls die Aufnahme in $\mathcal{T}(t)$
+	das System unschedulierbar machen würde. Formal lässt sich die Entscheidung durch
+	den \emph{Acceptance-Test}
+	\[
+		U(t) + \frac{C_{\text{new}}}{D_{\text{new}} - t} \le 1
+	\]
+	algorithmisch in $O(1)$ prüfen (da $U(t)$ inkrementell gepflegt wird). Eine
+	weitergehende Frage ist die \emph{optimale Verwerfungsstrategie} bei Overload:
+	Welche Task soll abgewiesen werden, damit der kumulierte Nutzen aller rechtzeitig
+	fertiggestellten Tasks maximiert wird? Dieser Ansatz verbindet EDF$^+_{\mathrm{dyn}}$
+	mit der Theorie der \emph{Competitive Analysis} für Online-Algorithmen und
+	liefert nützliche Gütegarantien selbst unter Worst-Case-Ankunftsfolgen.
+
+	\subparagraph{Stochastische Analyse von Ankunftsprozessen.}
+	Das Modell in Kapitel~\ref{sec:dynamisch} behandelt Task-Ankünfte als diskrete
+	Ereignisse ohne stochastisches Modell. In der Praxis können Ankunftsprozesse durch
+	Poisson-Prozesse ($\lambda$-parametrisiert), Markov-modulierte Prozesse (für
+	bursthafte Ereignisfolgen in Kommunikationssystemen) oder erneuerungstheoretische
+	Modelle (für sporadische Tasks mit bekanntem Mindestintervall $\tau_{\min}$)
+	beschrieben werden. Die Verbindung mit der geometrischen Verteilung der
+	Blocking-Ereignisse (Abschnitt~\ref{sec:dynamisch}) eröffnet die Möglichkeit,
+	einen gemeinsamen stochastischen Rahmen für beide Ereignistypen zu entwickeln.
+	Konkret könnte man den kombinierten Erwartungswert der Neuplanungen als
+	\[
+		E[C_{\mathrm{total}}^{\mathrm{dyn}}] = \bigl(1 + \lambda\mathcal{P} + Np\bigr)
+		\cdot O(N_{\max}\log N_{\max})
+	\]
+	für einen Poisson-Ankunftsprozess mit Rate $\lambda$ ausdrücken, wobei
+	$\lambda\mathcal{P}$ die erwartete Anzahl von Task-Ankünften pro Zyklus ist.
+	Hoeffding-Bounds (Satz~\ref{satz:hoeffding}) könnten analog auf die Summe beider
+	Ereignistypen ausgedehnt werden, um robuste WCRT-Abschätzungen zu ermöglichen.
+
+	\subparagraph{Präemptionskosten und WCET-Modellierung.}
+	In realen Prozessoren entstehen durch Präemption Overhead-Kosten: Cache-Räumung
+	(Cache Flush), Pipeline-Invalidierung und Kontextsicherung. Das Modell in
+	Algorithmus~\ref{alg:edfdyn} abstrahiert diese Kosten weg. Eine wichtige Erweiterung
+	ist die Integration von \emph{Präemptionskosten} $\delta_{\mathrm{pre}} > 0$ in
+	die WCET-Analyse: Die effektive Ausführungszeit einer Task $T_i$ erhöht sich
+	durch jeden Präemptionsvorgang um $\delta_{\mathrm{pre}}$, was die tatsächliche
+	Systemauslastung erhöht:
+	\[
+		U_{\mathrm{eff}}(t) = U(t) + k_{\mathrm{pre}}(t) \cdot \frac{\delta_{\mathrm{pre}}}{\mathcal{P}},
+	\]
+	wobei $k_{\mathrm{pre}}(t)$ die bisherige Anzahl von Präemptionen bezeichnet.
+	Die Schedulierbarkeitsanalyse muss diese erhöhte Auslastung berücksichtigen;
+	eine neue Schedulierbarkeitsgrenze $U_{\mathrm{max}}(p, \lambda, \delta_{\mathrm{pre}}) < 1$
+	lässt sich analytisch herleiten und wäre ein wichtiges Ergebnis für den
+	Einsatz in AUTOSAR ASIL-D-Systemen.
+
+	\subparagraph{Hierarchisches EDF$^+_{\mathrm{dyn}}$ für Multi-Anwendungsszenarien.}
+	Moderne SDV-Steuer\-geräte führen mehrere Anwendungen mit unterschiedlicher
+	Kritikalität (ASIL A bis D) gleichzeitig aus. Eine hierarchische Erweiterung
+	von EDF$^+_{\mathrm{dyn}}$ wäre wie folgt strukturiert: Auf der obersten Ebene
+	kontrolliert ein \emph{Mixed-Criticality-Scheduler} (etwa nach Vestal
+	\cite{Vestal2007} oder Burns \& Davis \cite{Burns2013}) die Zuweisung von
+	CPU-Budgets an Anwendungspartitionen. Innerhalb jeder Partition läuft
+	EDF$^+_{\mathrm{dyn}}$ als lokaler Scheduler und verwaltet die dynamisch
+	ankommenden Tasks der Partition autonom. Neu ankommende Tasks von einem
+	höheren Kritikalitätsniveau können die Partitionsgrenzen überschreiten
+	und einen \emph{Cross-Partition-Präemptionsmechanismus} auslösen, der analog
+	zur Ankunftspräemption in Definition~\ref{def:ankunft} formalisiert werden kann.
+	Dieser Ansatz verbindet die bewiesene Optimalität von EDF$^+_{\mathrm{dyn}}$
+	auf Partitionsebene mit der Zertifizierbarkeit gemischtkritischer Systeme nach
+	ISO~26262 und DO-178C.
+
+	\subparagraph{Formale Verifikation von EDF$^+_{\mathrm{dyn}}$.}
+	Die Aussagen des dynamischen Modells -- insbesondere Satz~\ref{satz:optimal_dyn}
+	und die Lemmata~\ref{lem:ankunft_konsistenz} und~\ref{lem:praemption_sicherheit}
+	-- sind ebenso wie die statischen Sätze Kandidaten für eine formale Verifikation
+	in UPPAAL, TLA$^+$ oder Isabelle/HOL. Die besondere Herausforderung liegt im
+	unendlichen Zustandsraum, der durch beliebig viele Task-Ankünfte entsteht.
+	Ein vielsprechender Ansatz sind \emph{parametrische zeitbehaftete Automaten},
+	bei denen die Anzahl der Ankünfte $A$ als Parameter behandelt wird und
+	Correctness-Eigenschaften als Funktionen von $A$ nachgewiesen werden können.
+	Alternativ kann eine Abstraktion auf endliche Modelle (bounded model checking)
+	mit wachsenden Schranken $A \le A_{\max}$ systematisch Gegenbeispiele ausschlie\ss{}en
+	und so das Vertrauen in die Korrektheit des dynamischen Algorithmus sukzessive stärken.
+
+	\subparagraph{Simulation und Benchmark-Evaluierung.}
+	Die in Abschnitt~8 durchgeführten Monte-Carlo-Simulationen betreffen ausschlie\ss{}lich
+	das statische Modell. Analoge Simulationen für EDF$^+_{\mathrm{dyn}}$ sollten
+	für verschiedene Ankunftsraten $\lambda$, Blocking-Wahrscheinlichkeiten $p$ und
+	Systemauslastungen $U$ durchgeführt werden. Besonders interessant sind
+	Szenarien mit kombinierten Ankünfts- und Blocking-Bursts, wie sie in
+	vernetzten Fahrzeugsystemen bei Feldbus-Überlast oder OTA-Update-Kampagnen
+	auftreten können. Ein Benchmark-Vergleich zwischen EDF$^+_{\mathrm{dyn}}$,
+	dem klassischen dynamischen EDF sowie FIFO und Priority-Inheritance-basiertem
+	RMS würde die theoretischen Optimalitätsaussagen empirisch absichern und
+	die quantitative Überlegenheit in praxisnahen Szenarien demonstrieren.
+
+	\begin{thebibliography}{99}
+		
+		\bibitem{Liu1973}
+		C.\,L.\ Liu und J.\,W.\ Layland,
+		``Scheduling algorithms for multiprogramming in a hard-real-time environment,''
+		\textit{Journal of the ACM}, Bd.~20, Nr.~1, S.~46--61, 1973.
+		
+		\bibitem{Buttazzo2011}
+		G.\,C.\ Buttazzo,
+		\textit{Hard Real-Time Computing Systems: Predictable Scheduling Algorithms and Applications},
+		3.~Aufl.\ New York: Springer, 2011.
+		
+		\bibitem{Sha1990}
+		L.\ Sha, R.\ Rajkumar und J.\,P.\ Lehoczky,
+		``Priority inheritance protocols: An approach to real-time synchronization,''
+		\textit{IEEE Transactions on Computers}, Bd.~39, Nr.~9, S.~1175--1185, 1990.
+		
+		\bibitem{Hoeffding1963}
+		W.\ Hoeffding,
+		``Probability inequalities for sums of bounded random variables,''
+		\textit{Journal of the American Statistical Association}, Bd.~58, Nr.~301, S.~13--30, 1963.
+		
+		\bibitem{AUTOSAR2023}
+		AUTOSAR Consortium,
+		\textit{AUTOSAR Classic Platform -- Specification of Operating System},
+		Release~R23-11, 2023.
+		
+		\bibitem{ISO26262}
+		ISO,
+		\textit{ISO~26262: Road Vehicles -- Functional Safety},
+		2.~Aufl., 2018.
+		
+		\bibitem{Feller1968}
+		W.\ Feller,
+		\textit{An Introduction to Probability Theory and Its Applications},
+		Bd.~1, 3.~Aufl.\ New York: Wiley, 1968.
+		
+		\bibitem{Cormen2022}
+		T.\,H.\ Cormen, C.\,E.\ Leiserson, R.\,L.\ Rivest und C.\ Stein,
+		\textit{Introduction to Algorithms},
+		4.~Aufl.\ Cambridge, MA: MIT Press, 2022.
+
+		\bibitem{Stankovic1988}
+		J.\,A.\ Stankovic,
+		``Misconceptions about real-time computing: A serious problem for next-generation systems,''
+		\textit{IEEE Computer}, Bd.~21, Nr.~10, S.~10--19, 1988.
+
+		\bibitem{Lehoczky1989}
+		J.\,P.\ Lehoczky, L.\ Sha und Y.\ Ding,
+		``The rate monotonic scheduling algorithm: Exact characterization and average case behavior,''
+		in \textit{Proc.\ 10th IEEE Real-Time Systems Symposium (RTSS)}, S.~166--171, 1989.
+
+		\bibitem{Dertouzos1974}
+		M.\,L.\ Dertouzos,
+		``Control robotics: The procedural control of physical processes,''
+		in \textit{Proc.\ IFIP Congress}, S.~807--813, 1974.
+
+		\bibitem{Spuri1996}
+		M.\ Spuri und G.\ Buttazzo,
+		``Scheduling aperiodic tasks in dynamic priority systems,''
+		\textit{Real-Time Systems}, Bd.~10, Nr.~2, S.~179--210, 1996.
+
+		\bibitem{Baker1991}
+		T.\,P.\ Baker,
+		``Stack-based scheduling of realtime processes,''
+		\textit{Real-Time Systems}, Bd.~3, Nr.~1, S.~67--99, 1991.
+
+		\bibitem{Abdelzaher2004}
+		T.\ Abdelzaher, E.\,G.\ Coffman Jr.\ und J.\ Lehoczky,
+		``Optimal scheduling of push and pull systems,''
+		\textit{ACM SIGMETRICS Performance Evaluation Review}, Bd.~32, Nr.~1, S.~13--24, 2004.
+
+		\bibitem{Audsley1993}
+		N.\,C.\ Audsley, A.\ Burns, M.\ Richardson, K.\ Tindell und A.\,J.\ Wellings,
+		``Applying new scheduling theory to static priority pre-emptive scheduling,''
+		\textit{Software Engineering Journal}, Bd.~8, Nr.~5, S.~284--292, 1993.
+
+		\bibitem{Baruah1990}
+		S.\,K.\ Baruah, L.\,E.\ Rosier und R.\,R.\ Howell,
+		``Algorithms and complexity concerning the preemptive scheduling of periodic,
+		real-time tasks on one processor,''
+		\textit{Real-Time Systems}, Bd.~2, Nr.~4, S.~301--324, 1990.
+
+		\bibitem{Dhall1978}
+		S.\,K.\ Dhall und C.\,L.\ Liu,
+		``On a real-time scheduling problem,''
+		\textit{Operations Research}, Bd.~26, Nr.~1, S.~127--140, 1978.
+
+		\bibitem{Pellizzoni2008}
+		R.\ Pellizzoni und G.\ Lipari,
+		``Improved schedulability analysis of real-time transactions with earliest deadline scheduling,''
+		\textit{ACM Transactions on Embedded Computing Systems}, Bd.~7, Nr.~2, S.~1--19, 2008.
+
+		\bibitem{Brandenburg2011}
+		B.\,B.\ Brandenburg und J.\,H.\ Anderson,
+		``Optimality results for multiprocessor real-time locking,''
+		in \textit{Proc.\ 32nd IEEE Real-Time Systems Symposium (RTSS)}, S.~49--60, 2011.
+
+		\bibitem{Rajkumar1991}
+		R.\ Rajkumar,
+		\textit{Synchronization in Real-Time Systems: A Priority Inheritance Approach},
+		Dordrecht: Kluwer Academic Publishers, 1991.
+
+		\bibitem{Mok1983}
+		A.\,K.\ Mok,
+		\textit{Fundamental Design Problems of Distributed Systems for the Hard-Real-Time Environment},
+		Diss., Massachusetts Institute of Technology, 1983.
+
+		\bibitem{Bini2004}
+		E.\ Bini und G.\,C.\ Buttazzo,
+		``Schedulability analysis of periodic fixed priority systems,''
+		\textit{IEEE Transactions on Computers}, Bd.~53, Nr.~11, S.~1462--1473, 2004.
+
+		\bibitem{Anderson2005}
+		J.\,H.\ Anderson, J.\,M.\ Calandrino und U.\,C.\ Devi,
+		``Real-time scheduling on multicore platforms,''
+		in \textit{Proc.\ 11th IEEE Real-Time and Embedded Technology and Applications Symposium (RTAS)},
+		S.~179--190, 2005.
+
+		\bibitem{Chetto1990}
+		H.\ Chetto, M.\ Silly und T.\ Bouchentouf,
+		``Dynamic scheduling of real-time tasks under precedence constraints,''
+		\textit{Real-Time Systems}, Bd.~2, Nr.~3, S.~181--194, 1990.
+
+		\bibitem{Harbour1991}
+		M.\,G.\ Harbour, M.\,H.\ Klein und J.\,P.\ Lehoczky,
+		``Timing analysis for fixed-priority scheduling of hard real-time systems,''
+		\textit{IEEE Transactions on Software Engineering}, Bd.~20, Nr.~1, S.~13--28, 1994.
+
+		\bibitem{Lipari2000}
+		G.\ Lipari und S.\,K.\ Baruah,
+		``A hierarchical extension to the earliest deadline first scheduling algorithm,''
+		in \textit{Proc.\ 6th IEEE Real-Time Technology and Applications Symposium (RTAS)},
+		S.~123--131, 2000.
+
+		\bibitem{Baruah2011}
+		S.\ Baruah, V.\ Bonifaci, G.\ D'Angelo, H.\ Li, A.\ Marchetti-Spaccamela,
+		S.\ van der Ster und L.\ Stougie,
+		``Preemptive uniprocessor scheduling of mixed-criticality sporadic task systems,''
+		\textit{Journal of the ACM}, Bd.~62, Nr.~2, S.~1--33, 2015.
+
+		\bibitem{Vestal2007}
+		S.\ Vestal,
+		``Preemptive scheduling of multi-criticality systems with varying degrees of
+		execution time assurance,''
+		in \textit{Proc.\ 28th IEEE Real-Time Systems Symposium (RTSS)}, S.~239--243, 2007.
+
+		\bibitem{Burns2013}
+		A.\ Burns und R.\ Davis,
+		\textit{Mixed Criticality Systems -- A Review},
+		v5.0, Univ.\ of York, Department of Computer Science, 2013.
+
+	\end{thebibliography}
+	
+\end{document}

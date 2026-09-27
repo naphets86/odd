@@ -1,0 +1,1058 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[main=german,provide=*]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{microtype}
+
+\geometry{margin=2.5cm}
+\setlength{\emergencystretch}{3em}
+\sloppy
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{bemerkung}{Bemerkung}
+\newtheorem{korollar}{Korollar}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=mainblue,
+	citecolor=accentred,
+	urlcolor=mainblue
+}
+
+%  Code-Highlighting
+\lstset{
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue},
+	commentstyle=\color{gray},
+	stringstyle=\color{red},
+	numbers=left,
+	numberstyle=\tiny,
+	breaklines=true,
+	frame=single,
+	literate=%
+	{Ö}{{\"O}}1
+	{Ä}{{\"A}}1
+	{Ü}{{\"U}}1
+	{ß}{{\ss}}1
+	{ü}{{\"u}}1
+	{ä}{{\"a}}1
+	{ö}{{\"o}}1
+	{Î£}{{$\Sigma$}}1
+	{â†’}{{$\rightarrow$}}1
+	{âŠ†}{{$\subseteq$}}1
+	{âŠ‡}{{$\supseteq$}}1
+	{â‰¥}{{$\geq$}}1
+}
+
+\title{Der paradoxe Gewinn im Reziproken:\\
+Die Rolle des Exponenten $n$ zur Basis $2$\\
+in der Signaturfunktion des Subgraph Algorithmus}
+\author{Stephan Epp}
+\date{11. Juni 2026}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Einführung}
+
+Der Subgraph Algorithmus vergleicht zwei Graphen $G$ und $G'$ mittels eindeutiger
+Spalten-Signaturen und zyklischer Rotation und erreicht dabei eine optimale
+Laufzeit von $O(n^3)$. Zentrales Element der Konstruktion ist die Signaturfunktion
+\[
+	\sigma_j = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n,
+\]
+in welcher der Exponent $n$ zur Basis $2$ gleich zweifach auftritt: einmal als
+obere Grenze der Zeilensumme (\emph{Zeilenkomponente}, $\sum_i A_{ij}2^i < 2^n$)
+und einmal als multiplikatives Gewicht der Spalte (\emph{Spaltenkomponente},
+$j \cdot 2^n$).
+
+Die vorliegende Arbeit untersucht ein auf den ersten Blick paradoxes Phänomen,
+das wir als \emph{paradoxen Gewinn im Reziproken} bezeichnen: Während der
+Term $2^n$ mit wachsendem $n$ exponentiell divergiert, konvergiert sein
+Reziprokes $2^{-n}$ exponentiell gegen $0$. Genau diese Divergenz-Konvergenz-Dualität
+ist jedoch keine Schwäche, sondern die strukturelle Ursache dafür, dass
+\begin{itemize}
+	\item die Signaturfunktion $\sigma$ \emph{injektiv} ist (Eindeutigkeit, vgl.
+	      Lemma~1 der Originalarbeit \cite{epp2026subgraph}),
+	\item Zeilen- und Spalteninformation durch eine einzige reziproke Skalierung
+	      $\sigma_j \cdot 2^{-n}$ \emph{verlustfrei und ohne zusätzlichen Speicheraufwand}
+	      getrennt werden können,
+	\item und diese Trennung exakt die Struktur ist, welche die untere
+	      Schranke $\Omega(n^3)$ für das zyklische Subgraph-Problem erzwingt.
+\end{itemize}
+
+\subsection{Problemstellung}
+
+Sei $n \in \mathbb{N}$, $n \geq 1$, und sei $A \in \{0,1\}^{n \times n}$ eine
+Adjazenzmatrix. Für jede Spalte $j \in \{0,\ldots,n-1\}$ sei
+\[
+	r_j := \sum_{i=0}^{n-1} A_{ij} \cdot 2^i \in \{0, 1, \ldots, 2^n - 1\}
+\]
+die \emph{Zeilenkomponente} und $\sigma_j = r_j + j \cdot 2^n$ die zugehörige
+Signatur.
+
+\textbf{Frage:} Welche formalen Eigenschaften besitzt die Abbildung
+$\sigma_j \mapsto (j, r_j)$, und in welchem Sinn stellt der Übergang
+$2^n \mapsto 2^{-n}$ einen \emph{Gewinn} dar, obwohl er auf den ersten Blick
+nur eine triviale algebraische Inversion ist?
+
+\subsection{Motivation}
+
+In der Praxis erscheinen exponentiell wachsende Größen wie $2^n$ zunächst
+als Nachteil: Speicherplatz und Zahlendarstellung wachsen mit $n$. Das
+\emph{Reziproke} $2^{-n}$ hingegen erscheint als vernachlässigbar kleine Größe,
+die â€žverschwindet''. Der paradoxe Gewinn besteht darin, dass die
+Multiplikation mit $2^{-n}$ \emph{nicht} Information vernichtet, sondern
+sie in zwei disjunkte, unmittelbar auslesbare Komponenten â€“ Ganzzahlanteil
+(Spaltenindex $j$) und Fraktionalanteil (Zeileninformation $r_j / 2^n$) â€“
+zerlegt. Dieser Mechanismus ist die mathematische Grundlage dafür, dass der
+Subgraph Algorithmus auf zusätzliche Indexstrukturen verzichten kann und
+dennoch $O(n^3)$ erreicht.
+
+\section{Grundlagen}
+
+\subsection{Definitionen}
+
+\begin{definition}[Zeilen- und Spaltenkomponente]
+	Für $A \in \{0,1\}^{n\times n}$ und $j \in \{0,\ldots,n-1\}$ heißen
+	\[
+		r_j := \sum_{i=0}^{n-1} A_{ij}\cdot 2^i
+		\qquad\text{und}\qquad
+		c_j := j \cdot 2^n
+	\]
+	die \emph{Zeilenkomponente} bzw. \emph{Spaltenkomponente} der Signatur
+	$\sigma_j = r_j + c_j$.
+\end{definition}
+
+\begin{definition}[Reziproke Skalierung]
+	Die reziproke Skalierung der Signatur $\sigma_j$ ist definiert als
+	\[
+		\hat\sigma_j := \sigma_j \cdot 2^{-n} \in \mathbb{Q}_{\geq 0}.
+	\]
+\end{definition}
+
+\begin{definition}[Ganzzahl- und Fraktionalanteil]
+	Für $x \in \mathbb{Q}_{\geq 0}$ bezeichne $\lfloor x \rfloor$ den
+	Ganzzahlanteil und $\{x\} := x - \lfloor x \rfloor \in [0,1)$ den
+	Fraktionalanteil von $x$.
+\end{definition}
+
+\subsection{Grundidee}
+
+\begin{beispiel}
+	Für $n=4$ und Spalte $j=2$ mit Spaltenvektor $[1,0,1,1]^T$ gilt
+	\[
+		r_2 = 2^0 + 2^2 + 2^3 = 1 + 4 + 8 = 13, \qquad
+		c_2 = 2 \cdot 2^4 = 32, \qquad
+		\sigma_2 = 45.
+	\]
+	Reziproke Skalierung mit $2^{-4} = 1/16$ liefert
+	\[
+		\hat\sigma_2 = \frac{45}{16} = 2{,}8125
+		\;=\; \underbrace{2}_{\lfloor \hat\sigma_2 \rfloor = j}
+		\;+\; \underbrace{0{,}8125}_{\{\hat\sigma_2\} = r_2/2^4 = 13/16}.
+	\]
+	Der Ganzzahlanteil liefert exakt den Spaltenindex $j=2$ zurück, der
+	Fraktionalanteil exakt die normierte Zeileninformation $r_2/2^n$ â€“
+	und das, obwohl $2^{-4}$ als â€žkleine'' Zahl erscheint.
+\end{beispiel}
+
+\section{Hauptresultate}
+
+\subsection{Exakte reziproke Zerlegung}
+
+\begin{satz}[Reziproke Zerlegung der Signatur]
+\label{satz:zerlegung}
+	Für alle $n \geq 1$, alle $j \in \{0,\ldots,n-1\}$ und alle
+	$A \in \{0,1\}^{n\times n}$ gilt für $\hat\sigma_j = \sigma_j \cdot 2^{-n}$:
+	\[
+		\lfloor \hat\sigma_j \rfloor = j
+		\qquad\text{und}\qquad
+		\{\hat\sigma_j\} = \frac{r_j}{2^n}.
+	\]
+\end{satz}
+
+\begin{proof}
+	Nach Definition gilt $\sigma_j = r_j + j\cdot 2^n$ mit
+	$r_j = \sum_{i=0}^{n-1}A_{ij}2^i$. Da $A_{ij}\in\{0,1\}$ für alle $i$, gilt
+	\[
+		0 \;\leq\; r_j \;\leq\; \sum_{i=0}^{n-1} 2^i \;=\; 2^n - 1 \;<\; 2^n.
+	\]
+	Multiplikation mit $2^{-n} > 0$ liefert
+	\[
+		\hat\sigma_j \;=\; \sigma_j \cdot 2^{-n}
+		\;=\; \frac{r_j}{2^n} + j.
+	\]
+	Da $0 \leq r_j/2^n < 1$ und $j \in \mathbb{Z}_{\geq 0}$, ist $j$ bereits der
+	Ganzzahlanteil von $\hat\sigma_j$ und $r_j/2^n \in [0,1)$ bereits der
+	Fraktionalanteil. Aus der Eindeutigkeit der Zerlegung
+	$x = \lfloor x \rfloor + \{x\}$ mit $\{x\}\in[0,1)$ für $x \in \mathbb{Q}_{\geq0}$
+	folgt
+	\[
+		\lfloor \hat\sigma_j \rfloor = j, \qquad \{\hat\sigma_j\} = \frac{r_j}{2^n}. \qedhere
+	\]
+\end{proof}
+
+\begin{korollar}[Konstanz der Trennung]
+\label{kor:konstanz}
+	Die Breite des Wertebereichs des Fraktionalanteils, $[0,1)$, ist
+	\emph{unabhängig von $n$}. Insbesondere gilt für alle $n_1 \neq n_2$ und
+	beliebige zugehörige Signaturen $\sigma^{(n_1)}_j, \sigma^{(n_2)}_{j'}$:
+	\[
+		\{\sigma^{(n_1)}_j \cdot 2^{-n_1}\},\;
+		\{\sigma^{(n_2)}_{j'} \cdot 2^{-n_2}\} \;\in\; [0,1).
+	\]
+\end{korollar}
+
+\begin{proof}
+	Folgt unmittelbar aus Satz~\ref{satz:zerlegung}, da $\{x\}\in[0,1)$ per
+	Definition für jedes $x\in\mathbb{Q}_{\geq0}$ gilt, unabhängig von der
+	Größe von $n$.
+\end{proof}
+
+\begin{bemerkung}
+	Korollar~\ref{kor:konstanz} ist der formale Kern des â€žParadoxons``: Obwohl
+	$\sigma_j$ selbst mit $O(2^n)$ wächst (exponentiell in $n$), bleibt das
+	durch $2^{-n}$ skalierte Bild $\hat\sigma_j$ in einem Intervall der
+	\emph{konstanten} Länge $n$ (nämlich $[0,n)$, da $j \leq n-1$), und
+	dessen Fraktionalanteil sogar in $[0,1)$ -- einer von $n$
+	\emph{vollständig unabhängigen} Größe. Der scheinbare â€žVerlust`` durch
+	das verschwindend kleine $2^{-n}$ wird also vollständig durch eine
+	\emph{strukturelle Normierung} kompensiert: Information wird nicht
+	skaliert, sondern \emph{aufgeteilt}.
+\end{bemerkung}
+
+\subsection{Bijektivität und Informationserhalt}
+
+\begin{lemma}[Bijektivität der reziproken Abbildung]
+\label{lem:bijektiv}
+	Die Abbildung
+	\[
+		\Phi_n : \{0,1\}^n \times \{0,\ldots,n-1\} \longrightarrow
+		\{0,\ldots,n-1\} \times \left\{\tfrac{0}{2^n},\tfrac{1}{2^n},\ldots,\tfrac{2^n-1}{2^n}\right\},
+	\]
+	\[
+		\Phi_n(A_{\cdot j}, j) = (j,\ r_j/2^n) = (\lfloor\hat\sigma_j\rfloor, \{\hat\sigma_j\})
+	\]
+	ist eine Bijektion.
+\end{lemma}
+
+\begin{proof}
+	\textbf{Wohldefiniertheit:} Nach Satz~\ref{satz:zerlegung} liegt
+	$r_j/2^n$ stets in der angegebenen diskreten Menge von $2^n$ äquidistanten
+	Werten in $[0,1)$, da $r_j \in \{0,\ldots,2^n-1\}$ ganzzahlig ist.
+
+	\textbf{Injektivität:} Seien $(A_{\cdot j}, j) \neq (A'_{\cdot j'}, j')$.
+	Fall (a) $j \neq j'$: dann unterscheiden sich die Bilder bereits in der
+	ersten Komponente. Fall (b) $j = j'$, $A_{\cdot j} \neq A'_{\cdot j'}$:
+	Da die Abbildung $A_{\cdot j} \mapsto r_j = \sum_i A_{ij}2^i$ die
+	Standard-Binärdarstellung einer Zahl in $\{0,\ldots,2^n-1\}$ ist, und
+	diese Darstellung eindeutig ist, folgt $r_j \neq r'_j$ und somit
+	$r_j/2^n \neq r'_j/2^n$.
+
+	\textbf{Surjektivität:} Für jedes Paar $(j, k/2^n)$ mit
+	$k\in\{0,\ldots,2^n-1\}$ liefert die Binärdarstellung von $k$ als Vektor
+	$A_{\cdot j} \in \{0,1\}^n$ ein Urbild, da jede Zahl $k \in \{0,\ldots,2^n-1\}$
+	eine eindeutige Binärdarstellung mit $n$ Stellen besitzt. \qedhere
+\end{proof}
+
+\begin{satz}[Informationserhalt ohne Zusatzspeicher]
+\label{satz:infoerhalt}
+	Die Signatur $\sigma_j \in \{0,\ldots,n\cdot 2^n - 1\}$ kodiert das Paar
+	$(j, A_{\cdot j}) \in \{0,\ldots,n-1\}\times\{0,1\}^n$ verlustfrei in
+	einem einzigen Maschinenwort der Bitlänge
+	\[
+		B(n) = \left\lceil \log_2(n\cdot 2^n) \right\rceil
+		= n + \left\lceil \log_2 n \right\rceil,
+	\]
+	ohne dass $j$ und $A_{\cdot j}$ in getrennten Speicherfeldern abgelegt
+	werden müssen.
+\end{satz}
+
+\begin{proof}
+	Nach Lemma~\ref{lem:bijektiv} ist $\Phi_n$ bijektiv, also ist die
+	Gesamtabbildung
+	\[
+		(j, A_{\cdot j}) \;\longmapsto\; \sigma_j = r_j + j\cdot 2^n
+	\]
+	als Komposition von $\Phi_n$ mit der (ebenfalls bijektiven, da
+	$2^n$-adische Stellenwertdarstellung) Abbildung
+	$(j, r_j/2^n) \mapsto j\cdot 2^n + r_j$ injektiv. Der Bildbereich ist
+	$\{0,\ldots, (n-1)\cdot 2^n + (2^n-1)\} = \{0,\ldots,n\cdot2^n-1\}$, also
+	$n\cdot 2^n$ verschiedene Werte, was $\lceil\log_2(n\cdot2^n)\rceil$ Bit
+	benötigt.
+
+	Die getrennte Speicherung von $j\in\{0,\ldots,n-1\}$
+	($\lceil\log_2 n\rceil$ Bit) und $A_{\cdot j}\in\{0,1\}^n$ ($n$ Bit)
+	benötigt in der Summe ebenfalls $n + \lceil\log_2 n\rceil$ Bit â€“ jedoch
+	in zwei getrennten Feldern, was in realen Implementierungen wegen
+	Speicherausrichtung (\emph{alignment}) und Strukturkosten
+	(\emph{struct padding}) typischerweise ein zusätzliches Maschinenwort
+	(z.\,B. $32$ oder $64$ Bit) erfordert. Die Signatur $\sigma_j$ vermeidet
+	dies vollständig, da $j$ und $r_j$ via Satz~\ref{satz:zerlegung} aus
+	einer einzigen Zahl in $O(1)$ durch die reziproke Skalierung
+	$\sigma_j \cdot 2^{-n}$ (äquivalent: Ganzzahldivision durch $2^n$
+	und Modulo $2^n$) zurückgewonnen werden. \qedhere
+\end{proof}
+
+\begin{korollar}[Der paradoxe Gewinn]
+\label{kor:paradox}
+	Der Übergang von $2^n$ (Multiplikation, Kodierung) zu $2^{-n}$
+	(Division, Dekodierung) ist algebraisch trivial (eine einzige
+	Multiplikation mit dem Kehrwert), bewirkt aber gemäß
+	Satz~\ref{satz:zerlegung} und Satz~\ref{satz:infoerhalt} die vollständige,
+	verlustfreie Trennung zweier strukturell verschiedener Informationsklassen
+	(Position $j$ und Inhalt $A_{\cdot j}$) bei \emph{negativen} Zusatzkosten
+	gegenüber getrennter Speicherung. Der â€žGewinn`` entsteht somit nicht durch
+	zusätzliche Information, sondern durch \emph{Eliminierung struktureller
+	Redundanz}, die bei naiver getrennter Kodierung anfallen würde.
+\end{korollar}
+
+\subsection{Konsequenz für die Laufzeit $O(n^3)$}
+
+\begin{satz}[Reziproke Zerlegung als Voraussetzung für $O(n^3)$]
+\label{satz:laufzeitkonsequenz}
+	Die in Satz~\ref{satz:zerlegung} bewiesene reziproke Zerlegung ist eine
+	notwendige Voraussetzung für die $O(n^2)$-Laufzeit der
+	Rotation-Match-Operation (Schritt~3 des Subgraph Algorithmus, vgl.
+	\cite{epp2026subgraph}), und damit für die Gesamtlaufzeit $O(n^3)$.
+\end{satz}
+
+\begin{proof}
+	Im Rotation-Match-Schritt wird für jede der $n$ zyklischen Rotationen die
+	\emph{Zeilenkomponente} $r_j = \sigma_j \bmod 2^n$ benötigt (vgl. Listing
+	â€žRotation-Match`` in \cite{epp2026subgraph}, Zeilen \texttt{row\_sigs\_A
+	= [sig \% col\_weight\_A for sig in sig\_A]}). Diese Operation ist
+	äquivalent zur Extraktion des Fraktionalanteils $\{\sigma_j\cdot2^{-n}\}$
+	skaliert mit $2^n$, gemäß Satz~\ref{satz:zerlegung}.
+
+	Wäre die Zerlegung \emph{nicht} in $O(1)$ pro Signatur durchführbar
+	(etwa weil $j$ und $r_j$ erst durch eine Suche oder einen
+	Vergleichsschritt mit Aufwand $\omega(1)$ getrennt werden müssten),
+	so entstünde pro Rotation ein zusätzlicher Faktor $f(n) = \omega(1)$,
+	und die Gesamtlaufzeit der Rotation-Match-Phase wäre
+	\[
+		O\bigl(n \cdot (n^2 + n^2)\cdot f(n)\bigr) = \omega(n^3).
+	\]
+	Da nach Lemma~\ref{lem:bijektiv} und Satz~\ref{satz:zerlegung} die
+	Zerlegung $\sigma_j \mapsto (j, r_j)$ jedoch durch die arithmetischen
+	$O(1)$-Operationen Ganzzahldivision durch $2^n$ (bzw. Multiplikation mit
+	$2^{-n}$) und Modulo $2^n$ erfolgt â€“ beides Bitschiebeoperationen
+	(\texttt{shift}/\texttt{mask}), da $2^n$ eine Zweierpotenz ist â€“ gilt
+	$f(n) = O(1)$, und die in \cite{epp2026subgraph} (Satz â€žLaufzeit``)
+	gezeigte Schranke
+	\[
+		T_{\text{Rotation-Match}}(n) = O(n\cdot(n^2+n^2)) = O(n^3)
+	\]
+	bleibt gültig. \qedhere
+\end{proof}
+
+\begin{bemerkung}
+	Satz~\ref{satz:laufzeitkonsequenz} zeigt, dass der â€žparadoxe Gewinn``
+	keine bloße ästhetische Beobachtung ist, sondern eine
+	\emph{Korrektheitsvoraussetzung} der in \cite{epp2026subgraph} bewiesenen
+	$\Theta(n^3)$-Optimalität: Ohne die $O(1)$-Zerlegbarkeit via $2^{\pm n}$
+	würde die Gesamtschranke aus Lemma â€žUnabhängigkeit der Rotationsvergleiche``
+	(\cite{epp2026subgraph}) um den Faktor $f(n)$ verschlechtert, was die
+	scharfe untere Schranke $\Omega(n^{3-\varepsilon})$ nicht mehr matchen
+	würde.
+\end{bemerkung}
+
+\section{Veranschaulichung}
+
+\subsection{Divergenz von $2^n$ und $2^{-n}$}
+
+Abbildung~\ref{fig:plot1} zeigt die exponentielle Divergenz von $2^n$
+(Spaltengewicht, linke Achse, logarithmisch) und die exponentielle
+Konvergenz von $2^{-n}$ gegen $0$ (rechte Achse, logarithmisch) für
+$n=1,\ldots,16$. Beide Kurven verlaufen exakt spiegelsymmetrisch auf der
+logarithmischen Skala, was die algebraische Reziprozität
+$\log_2(2^n) = -\log_2(2^{-n})$ unmittelbar sichtbar macht. Auf den ersten
+Blick legt dies nahe, dass $2^{-n}$ für große $n$ â€žbedeutungslos`` klein
+und damit irrelevant wird.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.75\textwidth]{plot1.pdf}
+	\caption{Divergenz von $2^n$ und $2^{-n}$ für $n=1,\ldots,16$ (doppelt-logarithmische
+	Darstellung). Die scheinbare â€žBedeutungslosigkeit`` von $2^{-n}$ für große $n$
+	ist der Ausgangspunkt des untersuchten Paradoxons.}
+	\label{fig:plot1}
+\end{figure}
+
+\subsection{Konstante Trennung trotz wachsendem $n$}
+
+Abbildung~\ref{fig:plot2} widerlegt diese Intuition: Für drei verschieden
+große Zufallsgraphen ($n=4,8,12$) wird die reziprok skalierte Signatur
+$\hat\sigma_j = \sigma_j\cdot2^{-n}$ in Ganzzahl- und Fraktionalanteil
+zerlegt. Trotz exponentiell wachsender absoluter Werte von $\sigma_j$
+(Größenordnung $O(n\cdot2^n)$) bleibt der Fraktionalanteil â€“ die
+Zeileninformation â€“ für \emph{alle} $n$ exakt im Intervall $[0,1)$, und der
+(reskalierte) Ganzzahlanteil identifiziert exakt den Spaltenindex $j/n$.
+Dies ist die graphische Bestätigung von Satz~\ref{satz:zerlegung} und
+Korollar~\ref{kor:konstanz}: Die â€žAuflösung`` der Trennung ist unabhängig
+von $n$, obwohl der Wertebereich von $\sigma_j$ selbst mit $n$ wächst.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=\textwidth]{plot2.pdf}
+	\caption{Reziproke Skalierung $\sigma_j\cdot2^{-n}$ für $n=4,8,12$. Grüne Punkte:
+	Fraktionalanteil (Zeileninformation $r_j/2^n$), stets in $[0,1)$. Blaue Kreuze:
+	normierter Ganzzahlanteil (Spaltenindex $j/n$). Die Struktur der Trennung ist
+	für alle drei Werte von $n$ identisch.}
+	\label{fig:plot2}
+\end{figure}
+
+\subsection{Informationsgewinn gegenüber getrennter Kodierung}
+
+Abbildung~\ref{fig:plot3} quantifiziert den in Satz~\ref{satz:infoerhalt} und
+Korollar~\ref{kor:paradox} bewiesenen Gewinn. Die rote Kurve zeigt die
+benötigten Bits pro Spalte bei \emph{getrennter} Speicherung von
+Zeilenvektor und Spaltenindex inklusive eines typischen Strukturkosten-Overheads
+von $32$ Bit (z.\,B. durch \emph{padding} bei Wortgrenzen-Ausrichtung in
+C-Strukturen). Die grüne Kurve zeigt die Bitanzahl der kombinierten
+Signatur $\sigma_j$, welche \emph{ohne} diesen Overhead auskommt, da $j$ und
+$r_j$ gemäß Satz~\ref{satz:zerlegung} verlustfrei aus einer einzigen Zahl
+rekonstruierbar sind. Die schraffierte Fläche entspricht den eingesparten
+Bits â€“ dem â€žparadoxen Gewinn`` in absoluten Speichereinheiten.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.75\textwidth]{plot3.pdf}
+	\caption{Vergleich des Speicherbedarfs pro Spalte: getrennte Kodierung
+	(Zeilenvektor + Spaltenindex + Strukturkosten) vs. kombinierte Signatur
+	$\sigma_j$. Die schraffierte Fläche zeigt den durch die reziproke
+	Zerlegbarkeit eingesparten Speicherbedarf.}
+	\label{fig:plot3}
+\end{figure}
+
+\subsection{Konsequenz für die Gesamtlaufzeit}
+
+Abbildung~\ref{fig:plot4} stellt schließlich die in
+Satz~\ref{satz:laufzeitkonsequenz} bewiesene Konsequenz dar: Links wird die
+Operationsanzahl des Subgraph Algorithmus ($O(n^3)$) mit dem naiven
+permutationsbasierten Ansatz ($O(n!\cdot n^2)$) für kleine $n$ verglichen
+(logarithmische Skala) â€“ der Unterschied wird bereits ab $n\approx 6$
+dramatisch. Rechts ist das kubische Wachstum $n^3$ für größere $n$ separat
+dargestellt. Ohne die in Abschnitt~3 bewiesene $O(1)$-Zerlegbarkeit der
+Signatur via $2^{\pm n}$ wäre selbst diese kubische Schranke nicht erreichbar.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=\textwidth]{plot4.pdf}
+	\caption{Links: Vergleich der Operationsanzahl zwischen naivem
+	Permutationsansatz $O(n!\cdot n^2)$ und Subgraph Algorithmus $O(n^3)$ für
+	$n=1,\ldots,8$ (logarithmische Skala). Rechts: kubisches Wachstum $n^3$ für
+	$n=1,\ldots,29$, die durch die reziproke Zerlegung garantierte
+	Gesamtkomplexität.}
+	\label{fig:plot4}
+\end{figure}
+
+\section{Verallgemeinerung: Das Reziproke-Trennungs-Prinzip}
+\label{sec:verallgemeinerung}
+
+Die in Abschnitt~3 für die Signaturfunktion des Subgraph Algorithmus
+bewiesenen Resultate (Satz~\ref{satz:zerlegung}, Lemma~\ref{lem:bijektiv},
+Satz~\ref{satz:infoerhalt}) besitzen eine gemeinsame Struktur, die über den
+konkreten Anwendungsfall hinausweist. In diesem Abschnitt formulieren wir
+diese Struktur als allgemeines Prinzip, leiten daraus neue
+Schlussfolgerungen ab und weisen formal nach, dass ein zweites,
+strukturell unabhängiges Beispiel â€” die \emph{Gleitkommadarstellung reeller
+Zahlen} nach IEEE~754 \cite{ieee754} â€” demselben Prinzip genügt.
+
+\subsection{Formulierung des allgemeinen Prinzips}
+
+\begin{definition}[Reziprok trennbare Kodierung]
+\label{def:rtk}
+	Sei $X$ eine Menge von â€žkombinierten Objekten`` und seien $J$, $R$
+	Mengen von â€žSkaleninformation`` bzw. â€žForminformation``. Eine Familie
+	von Kodierungsfunktionen
+	\[
+		\sigma^{(p)} : J \times R \longrightarrow \mathbb{Q}_{\geq 0},
+		\qquad p \in P
+	\]
+	(parametrisiert durch einen \emph{Skalenparameter} $p$ aus einer
+	Parametermenge $P$, z.\,B. $P=\mathbb{N}$) heißt
+	\emph{reziprok trennbar}, wenn es eine Funktion $w:P\to\mathbb{R}_{>0}$
+	mit $w(p)\to\infty$ für $p\to\infty$ gibt, sodass für alle $p\in P$,
+	$j\in J$, $r\in R$ gilt:
+	\begin{enumerate}[label=(\roman*)]
+		\item $\sigma^{(p)}(j,r) = \rho(r) + \chi(j)\cdot w(p)$ für feste
+		      Funktionen $\rho:R\to[0, w(p))$ und $\chi:J\to\mathbb{Z}_{\geq0}$
+		      (additive Zerlegung mit Gewicht $w(p)$),
+		\item die Skalierung $\hat\sigma^{(p)}(j,r) := \sigma^{(p)}(j,r)\cdot w(p)^{-1}$
+		      erfüllt
+		      \[
+			      \lfloor \hat\sigma^{(p)}(j,r) \rfloor = \chi(j)
+			      \quad\text{und}\quad
+			      \{\hat\sigma^{(p)}(j,r)\} = \rho(r)/w(p),
+		      \]
+		\item die Abbildung $(j,r)\mapsto(\chi(j),\rho(r)/w(p))$ ist eine
+		      Bijektion auf ihr Bild, und
+		\item das Bild $\{\rho(r)/w(p) : r\in R\}$ ist als Teilmenge von
+		      $[0,1)$ \emph{unabhängig von $p$} (bis auf Umskalierung der
+		      Diskretisierung).
+	\end{enumerate}
+\end{definition}
+
+\begin{satz}[Reziprokes Trennungsprinzip]
+\label{satz:rtp}
+	Sei $\sigma^{(p)}$ eine reziprok trennbare Kodierung im Sinne von
+	Definition~\ref{def:rtk}. Dann gelten die folgenden drei Aussagen, die
+	wir als \emph{paradoxen Gewinn} bezeichnen:
+	\begin{enumerate}[label=(G\arabic*)]
+		\item \textbf{(Verlustfreiheit trotz Skalendivergenz)} Obwohl
+		      $w(p)\to\infty$ für $p\to\infty$ und damit
+		      $\sigma^{(p)}(j,r)\to\infty$ für festes $j>0$, bleibt die durch
+		      $w(p)^{-1}$ skalierte Größe $\hat\sigma^{(p)}(j,r)$ in einem
+		      Bereich, dessen Fraktionalteil-Wertebereich $[0,1)$ \emph{nicht}
+		      mit $p$ wächst (Korollar zu (iv)).
+		\item \textbf{(Kostenfreie Trennung)} Die Berechnung von $\chi(j)$ und
+		      $\rho(r)/w(p)$ aus $\sigma^{(p)}(j,r)$ erfordert genau eine
+		      Multiplikation (mit $w(p)^{-1}$) und eine
+		      Floor-/Fractional-Operation â€” unabhängig von $p$, also $O(1)$.
+		\item \textbf{(Kompressionsgewinn)} Falls $J$ und $R$ in getrennten
+		      Datenstrukturen mit einem $p$-unabhängigen Overhead $\Delta>0$
+		      kodiert würden, ist die kombinierte Kodierung $\sigma^{(p)}$ für
+		      hinreichend strukturierte $\rho,\chi$ um genau $\Delta$ Bit
+		      bzw. Speichereinheiten günstiger.
+	\end{enumerate}
+\end{satz}
+
+\begin{proof}
+	\textbf{(G1):} Nach (i) gilt $\hat\sigma^{(p)}(j,r) = \rho(r)/w(p) + \chi(j)$.
+	Nach Voraussetzung $\rho(r)\in[0,w(p))$, also $\rho(r)/w(p)\in[0,1)$ für
+	\emph{jedes} $p$. Damit ist $\{\hat\sigma^{(p)}(j,r)\} = \rho(r)/w(p)\in[0,1)$
+	für alle $p\in P$ â€” der Wertebereich des Fraktionalanteils ist somit
+	$[0,1)$, eine von $p$ unabhängige Menge. Dies gilt, obwohl
+	$\sigma^{(p)}(j,r) = \rho(r)+\chi(j)w(p) \geq \chi(j)w(p) \to \infty$ für
+	$\chi(j)>0$ und $p\to\infty$. Dies ist exakt die Aussage von
+	Korollar~\ref{kor:konstanz} im allgemeinen Rahmen.
+
+	\textbf{(G2):} Nach (ii) ist
+	$\chi(j) = \lfloor \sigma^{(p)}(j,r)\cdot w(p)^{-1}\rfloor$ und
+	$\rho(r)/w(p) = \{\sigma^{(p)}(j,r)\cdot w(p)^{-1}\}$. Beide Größen
+	werden durch dieselbe arithmetische Operationsfolge â€” eine
+	Multiplikation mit der Konstanten $w(p)^{-1}$, gefolgt von Floor bzw.
+	Subtraktion des Floor-Werts â€” berechnet. Diese Operationsfolge hat für
+	jedes feste $p$ konstante Länge, also $O(1)$ in der Größe der Eingabe
+	$\sigma^{(p)}(j,r)$.
+
+	\textbf{(G3):} Nach (iii) ist $(j,r)\mapsto(\chi(j),\rho(r)/w(p))$
+	bijektiv auf ihr Bild $X^{(p)} := \chi(J)\times(\rho(R)/w(p))$. Die
+	Anzahl der zur Kodierung von $X^{(p)}$ nötigen Bits ist somit
+	$\lceil\log_2|X^{(p)}|\rceil = \lceil\log_2(|\chi(J)|\cdot|\rho(R)/w(p)|)\rceil$.
+	Eine getrennte Kodierung von $\chi(j)\in\chi(J)$ und
+	$\rho(r)/w(p)\in\rho(R)/w(p)$ in zwei Feldern benötigt
+	$\lceil\log_2|\chi(J)|\rceil + \lceil\log_2|\rho(R)/w(p)|\rceil + \Delta$
+	Bit, wobei $\Delta>0$ den strukturellen Overhead (Padding,
+	Wortgrenzen-Ausrichtung) bezeichnet. Da
+	$\lceil\log_2(ab)\rceil \leq \lceil\log_2 a\rceil + \lceil\log_2 b\rceil$
+	für alle $a,b\geq1$ (Subadditivität des Logarithmus unter Aufrundung),
+	ist die kombinierte Kodierung um mindestens $\Delta$ Bit günstiger.
+	\qedhere
+\end{proof}
+
+\begin{bemerkung}
+\label{bem:instanz}
+	Die Signaturfunktion $\sigma_j = r_j + j\cdot 2^n$ des Subgraph
+	Algorithmus ist eine Instanz von Definition~\ref{def:rtk} mit
+	$P=\mathbb{N}$, $p=n$, $w(n)=2^n$, $J=\{0,\ldots,n-1\}$,
+	$R=\{0,1\}^n$, $\chi(j)=j$ und $\rho(A_{\cdot j}) = r_j$. Satz~\ref{satz:rtp}
+	spezialisiert sich in diesem Fall exakt zu
+	Satz~\ref{satz:zerlegung}, Korollar~\ref{kor:konstanz} und
+	Satz~\ref{satz:infoerhalt}.
+\end{bemerkung}
+
+\subsection{Schlussfolgerung: Ein Erkennungskriterium für â€žparadoxe Gewinne``}
+
+Aus Satz~\ref{satz:rtp} ergibt sich unmittelbar die folgende methodische
+Schlussfolgerung, die über den Subgraph Algorithmus hinausweist:
+
+\begin{korollar}[Erkennungskriterium]
+\label{kor:erkennung}
+	Immer wenn eine Kodierung zweier Informationsklassen $J$ (Skala/Position)
+	und $R$ (Form/Inhalt) additiv mit einem exponentiell in einem Parameter
+	$p$ wachsenden Gewicht $w(p)$ kombiniert wird,
+	$\sigma^{(p)} = \rho(r) + \chi(j)\cdot w(p)$ mit $\rho(r) < w(p)$ für alle
+	$p$, tritt notwendig der in Satz~\ref{satz:rtp} beschriebene
+	dreifache Gewinn (G1)â€“(G3) auf â€” \emph{unabhängig davon}, wie groß
+	$w(p)$ wird, und insbesondere \emph{ohne dass} die Größe von $w(p)$
+	selbst jemals explizit gespeichert oder verglichen werden muss
+	(es genügt, dass $w(p)^{-1}$ als Skalierungskonstante bekannt ist).
+\end{korollar}
+
+\begin{proof}
+	Unmittelbare Folgerung aus Satz~\ref{satz:rtp}, da die im Korollar
+	genannte Voraussetzung â€” additive Zerlegung mit $\rho(r)<w(p)$ â€” exakt
+	Bedingung (i) aus Definition~\ref{def:rtk} ist, und (ii)--(iv) für
+	$\chi(j)=j$, $\rho=$ identische Restklassenfunktion automatisch erfüllt
+	sind, sofern $\rho$ surjektiv auf $\{0,\ldots,\lceil w(p)\rceil-1\}$
+	abbildet (was für ganzzahlige $\rho(r)\in[0,w(p))$ stets der Fall ist).
+\end{proof}
+
+\begin{bemerkung}[Neue Erkenntnis]
+	Korollar~\ref{kor:erkennung} liefert ein \emph{prüfbares Kriterium}: Um
+	zu entscheiden, ob ein gegebenes Kodierungsschema einen â€žparadoxen
+	Gewinn`` im Sinne dieser Arbeit aufweist, genügt es, die additive Form
+	$\sigma = \rho(r)+\chi(j)\cdot w(p)$ mit der Schranke $\rho(r)<w(p)$
+	nachzuweisen â€” alle weiteren Eigenschaften (G1)â€“(G3) folgen dann
+	\emph{automatisch}. Dies reduziert die Suche nach weiteren Instanzen des
+	Phänomens auf eine rein syntaktische Inspektion von Kodierungsformeln.
+	Im folgenden Abschnitt wenden wir dieses Kriterium auf ein zweites,
+	von Graphen und Adjazenzmatrizen vollständig unabhängiges Beispiel an.
+\end{bemerkung}
+
+\subsection{Zweites Beispiel: Gleitkommadarstellung nach IEEE~754}
+\label{subsec:ieee754}
+
+Wir zeigen nun, dass die \emph{normalisierte Gleitkommadarstellung} reeller
+Zahlen, wie sie im Standard IEEE~754 \cite{ieee754} sowie in der klassischen
+Darstellung bei Knuth \cite{knuth1997} beschrieben wird, eine reziprok
+trennbare Kodierung im Sinne von Definition~\ref{def:rtk} ist â€” mit dem
+Exponenten $E$ in der Rolle des Spaltenindex $j$ und der Mantisse $M$ in der
+Rolle des Zeilenvektors $A_{\cdot j}$.
+
+\begin{definition}[Normalisierte Gleitkommazahl]
+\label{def:floatdarstellung}
+	Eine positive reelle Zahl $x\in\mathbb{R}_{>0}$ besitzt für jede Basis
+	$b\geq2$ eine eindeutige \emph{normalisierte Darstellung}
+	\[
+		x = M \cdot b^{E}, \qquad M\in[1,b),\ E\in\mathbb{Z}.
+	\]
+	$E$ heißt \emph{Exponent} (Skaleninformation), $M$ heißt
+	\emph{Mantisse} oder \emph{Signifikand} (Forminformation).
+\end{definition}
+
+\begin{lemma}[Existenz und Eindeutigkeit der normalisierten Darstellung]
+\label{lem:floatexistenz}
+	Für jedes $x\in\mathbb{R}_{>0}$ und jede Basis $b\geq2$ existieren
+	eindeutige $E\in\mathbb{Z}$ und $M\in[1,b)$ mit $x=M\cdot b^E$, nämlich
+	\[
+		E = \lfloor \log_b x \rfloor, \qquad M = x\cdot b^{-E}.
+	\]
+\end{lemma}
+
+\begin{proof}
+	\textbf{Existenz:} Setze $E:=\lfloor\log_b x\rfloor\in\mathbb{Z}$ (wohldefiniert,
+	da $x>0$ und $\log_b$ auf $\mathbb{R}_{>0}$ definiert ist) und
+	$M:=x\cdot b^{-E}$. Dann gilt
+	$\log_b M = \log_b x - E = \log_b x - \lfloor\log_b x\rfloor = \{\log_b x\}\in[0,1)$,
+	also $M = b^{\{\log_b x\}}\in[b^0,b^1)=[1,b)$. Damit gilt $x=M\cdot b^E$
+	mit $M\in[1,b)$, $E\in\mathbb{Z}$.
+
+	\textbf{Eindeutigkeit:} Angenommen, es gelte zugleich
+	$x=M\cdot b^E=M'\cdot b^{E'}$ mit $M,M'\in[1,b)$, $E,E'\in\mathbb{Z}$
+	und $(M,E)\neq(M',E')$. Ohne Einschränkung sei $E<E'$, also $E'\geq E+1$.
+	Aus $M\cdot b^E=M'\cdot b^{E'}$ folgt $M = M'\cdot b^{E'-E}\geq M'\cdot b\geq b$
+	(da $M'\geq1$ und $E'-E\geq1$), im Widerspruch zu $M<b$. Also $E=E'$, und
+	wegen $b^E>0$ folgt unmittelbar $M=M'$. \qedhere
+\end{proof}
+
+\begin{satz}[IEEE-754-Gleitkommadarstellung als reziprok trennbare Kodierung]
+\label{satz:ieee_rtk}
+	Für $b=2$ ist die durch Lemma~\ref{lem:floatexistenz} gegebene
+	Zerlegung $x\mapsto(E,M)$ mit $M\in[1,2)$, $E\in\mathbb{Z}$ eine
+	reziprok trennbare Kodierung im Sinne von Definition~\ref{def:rtk},
+	mit Skalenparameter $p:=|E|_{\max}$ (maximaler darstellbarer
+	Exponentenbetrag, in IEEE~754 double durch $11$ Exponentenbits auf
+	$|E|\leq1023$ begrenzt \cite{ieee754}) und Gewichtsfunktion
+	$w(p)=2^{p}$.
+\end{satz}
+
+\begin{proof}
+	Wir prüfen die vier Bedingungen aus Definition~\ref{def:rtk} mit
+	$J:=\{-p,\ldots,p\}\ni\chi(x):=E$, $R:=[1,2)\ni\rho(x):=(M-1)\cdot 2^{p}$
+	(skaliert, damit $\rho(r)\in[0,2^p)=[0,w(p))$ gilt, vgl. (i)), und
+	$\sigma^{(p)}(E,M) := (M-1)\cdot2^p + (E+p)\cdot2^p$.
+
+	\textbf{(i) Additive Zerlegung:} Nach Konstruktion ist
+	$\sigma^{(p)}(E,M) = \underbrace{(M-1)\cdot2^p}_{=\rho(r)\in[0,2^p)}
+	+ \underbrace{(E+p)}_{=\chi(j)\in\mathbb{Z}_{\geq0}}\cdot\underbrace{2^p}_{=w(p)}$,
+	also von der Form (i) mit $\rho(r)\in[0,w(p))$, da $M-1\in[0,1)$ nach
+	Lemma~\ref{lem:floatexistenz} (für $b=2$) und somit $(M-1)2^p\in[0,2^p)$.
+	Die Verschiebung $E\mapsto E+p\geq0$ ist nötig, damit $\chi(j)\in\mathbb{Z}_{\geq0}$
+	gilt (vgl. die analoge Rolle von $j\geq0$ in der Subgraph-Signatur);
+	sie ist eine Bijektion $\{-p,\ldots,p\}\to\{0,\ldots,2p\}$ und ändert
+	nichts an der nachfolgenden Argumentation.
+
+	\textbf{(ii) Reziproke Skalierung:} Für
+	$\hat\sigma^{(p)} := \sigma^{(p)}(E,M)\cdot 2^{-p}
+	= (M-1) + (E+p)$ gilt analog zu Satz~\ref{satz:zerlegung}, da
+	$M-1\in[0,1)$ und $E+p\in\mathbb{Z}_{\geq0}$:
+	\[
+		\lfloor\hat\sigma^{(p)}\rfloor = E+p, \qquad
+		\{\hat\sigma^{(p)}\} = M-1.
+	\]
+	Damit ist $\chi(j)=\lfloor\hat\sigma^{(p)}\rfloor-p$ (Exponent) und
+	$\rho(r)/w(p) = \{\hat\sigma^{(p)}\}=M-1$ (Mantissenanteil) jeweils in
+	$O(1)$ aus $\hat\sigma^{(p)}$ rekonstruierbar â€” dies ist exakt die in
+	Hardware implementierte Operation des â€žAuseinandernehmens`` einer
+	Gleitkommazahl in Vorzeichen-, Exponenten- und Mantissenbits, die in
+	jeder modernen FPU als Festverdrahtung in $O(1)$ (konstanter
+	Taktzykluszahl) realisiert ist.
+
+	\textbf{(iii) Bijektivität:} Nach Lemma~\ref{lem:floatexistenz} ist
+	$x\mapsto(E,M)$ eine Bijektion $\mathbb{R}_{>0}\to\mathbb{Z}\times[1,2)$
+	(eingeschränkt auf $|E|\leq p$ und auf die durch die Mantissenbreite
+	$m$ diskretisierten Werte $M\in\{1,1+2^{-m},\ldots,2-2^{-m}\}$ eine
+	Bijektion auf eine endliche Menge der Größe $(2p+1)\cdot2^m$). Die
+	Komposition mit der affinen, bijektiven Abbildung
+	$(E,M)\mapsto(E+p,(M-1))$ ist somit ebenfalls bijektiv.
+
+	\textbf{(iv) $p$-Unabhängigkeit des Fraktionalanteil-Bildbereichs:}
+	Der Bildbereich von $\rho(r)/w(p)=M-1$ ist $[0,1)$ für \emph{jedes}
+	$p$ (bzw. für jede Exponentenbreite), da $M\in[1,2)$ nach
+	Lemma~\ref{lem:floatexistenz} unabhängig von der konkreten Größe von
+	$E$ bzw. $p$ gilt. \qedhere
+\end{proof}
+
+\begin{korollar}[Paradoxer Gewinn in der Gleitkommadarstellung]
+\label{kor:floatparadox}
+	Nach Satz~\ref{satz:rtp}, angewendet auf die in
+	Satz~\ref{satz:ieee_rtk} nachgewiesene Instanz, gelten für die
+	IEEE-754-Gleitkommadarstellung die folgenden konkreten Aussagen:
+	\begin{enumerate}[label=(F\arabic*)]
+		\item \textbf{(G1, Verlustfreiheit):} Obwohl der Wertebereich von
+		      $x=M\cdot2^E$ für wachsende $|E|$ über $2^{1023}\approx10^{308}$
+		      bzw. unter $2^{-1022}\approx10^{-308}$ hinausgeht â€” also um
+		      \emph{Hunderte Größenordnungen} variiert â€”, bleibt der
+		      Mantissenanteil $M-1$ stets im \emph{exakt gleichen} Intervall
+		      $[0,1)$ mit \emph{exakt gleicher} Diskretisierung
+		      ($2^{52}$ Stufen bei \texttt{double}), unabhängig vom Exponenten.
+		\item \textbf{(G2, $O(1)$-Trennung):} Vorzeichen, Exponent und
+		      Mantisse werden aus dem $64$-Bit-Wort einer
+		      \texttt{double}-Zahl durch genau drei
+		      Bitmasken-/Shift-Operationen extrahiert â€” unabhängig davon, ob
+		      $|E|$ nahe $0$ oder nahe $1023$ liegt.
+		\item \textbf{(G3, Kompressionsgewinn):} Eine \texttt{double}-Zahl
+		      benötigt $64$ Bit ($1$ Vorzeichen-, $11$ Exponenten-, $52$
+		      Mantissenbit) für die kombinierte Kodierung von $E\in\{-1022,\ldots,1023\}$
+		      und $M\in[1,2)$ (diskretisiert in $2^{52}$ Stufen). Eine
+		      getrennte Speicherung von $E$ (als \texttt{int16}, $16$ Bit)
+		      und $M$ (als $52$-Bit-Festkommazahl, aufgerundet auf $56$ Bit
+		      wegen Byte-Ausrichtung) plus Vorzeichenbit benötigte
+		      $16+56+1=73$ Bit â€” also $\Delta=9$ Bit mehr pro Zahl als die
+		      kombinierte IEEE-754-Darstellung.
+	\end{enumerate}
+\end{korollar}
+
+\begin{proof}
+	(F1) folgt aus (G1) (Satz~\ref{satz:rtp}) mit $w(p)=2^p$,
+	$p=1023$: Der Fraktionalanteil $\{\hat\sigma^{(p)}\}=M-1\in[0,1)$ ist
+	nach Definition unabhängig von $p$, während
+	$\sigma^{(p)}(E,M)=(M-1)2^p+(E+p)2^p$ für $E\to1023$ Werte der
+	Größenordnung $2^{1023}\cdot2^{1023}$ erreicht â€” eine Diskrepanz von
+	mehr als $600$ Dezimalstellen zwischen der Größe von $\sigma^{(p)}$ und
+	der Größe seines (immer in $[0,1)$ liegenden) Fraktionalanteils.
+
+	(F2) folgt aus (G2): Die in Satz~\ref{satz:ieee_rtk}(ii) gezeigte
+	Operationsfolge â€” Multiplikation mit $2^{-p}$ (äquivalent: Bitshift um
+	$p$ Stellen, da $2^p$ eine Zweierpotenz ist), gefolgt von Floor und
+	Subtraktion â€” entspricht exakt der Bitmasken-Operation
+	\texttt{(bits >> 52) \& 0x7FF} (Exponent) bzw.
+	\texttt{bits \& 0xFFFFFFFFFFFFF} (Mantisse) auf der $64$-Bit-Repräsentation,
+	beides $O(1)$-Operationen unabhängig vom Wert von $E$.
+
+	(F3) folgt aus (G3) durch explizite Bitzählung: $|\chi(J)|=2047$
+	(Werte für $E\in\{-1022,\ldots,1024\}$, davon $2$ für Spezialwerte
+	reserviert, vgl. \cite{ieee754}), kodierbar in $\lceil\log_2 2047\rceil=11$
+	Bit; $|\rho(R)/w(p)|=2^{52}$, kodierbar in $52$ Bit; zusammen mit
+	einem Vorzeichenbit also $1+11+52=64$ Bit für die kombinierte
+	Darstellung â€” exakt die Größe eines \texttt{double}. Die getrennte
+	Variante mit Byte-Ausrichtung ($16$-Bit-\texttt{int16} für $E$ statt
+	$11$ Bit, $56$-Bit-Feld für $M$ statt $52$ Bit, plus $1$ Vorzeichenbit)
+	ergibt $16+56+1=73>64$ Bit, also $\Delta=9$ Bit Mehrbedarf â€” in
+	Übereinstimmung mit der allgemeinen Aussage (G3), dass
+	$\Delta>0$ für jede Kodierung mit Ausrichtungs-Overhead gilt. \qedhere
+\end{proof}
+
+\begin{bemerkung}[Tiefere Analogie und neue Erkenntnis]
+\label{bem:tiefeanalogie}
+	Die Analogie zwischen Subgraph-Signatur und IEEE-754-Float geht über die
+	rein strukturelle Übereinstimmung hinaus: In \emph{beiden} Fällen
+	kodiert die \emph{Spaltenkomponente} bzw. der \emph{Exponent} eine
+	\emph{diskrete Position} in einer geordneten Menge ($j\in\{0,\ldots,n-1\}$
+	bzw. $E\in\{-1022,\ldots,1023\}$), während die \emph{Zeilenkomponente}
+	bzw. die \emph{Mantisse} eine \emph{kontinuierliche bzw.
+	hochauflösende Forminformation} kodiert ($A_{\cdot j}\in\{0,1\}^n$ bzw.
+	$M\in[1,2)$). Die neue Erkenntnis aus dieser Arbeit ist, dass dieses
+	Muster â€” \emph{Position-mal-Skala plus beschränkte Form} â€” ein
+	\textbf{universelles Entwurfsmuster für verlustfreie, $O(1)$-trennbare
+	Kodierungen} darstellt, das unabhängig vom konkreten Anwendungsgebiet
+	(Graphentheorie, numerische Datentypen) durch das in
+	Korollar~\ref{kor:erkennung} formulierte syntaktische Kriterium erkannt
+	werden kann. Insbesondere legt dies nahe, dass \emph{jede} Kodierung,
+	die historisch unabhängig voneinander auf die Form
+	$\sigma=\rho(r)+\chi(j)\cdot w(p)$ mit $\rho(r)<w(p)$ konvergiert ist
+	(wie es sowohl bei der Subgraph-Signatur von 2026 als auch bei der
+	IEEE-754-Norm von 1985 der Fall war), \emph{notwendigerweise} ein
+	lokales Optimum bezüglich (G1)â€“(G3) realisiert â€” ein Resultat, das
+	weitere, noch unentdeckte Instanzen in anderen Bereichen
+	(Datenkompression, Adressierungsschemata, Zeitstempelformate) vermuten
+	lässt.
+\end{bemerkung}
+
+\subsection{Veranschaulichung des zweiten Beispiels}
+
+Abbildung~\ref{fig:plot5} veranschaulicht Satz~\ref{satz:ieee_rtk} und
+Korollar~\ref{kor:floatparadox}(F1) anhand von $40$ logarithmisch breit
+gestreuten Zufallswerten $x\in(0{,}001,\,10000)$, also über sieben
+Größenordnungen. Der Exponent $E=\lfloor\log_2 x\rfloor$ (links) variiert
+entsprechend stark und trägt die gesamte â€žSkaleninformation`` der Zahl $x$.
+Die Mantisse $M=x\cdot2^{-E}$ (rechts) bleibt dagegen für \emph{jeden} Wert
+von $x$ â€” unabhängig davon, ob $x\approx0{,}001$ oder $x\approx10000$ â€” exakt
+im Intervall $[1,2)$. Diese Konstanz des Mantissenbereichs ist das exakte
+Analogon zu Abbildung~\ref{fig:plot2} (konstante Trennung des
+Fraktionalanteils $r_j/2^n$ in $[0,1)$ unabhängig von $n$): In beiden Fällen
+wird eine über viele Größenordnungen variierende Größe durch eine reziproke
+Skalierung in eine Komponente mit \emph{konstantem, von der Skala
+unabhängigem Wertebereich} überführt.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=\textwidth]{plot5.pdf}
+	\caption{Reziproke Zerlegung $x=M\cdot2^E$ für $40$ Zufallswerte
+	$x\in(0{,}001,10000)$. Links: Exponent $E$ (Skaleninformation), stark
+	streuend. Rechts: Mantisse $M\in[1,2)$ (Forminformation), für alle
+	Werte im selben Intervall â€” unabhängig von der absoluten Größe von $x$.
+	Dies ist das direkte Analogon zur konstanten Trennung in
+	Abbildung~\ref{fig:plot2}.}
+	\label{fig:plot5}
+\end{figure}
+
+\section{Zusammenfassung}
+
+Die vorliegende Arbeit hat den scheinbar paradoxen Sachverhalt formal
+nachgewiesen, dass die reziproke Größe $2^{-n}$ in der Signaturfunktion des
+Subgraph Algorithmus
+\begin{itemize}
+	\item trotz exponentieller Konvergenz gegen $0$ keine Information
+	      vernichtet (Satz~\ref{satz:zerlegung}),
+	\item eine Bijektion zwischen Spaltenvektoren und Paaren
+	      $(j, r_j/2^n)$ mit von $n$ unabhängigem Wertebereich des
+	      Fraktionalanteils induziert (Lemma~\ref{lem:bijektiv},
+	      Korollar~\ref{kor:konstanz}),
+	\item den kombinierten Speicherbedarf gegenüber getrennter Kodierung von
+	      Position und Inhalt strikt reduziert (Satz~\ref{satz:infoerhalt},
+	      Korollar~\ref{kor:paradox}),
+	\item und eine notwendige Voraussetzung für die Erreichbarkeit der
+	      $\Theta(n^3)$-Optimalität des Subgraph Algorithmus ist
+	      (Satz~\ref{satz:laufzeitkonsequenz}).
+\end{itemize}
+
+Der â€žGewinn im Reziproken`` besteht somit darin, dass eine algebraisch
+triviale Operation â€“ Multiplikation mit dem Kehrwert einer Zweierpotenz,
+äquivalent zu einer Bitschiebeoperation â€“ eine strukturelle Entflechtung
+zweier Informationsdimensionen bewirkt, deren getrennte Kodierung in
+realen Systemen stets mit Mehraufwand verbunden wäre.
+
+\subsection{Anwendungen}
+
+Die hier bewiesenen Eigenschaften sind relevant für:
+\begin{itemize}
+	\item Kompakte Hashing-Schemata, in denen Position und Inhalt eines
+	      Datensatzes in einem einzigen Maschinenwort kodiert werden sollen
+	\item Bitfeld-basierte Datenstrukturen in eingebetteten Systemen, in
+	      denen \emph{struct padding} vermieden werden muss
+	\item Die Analyse weiterer polynomialer Hash-Funktionen mit
+	      Zweierpotenz-Gewichten hinsichtlich Bijektivität und
+	      $O(1)$-Dekodierbarkeit
+	\item Lehrmaterial zur Demonstration, dass â€žkleine`` reziproke Größen
+	      in der Informatik strukturelle, nicht nur quantitative Bedeutung
+	      haben können
+\end{itemize}
+
+\subsection{Ausblick}
+
+Die in dieser Arbeit etablierten Resultate eröffnen eine Reihe
+weiterführender Forschungsrichtungen, die im Folgenden ausführlich
+dargestellt werden.
+
+\textbf{1. Verallgemeinerung auf beliebige Basen $b > 1$.}
+Die gesamte Argumentation dieser Arbeit beruht auf der Basis $2$, was sowohl
+mathematisch (Binärdarstellung) als auch praktisch (Bitschiebeoperationen,
+\texttt{shift}/\texttt{mask} in $O(1)$) motiviert ist. Eine naheliegende
+Erweiterung besteht darin, die Signaturfunktion zu
+$\sigma_j^{(b)} = \sum_{i=0}^{n-1}A_{ij}\cdot b^i + j\cdot b^n$ für beliebige
+ganzzahlige Basen $b \geq 2$ zu verallgemeinern. Satz~\ref{satz:zerlegung}
+und Lemma~\ref{lem:bijektiv} lassen sich strukturell unverändert auf diesen
+Fall übertragen, da $0 \leq r_j \leq b^n - 1$ und somit
+$\hat\sigma_j^{(b)} = \sigma_j^{(b)}\cdot b^{-n} = j + r_j/b^n$ mit
+$r_j/b^n\in[0,1)$ weiterhin gilt. Die entscheidende offene Frage ist jedoch,
+ob die $O(1)$-Dekodierbarkeit (Satz~\ref{satz:laufzeitkonsequenz}) für $b\neq2^k$
+erhalten bleibt: Division durch $b^n$ und Modulo $b^n$ sind für allgemeine
+$b$ \emph{nicht} durch Bitschiebeoperationen realisierbar, sondern erfordern
+echte Ganzzahldivision, deren Hardware-Latenz typischerweise höher ist als
+die von \texttt{shift}-Operationen, asymptotisch jedoch weiterhin $O(1)$
+bleibt (für feste Wortbreite). Es wäre lohnend, empirisch zu untersuchen, ab
+welcher Basis $b$ und welcher Knotenzahl $n$ dieser konstante, aber von Null
+verschiedene Mehraufwand die Gesamtlaufzeit des Subgraph Algorithmus in der
+Praxis (nicht asymptotisch) messbar beeinflusst, und ob es Basen $b$ gibt,
+für die der â€žparadoxe Gewinn`` \emph{größer} ausfällt als für $b=2$ â€“ etwa im
+Hinblick auf eine dichtere Packung von Information bei nicht-binären
+Adjazenzmatrizen (gewichtete Graphen mit Kantengewichten aus
+$\{0,\ldots,b-1\}$).
+
+\textbf{2. Mehrstufige reziproke Zerlegungen für höherdimensionale
+Strukturen.} Die in dieser Arbeit behandelte Zerlegung trennt genau zwei
+Informationsdimensionen (Position $j$ und Inhalt $A_{\cdot j}$) durch genau
+\emph{eine} reziproke Skalierung mit $2^{-n}$. Für Tensoren höherer Ordnung
+â€“ etwa Hypergraphen mit $k$-ären Relationen oder mehrschichtige
+(\emph{multilayer}) Graphen â€“ stellt sich die Frage, ob eine
+\emph{mehrstufige} Signatur der Form
+\[
+	\sigma_{j_1,\ldots,j_k} = r + \sum_{l=1}^{k} j_l \cdot 2^{n + \sum_{m<l} \log_2 N_m}
+\]
+(mit geeigneten Normierungskonstanten $N_m$) eine analoge Kette von
+ineinander geschachtelten reziproken Zerlegungen
+$\hat\sigma \cdot 2^{-n}, \{\hat\sigma\}\cdot N_1^{-1}, \ldots$ zulässt, bei
+der jede Stufe wieder Korollar~\ref{kor:konstanz} (Konstanz der Trennung,
+unabhängig von den Originalgrößen) erfüllt. Eine vollständige formale
+Verallgemeinerung von Satz~\ref{satz:infoerhalt} auf $k$ Dimensionen mit
+einem Beweis, dass auch hier jede Dekodierungsstufe in $O(1)$ erfolgt, steht
+noch aus und wäre direkt relevant für die Erweiterung des Subgraph
+Algorithmus auf gewichtete und gerichtete Graphen sowie auf Hypergraphen,
+wie sie bereits als Erweiterungsmöglichkeit in \cite{epp2026subgraph}
+genannt werden.
+
+\textbf{3. Informationstheoretische Einordnung als Entropie-Zerlegung.}
+Korollar~\ref{kor:paradox} wurde in dieser Arbeit operational (Bits,
+Speicherplatz) formuliert. Eine tiefere informationstheoretische Fundierung
+würde die Zerlegung $\sigma_j \mapsto (j, r_j)$ als Zerlegung der
+gemeinsamen Entropie $H(J, R) = H(J) + H(R\mid J)$ interpretieren, wobei $J$
+die Zufallsvariable des Spaltenindex und $R$ die Zufallsvariable der
+Zeilenkomponente bezeichnet. Da $J$ und $R$ in der Konstruktion des
+Subgraph Algorithmus stochastisch unabhängig gewählt werden können (der
+Spaltenindex ist deterministisch durch die Position gegeben, der
+Zeilenvektor ist die eigentliche â€žNutzinformation``), gilt
+$H(J,R) = H(J) + H(R)$, und die reziproke Zerlegung realisiert diese additive
+Entropiezerlegung \emph{architektonisch} â€“ nicht nur statistisch. Eine
+formale Ausarbeitung dieser Sichtweise könnte den â€žparadoxen Gewinn`` mit dem
+Begriff des \emph{kanonischen Codes} (im Sinne der Kolmogorov-Komplexität)
+in Verbindung bringen: $\sigma_j$ wäre dann ein kanonischer, präfixfreier
+Code für das Paar $(j, A_{\cdot j})$, und die Frage, ob dieser Code in einem
+geeigneten Sinn \emph{optimal} (d.\,h. von minimaler erwarteter Länge) unter
+allen $O(1)$-dekodierbaren Codes ist, wäre ein eigenständiges
+Forschungsthema.
+
+\textbf{4. Numerische Stabilität bei Gleitkomma-Implementierungen.} Diese
+Arbeit hat die reziproke Skalierung $\sigma_j\cdot2^{-n}$ exakt in den
+rationalen Zahlen $\mathbb{Q}$ behandelt (Satz~\ref{satz:zerlegung}). In
+realen Implementierungen, insbesondere wenn Signaturen aus
+Performance-Gründen als \texttt{double}-Gleitkommazahlen statt als
+beliebig genaue Ganzzahlen (\texttt{BigInteger}) repräsentiert werden,
+stellt sich die Frage der numerischen Stabilität: Für $n > 52$ übersteigt
+$2^n$ die Mantissenbreite eines IEEE-754-\texttt{double} ($53$ Bit), sodass
+$\sigma_j$ und $2^{-n}$ nicht mehr exakt darstellbar sind und die in
+Satz~\ref{satz:zerlegung} bewiesene exakte Zerlegung in Rundungsfehler
+übergeht. Eine systematische Fehleranalyse, die obere Schranken für den
+Rundungsfehler von $\lfloor\hat\sigma_j\rfloor$ und $\{\hat\sigma_j\}$ in
+Abhängigkeit von $n$ und der Mantissenbreite $p$ angibt, sowie ein
+Vorschlag für eine numerisch stabile Variante (etwa durch Verwendung von
+\texttt{shift}/\texttt{mask}-Operationen auf Ganzzahlen anstelle von
+Gleitkomma-Multiplikation mit $2^{-n}$, wie in
+Satz~\ref{satz:laufzeitkonsequenz} bereits angedeutet), wäre für
+Implementierungen des Subgraph Algorithmus für sehr große Graphen
+($n>10000$, vgl. \cite{epp2026subgraph}, Abschnitt â€žAusblick``) von
+unmittelbarer praktischer Relevanz.
+
+\textbf{5. Empirische Validierung des Speichergewinns in realen
+Systemen.} Abbildung~\ref{fig:plot3} illustriert den theoretischen
+Speichergewinn unter der Annahme eines pauschalen Overheads von $32$ Bit
+für getrennte Felder. Eine empirische Studie, die den tatsächlichen
+Speicherverbrauch konkreter Implementierungen (z.\,B. in C/C++ mit
+\texttt{struct}-Definitionen unter verschiedenen Compilern und
+Architekturen, sowie in Python mit \texttt{NumPy}-Arrays vs. Tupellisten)
+für $A$ und $j$ getrennt gegenüber der kombinierten Signatur $\sigma_j$
+misst, würde die theoretischen Schranken aus
+Satz~\ref{satz:infoerhalt} empirisch untermauern und gegebenenfalls
+architekturspezifische Korrekturfaktoren liefern.
+
+\textbf{6. Anwendung auf das ChatMe-Signatur-Chiffre-Schema.} Da der
+Autor in verwandten Arbeiten ein Signatur-Chiffre-Verfahren für
+verschlüsselte Kommunikation entwickelt, liegt es nahe zu untersuchen, ob
+die hier bewiesene reziproke Zerlegung auch dort zur kompakten Kodierung
+von Schlüssel- und Nachrichtenanteilen in einem einzigen Wert verwendet
+werden kann, analog zur Trennung von Spaltenindex und Zeileninformation in
+$\sigma_j$. Eine solche Übertragung würde jedoch eine sorgfältige
+kryptographische Analyse erfordern, da die hier bewiesene Bijektivität
+(Lemma~\ref{lem:bijektiv}) zwar Verlustfreiheit garantiert, aber keinerlei
+Aussage über kryptographische Sicherheitseigenschaften wie
+Kollisionsresistenz gegenüber einem Angreifer mit Kenntnis von $n$ macht â€“
+im Gegenteil, die \emph{vollständige Determiniertheit} der Zerlegung könnte
+in einem kryptographischen Kontext eine Schwäche darstellen, die in einer
+gesonderten Arbeit analysiert werden müsste.
+
+Zusammenfassend zeigt diese Arbeit, dass die scheinbar triviale
+algebraische Beziehung zwischen $2^n$ und $2^{-n}$ in der Signaturfunktion
+des Subgraph Algorithmus eine reichhaltige formale Struktur trägt, deren
+vollständige Ausschöpfung â€“ von allgemeinen Basen über
+informationstheoretische Fundierung bis hin zu kryptographischen
+Anwendungen â€“ Gegenstand zukünftiger Forschung sein sollte.
+
+\subsection{Implementierungshinweis}
+
+Der Code des Subgraph Algorithmus, auf dem diese Arbeit aufbaut, ist
+verfügbar unter: \url{https://github.com/hjstephan86/science}.
+
+\begin{thebibliography}{9}
+
+\bibitem{epp2026subgraph}
+Epp, S.: \emph{Der Subgraph Algorithmus}. Eigenverlag, 2026.
+
+\bibitem{abboud2015}
+Abboud, A., Backurs, A., Vassilevska Williams, V.:
+\emph{Tight Hardness Results for LCS and Other Sequence Similarity Measures}.
+In: Proceedings of the 56th Annual IEEE Symposium on Foundations of
+Computer Science (FOCS), 2015, S. 59--78.
+
+\bibitem{cormen2009}
+Cormen, T. H., Leiserson, C. E., Rivest, R. L., Stein, C.:
+\emph{Introduction to Algorithms}. 3. Auflage, MIT Press, 2009.
+
+\bibitem{knuth1997}
+Knuth, D. E.: \emph{The Art of Computer Programming, Volume 2:
+Seminumerical Algorithms}. 3. Auflage, Addison-Wesley, 1997.
+
+\bibitem{ieee754}
+IEEE Standards Association: \emph{IEEE Standard for Floating-Point
+Arithmetic (IEEE 754-2019)}. 2019.
+
+\bibitem{shannon1948}
+Shannon, C. E.: \emph{A Mathematical Theory of Communication}.
+Bell System Technical Journal, 27(3), 1948, S. 379--423.
+
+\bibitem{cover2006}
+Cover, T. M., Thomas, J. A.: \emph{Elements of Information Theory}.
+2. Auflage, Wiley-Interscience, 2006.
+
+\end{thebibliography}
+
+\end{document}
+

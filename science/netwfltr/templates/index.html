@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Network Filter — Netzwerkmonitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="10" cy="10" r="8.5" stroke="#d4a373" stroke-width="1.2"/>
+        <circle cx="10" cy="10" r="4.5" stroke="#d4a373" stroke-width="1"/>
+        <circle cx="10" cy="10" r="1.8" fill="#d4a373"/>
+        <line x1="10" y1="1" x2="10" y2="5" stroke="#d4a373" stroke-width="1.2" stroke-linecap="round"/>
+        <line x1="10" y1="15" x2="10" y2="19" stroke="#d4a373" stroke-width="1.2" stroke-linecap="round"/>
+        <line x1="1" y1="10" x2="5" y2="10" stroke="#d4a373" stroke-width="1.2" stroke-linecap="round"/>
+        <line x1="15" y1="10" x2="19" y2="10" stroke="#d4a373" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-text">Network Filter</div>
+      <div class="logo-sub">Netzwerk-Verkehrsmonitor</div>
+    </div>
+  </div>
+  <div class="header-stats">
+    <div class="stat-pill">
+      <span class="stat-label">Pakete gesamt</span>
+      <span class="stat-value" id="total-count">—</span>
+    </div>
+    <div class="stat-pill live-indicator">
+      <span class="pulse-dot"></span>
+      <span class="stat-label">LIVE</span>
+    </div>
+    <button class="btn-danger" onclick="clearData()">⊘ Leeren</button>
+  </div>
+</header>
+
+<!-- OSI Legend -->
+<section class="osi-legend">
+  <div class="osi-title">OSI-Referenzmodell</div>
+  <div class="osi-layers">
+    <div class="osi-layer" data-layer="2"><span class="osi-num">2</span><span class="osi-name">Data Link</span><span class="osi-proto">ARP · RARP</span></div>
+    <div class="osi-layer" data-layer="3"><span class="osi-num">3</span><span class="osi-name">Netzwerk</span><span class="osi-proto">IP · IPv6 · ICMP</span></div>
+    <div class="osi-layer" data-layer="4"><span class="osi-num">4</span><span class="osi-name">Transport</span><span class="osi-proto">TCP · UDP · SCTP</span></div>
+    <div class="osi-layer" data-layer="5"><span class="osi-num">5</span><span class="osi-name">Sitzung</span><span class="osi-proto">RPC · NetBIOS</span></div>
+    <div class="osi-layer" data-layer="6"><span class="osi-num">6</span><span class="osi-name">Darstellung</span><span class="osi-proto">TLS · SSL · SSH</span></div>
+    <div class="osi-layer" data-layer="7"><span class="osi-num">7</span><span class="osi-name">Anwendung</span><span class="osi-proto">HTTP · DNS · SMTP</span></div>
+  </div>
+</section>
+
+<!-- Filter Panel -->
+<section class="filter-panel">
+  <div class="filter-row">
+    <div class="filter-group">
+      <label>Protokoll</label>
+      <select id="f-protocol">
+        <option value="ALL">Alle Protokolle</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Datum von</label>
+      <input type="date" id="f-date-from"/>
+    </div>
+    <div class="filter-group">
+      <label>Datum bis</label>
+      <input type="date" id="f-date-to"/>
+    </div>
+    <div class="filter-group">
+      <label>Uhrzeit von</label>
+      <input type="time" id="f-time-from" step="1"/>
+    </div>
+    <div class="filter-group">
+      <label>Uhrzeit bis</label>
+      <input type="time" id="f-time-to" step="1"/>
+    </div>
+    <div class="filter-group filter-actions">
+      <button class="btn-primary" onclick="applyFilter()">▶ Filtern</button>
+      <button class="btn-secondary" onclick="resetFilter()">↺ Reset</button>
+    </div>
+  </div>
+  <div class="filter-info" id="filter-info">Alle Einträge werden angezeigt</div>
+</section>
+
+<!-- Traffic Table -->
+<main class="main-content">
+  <div class="table-header">
+    <div class="table-title">
+      Netzwerkverkehr
+      <span id="record-count" class="badge"></span>
+    </div>
+    <div class="auto-refresh">
+      <label class="toggle">
+        <input type="checkbox" id="auto-refresh" checked/>
+        <span class="toggle-slider"></span>
+      </label>
+      <span>Auto-Refresh (5s)</span>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="traffic-table">
+      <thead>
+        <tr>
+          <th class="col-ts">Zeitstempel</th>
+          <th class="col-proto">Protokoll</th>
+          <th class="col-layer">OSI</th>
+          <th class="col-src">Quelle</th>
+          <th class="col-dst">Ziel</th>
+          <th class="col-port">Port</th>
+          <th class="col-len">Bytes</th>
+          <th class="col-flags">Flags</th>
+          <th class="col-info">Info</th>
+        </tr>
+      </thead>
+      <tbody id="traffic-body">
+        <tr class="loading-row"><td colspan="9">Lade Daten…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pagination">
+    <button class="btn-secondary" id="btn-prev" onclick="prevPage()" disabled>‹ Zurück</button>
+    <span id="page-info">Seite 1</span>
+    <button class="btn-secondary" id="btn-next" onclick="nextPage()">Weiter ›</button>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

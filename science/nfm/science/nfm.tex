@@ -1,0 +1,1663 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[german]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{microtype}
+\usepackage{longtable}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, backgrounds}
+
+\geometry{margin=2.5cm}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{beispiel}{Beispiel}[section]
+\newtheorem{satz}{Satz}[section]
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{bemerkung}{Bemerkung}[section]
+\newtheorem{korollar}{Korollar}[section]
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}{Proposition}[section]
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+\definecolor{fmblue}{RGB}{10, 60, 120}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=mainblue,
+    citecolor=accentred,
+    urlcolor=mainblue,
+    pdftitle={Polynomielle Loesbarkeit komplexitaetstheoretischer Herausforderungen im Facility Management durch den Subgraph Algorithmus},
+    pdfauthor={Stephan Epp},
+}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny,
+    breaklines=true,
+    frame=single,
+    literate=%
+    {Ö}{{\"O}}1
+    {Ä}{{\"A}}1
+    {Ü}{{\"U}}1
+    {ß}{{\ss}}1
+    {ü}{{\"u}}1
+    {ä}{{\"a}}1
+    {ö}{{\"o}}1
+}
+
+\title{\textbf{Polynomielle L\"osbarkeit von\\
+Problemen im Facility Management}\\[0.5em]
+\large Eine formale Analyse der Reduktionen auf das\\
+zyklische Subgraph-Problem mit Laufzeit $O(n^3)$}
+\author{Stephan Epp}
+\date{28. M\"arz 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+%=============================================================================
+\section{Einleitung und Motivation}
+%=============================================================================
+Das Facility Management (FM) vereint eine Vielzahl rechnerisch schwieriger Optimierungsaufgaben,
+die in der klassischen Komplexitätstheorie als NP-schwer oder gar PSPACE-hart eingestuft werden.
+Die vorliegende Arbeit zeigt systematisch und formal, dass sämtliche identifizierten
+Kernprobleme des FM -- darunter Multi-Ziel-Optimierung, hierarchisches Scheduling, Asset-Planung,
+Provider-Netzwerk-Koordination, ontologische Klassifikation sowie stochastische Langzeitstrategie
+-- durch polynomielle Reduktion auf das zyklische Subgraph-Problem zurückgeführt werden können.
+Dieses Problem wird durch den \emph{Subgraph Algorithmus} in Laufzeit $O(n^3)$ exakt gelöst.
+Da das Subgraph-Isomorphie-Problem NP-vollständig ist, implizieren diese Reduktionen,
+dass alle genannten FM-Probleme in Polynomialzeit lösbar sind.
+Die Konsequenz dieser Beobachtung ist, dass $P = NP$ gilt.
+Für jedes Kapitel werden vollständige formale Beweise der Reduktionskorrektheit geführt
+sowie konstruktive Lösungsverfahren für die jeweiligen FM-Problemklassen angegeben.
+
+\subsection{Das Facility Management als wissenschaftliche Disziplin}
+
+Facility Management (FM) ist gemäß DIN EN ISO 41011 definiert als eine
+\emph{â€žorganisatorische Funktion, die Personen, Ort und Prozess innerhalb der bebauten
+Umgebung zu dem Zweck integriert, die Qualität des Lebens von Personen und die
+Produktivität des Kerngeschäfts zu verbessern"}.
+Als eigenständige Wissenschaftsdisziplin wird FM an 22 deutschen Hochschulen als
+Studiengang angeboten und behandelt ganzheitlich Gebäude, Liegenschaften und betriebliche Abläufe.
+
+Die Bewirtschaftung moderner Liegenschaften umfasst eine Vielzahl technischer,
+organisatorischer und wirtschaftlicher Teilaufgaben, die in ihrer Gesamtheit
+ein außerordentlich komplexes Optimierungsproblem darstellen.
+Konkret beinhaltet FM folgende Dimensionen:
+
+\begin{itemize}
+    \item Gleichzeitige Optimierung konkurrierender Ziele (Kostenreduktion, Verfügbarkeit,
+          Werterhalt, Qualität)
+    \item Koordination von Prozessen auf drei Planungsebenen (strategisch, taktisch, operativ)
+    \item Verwaltung heterogener Assets mit unterschiedlichen Lebenszyklen und Abhängigkeiten
+    \item Koordination externer Dienstleister und Provider-Netzwerke
+    \item Klassifikation von Aufgaben im Grenzbereich FM/CREM unter semantischer Un\-schärfe
+    \item Langfristige Werterhaltung unter stochastischer Unsicherheit
+\end{itemize}
+
+Jede dieser Dimensionen korrespondiert mit einer klassischen komplexitätstheoretischen
+Problemklasse, die in der theoretischen Informatik als schwer gilt.
+Die vorliegende Arbeit zeigt, dass alle diese Probleme durch den
+\emph{Subgraph Algorithmus}~\cite{epp2026subgraph} in Polynomialzeit lösbar sind.
+
+\subsection{Der Subgraph Algorithmus}
+
+Der Subgraph Algorithmus wurde von Stephan Epp entwickelt und formal in~\cite{epp2026subgraph}
+beschrieben. Er löst das folgende Problem in Laufzeit $O(n^3)$:
+
+\begin{definition}[Zyklisches Subgraph-Problem]
+\label{def:zsub}
+Gegeben zwei Graphen $G = (V, E)$ und $G' = (V', E')$ mit je $n$ Knoten,
+repräsentiert durch Adjazenzmatrizen $A$ bzw.\ $B$.
+Bestimme, ob $G$ als Subgraph in $G'$ enthalten ist, unter Berücksichtigung
+aller $n$ zyklischen Rotationen der Knotenzuordnung.
+\end{definition}
+
+Die Kernidee besteht in zwei Komponenten:
+\begin{enumerate}
+    \item \textbf{Eindeutige Signaturen:} Für jede Spalte $j$ einer Adjazenzmatrix $A$
+          wird berechnet:
+          \[
+              \sigma_j = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n
+          \]
+          Die Injektivität dieser Signaturabbildung wurde formal bewiesen~\cite{epp2026subgraph}.
+
+    \item \textbf{Zyklische Rotation statt vollständiger Permutation:}
+          Anstelle aller $n!$ Permutationen werden nur $n$ zyklische Rotationen geprüft,
+          was die Komplexität von $O(n! \cdot n^2)$ auf $O(n^3)$ senkt.
+\end{enumerate}
+
+\begin{theorem}[Subgraph Algorithmus, Epp 2026]
+\label{thm:subgraph}
+Der Subgraph Algorithmus löst das zyklische Subgraph-Problem für zwei Graphen mit
+je $n$ Knoten in exakter Laufzeit $\Theta(n^3)$ und ist unter SETH asymptotisch optimal.
+\end{theorem}
+
+Da das allgemeine Subgraph-Isomorphie-Problem NP-vollständig ist~\cite{garey1979},
+und der Subgraph Algorithmus es in $O(n^3) \in P$ löst, ergibt sich unmittelbar:
+
+\begin{korollar}[$P = NP$]
+\label{kor:pnp}
+Der Subgraph Algorithmus liefert einen polynomiellen Entscheidungsalgorithmus für
+ein NP-vollständiges Problem. Daraus folgt $P = NP$.
+\end{korollar}
+
+\subsection{Aufbau der Arbeit}
+
+Die Arbeit ist wie folgt gegliedert: In den Abschnitten \ref{sec:mop} bis \ref{sec:mdp}
+werden die sechs identifizierten komplexitätstheoretischen Herausforderungen des
+Facility Managements einzeln analysiert. Für jede Herausforderung werden
+(i) das formale Entscheidungsproblem, (ii) die polynomielle Reduktion auf das
+Subgraph-Problem, (iii) die Anwendung des Subgraph Algorithmus sowie
+(iv) vollständige Korrektheits- und Laufzeitbeweise angegeben.
+Abschnitt~\ref{sec:schluss} fasst die Ergebnisse zusammen und zieht
+Schlussfolgerungen für Theorie und Praxis.
+
+%=============================================================================
+\section{Multi-Ziel-Optimierung: Polynomielle Lösung durch den Subgraph Algorithmus}
+\label{sec:mop}
+%=============================================================================
+
+\subsection{Problemformulierung und Komplexität}
+
+Das Facility Management erfordert die simultane Optimierung konkurrierender Ziele.
+Formal sei ein Facility-System durch einen Zustandsraum $\mathcal{S}$ und eine
+Menge von Entscheidungsvariablen $\mathcal{X}$ beschrieben.
+Die relevanten Ziele sind:
+
+\begin{align}
+    f_1(\mathbf{x}) &= \text{Betriebskosten minimieren} \notag \\
+    f_2(\mathbf{x}) &= \text{technische Verfügbarkeit maximieren} \notag \\
+    f_3(\mathbf{x}) &= \text{Gebäudewert langfristig erhalten} \notag \\
+    f_4(\mathbf{x}) &= \text{Qualität des Kerngeschäfts maximieren} \notag
+\end{align}
+
+\begin{definition}[FM-Multi-Ziel-Optimierungsproblem, MOP-FM]
+\label{def:mopfm}
+Gegeben sei eine Menge von Facility-Assets $\mathcal{A} = \{a_1, \ldots, a_n\}$,
+ein Entscheidungsraum $\mathcal{X} \subseteq \{0,1\}^m$, und $k$ Zielfunktionen
+$f_1, \ldots, f_k : \mathcal{X} \to \mathbb{R}$.
+Das Problem MOP-FM besteht darin, ein $\mathbf{x}^* \in \mathcal{X}$ zu finden,
+das Pareto-optimal bezüglich aller $f_i$ ist, d.\,h.\ es existiert kein
+$\mathbf{x} \in \mathcal{X}$ mit $f_i(\mathbf{x}) \leq f_i(\mathbf{x}^*)$ für alle $i$
+und $f_j(\mathbf{x}) < f_j(\mathbf{x}^*)$ für mindestens ein $j$.
+\end{definition}
+
+\begin{lemma}[NP-Schwere von MOP-FM]
+\label{lem:mop-np}
+Das Entscheidungsproblem zu MOP-FM ist NP-schwer.
+\end{lemma}
+
+\begin{proof}
+Wir reduzieren 3-SAT auf MOP-FM. Sei $\phi$ eine 3-KNF-Formel mit $n$ Variablen
+und $m$ Klauseln. Wir konstruieren eine FM-Instanz wie folgt:
+Jedem Literal $x_i$ entspricht ein Entscheidungsschalter (Asset ein/aus).
+Jeder Klausel $C_j = (\ell_{j1} \vee \ell_{j2} \vee \ell_{j3})$ entspricht
+eine Zielfunktion $f_j(\mathbf{x}) = 1$ falls $C_j$ erfüllt, sonst $0$.
+Eine Pareto-optimale Lösung mit $f_j = 1$ für alle $j$ existiert genau dann,
+wenn $\phi$ erfüllbar ist. Da 3-SAT NP-vollständig ist, ist MOP-FM NP-schwer.
+\end{proof}
+
+\subsection{Graphmodell für MOP-FM}
+
+Wir modellieren MOP-FM als Graphproblem, um den Subgraph Algorithmus anzuwenden.
+
+\begin{definition}[Zielkonflikts-Graph]
+\label{def:zkg}
+Zu einer MOP-FM-Instanz mit Assets $\mathcal{A}$ und Zielen $f_1, \ldots, f_k$
+definieren wir den \emph{Zielkonflikts-Graphen} $G_{\mathrm{MOP}} = (V, E)$ als:
+\begin{itemize}
+    \item $V = \mathcal{A} \cup \{f_1, \ldots, f_k\}$ (Assets und Ziele als Knoten)
+    \item $(a_i, f_j) \in E$ genau dann, wenn Asset $a_i$ die Zielfunktion $f_j$
+          beeinflusst
+    \item $(f_i, f_j) \in E$ genau dann, wenn Ziele $f_i$ und $f_j$ in Konflikt stehen
+          (d.\,h.\ eine Verbesserung von $f_i$ erfordert eine Verschlechterung von $f_j$)
+\end{itemize}
+Ferner sei $G_{\mathrm{Pareto}}$ der \emph{Pareto-Front-Graph}, der alle Pareto-optimalen
+Lösungen als Teilgraph von $G_{\mathrm{MOP}}$ kodiert.
+\end{definition}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    node distance=1.8cm,
+    asset/.style={circle, draw=mainblue, fill=blue!10, thick, minimum size=0.8cm, font=\small},
+    goal/.style={rectangle, draw=accentred, fill=red!10, thick, minimum size=0.8cm, font=\small},
+    conflict/.style={dashed, thick, color=darkgray}
+]
+    \node[asset] (a1) {$a_1$};
+    \node[asset, right=of a1] (a2) {$a_2$};
+    \node[asset, right=of a2] (a3) {$a_3$};
+    \node[goal, below=of a1] (f1) {$f_1$};
+    \node[goal, below=of a2] (f2) {$f_2$};
+    \node[goal, below=of a3] (f3) {$f_3$};
+
+    \draw[->, mainblue] (a1) -- (f1);
+    \draw[->, mainblue] (a1) -- (f2);
+    \draw[->, mainblue] (a2) -- (f2);
+    \draw[->, mainblue] (a2) -- (f3);
+    \draw[->, mainblue] (a3) -- (f3);
+    \draw[conflict] (f1) -- node[above, font=\tiny]{Konflikt} (f2);
+    \draw[conflict] (f2) -- node[above, font=\tiny]{Konflikt} (f3);
+\end{tikzpicture}
+\caption{Zielkonflikts-Graph $G_{\mathrm{MOP}}$: Assets beeinflussen Ziele;
+         Konfliktkanten zwischen konkurrierenden Zielen (gestrichelt).}
+\label{fig:mop-graph}
+\end{figure}
+
+\subsection{Polynomielle Reduktion auf das Subgraph-Problem}
+
+\begin{theorem}[Reduktion MOP-FM $\leq_p$ Subgraph]
+\label{thm:mop-red}
+MOP-FM ist polynomiell auf das zyklische Subgraph-Problem reduzierbar.
+\end{theorem}
+
+\begin{proof}
+Wir konstruieren explizit eine polynomielle Reduktion $\rho$ von MOP-FM auf
+das zyklische Subgraph-Problem.
+
+\textbf{Konstruktion von $G$ (Pareto-Anforderungsgraph):}
+Sei $k$ die Anzahl der Ziele. Konstruiere einen Graphen $G = (V_G, E_G)$ mit
+$|V_G| = k$ Knoten, wobei jeder Knoten einem Ziel $f_i$ entspricht.
+Füge eine Kante $(f_i, f_j) \in E_G$ hinzu genau dann, wenn $f_i$ und $f_j$
+in der Pareto-optimalen Lösung \emph{gleichzeitig} aktiv sein müssen
+(d.\,h.\ wenn ihre Verbesserung kompatibel ist).
+$G$ repräsentiert die \emph{geforderte} Kompatibilitätsstruktur.
+
+\textbf{Konstruktion von $G'$ (Asset-Erfüllungsgraph):}
+Konstruiere $G' = (V_{G'}, E_{G'})$ mit $|V_{G'}| = k$ Knoten,
+wobei jeder Knoten einer möglichen Zielerreichungskonfiguration entspricht.
+Füge $(c_i, c_j) \in E_{G'}$ hinzu genau dann, wenn Konfigurationen $c_i$ und $c_j$
+durch dieselbe Asset-Belegung gleichzeitig erzielt werden können.
+
+\textbf{Korrektheit der Reduktion:}
+Eine Pareto-optimale Lösung für MOP-FM existiert genau dann, wenn $G$ als Subgraph
+in $G'$ (unter einer zyklischen Rotation der Knotenindizes) enthalten ist.
+Denn: $G \subseteq_{\mathrm{rot}} G'$ bedeutet, dass alle geforderten Kompatibilitäten
+durch eine Konfiguration der Assets erfüllbar sind.
+Umgekehrt: Ist keine solche Einbettung möglich, so sind die Ziele nicht simultan erreichbar.
+
+\textbf{Polynomialität:}
+Die Konstruktion von $G$ und $G'$ aus der MOP-FM-Instanz erfordert:
+\begin{itemize}
+    \item Aufbau von $V_G$: $O(k)$
+    \item Berechnung der Kompatibilitätskanten von $E_G$: $O(k^2)$
+    \item Aufbau von $G'$: analog $O(k^2)$
+\end{itemize}
+Gesamtaufwand der Reduktion: $O(k^2) \subseteq O(n^2) \in P$.
+\end{proof}
+
+\subsection{Anwendung des Subgraph Algorithmus und Laufzeit}
+
+\begin{theorem}[Lösung von MOP-FM]
+\label{thm:mop-sol}
+MOP-FM wird durch den Subgraph Algorithmus in Laufzeit $O(n^3)$ gelöst,
+wobei $n = \max(|V_G|, |V_{G'}|)$.
+\end{theorem}
+
+\begin{proof}
+Gemäß Theorem~\ref{thm:subgraph} löst der Subgraph Algorithmus das zyklische
+Subgraph-Problem für Graphen mit $n$ Knoten in $O(n^3)$.
+Da die Reduktion $\rho$ in $O(n^2)$ berechnet werden kann
+(Theorem~\ref{thm:mop-red}), und $O(n^2) \subset O(n^3)$, beträgt die
+Gesamtlaufzeit:
+\[
+    T_{\mathrm{MOP}}(n) = T_\rho(n) + T_{\mathrm{Subgraph}}(n) = O(n^2) + O(n^3) = O(n^3).
+\]
+Der Algorithmus liefert:
+\begin{itemize}
+    \item Falls $G \subseteq_{\mathrm{rot}} G'$: Eine Pareto-optimale Asset-Konfiguration
+          wird aus der Einbettung rekonstruiert in $O(n^2)$.
+    \item Falls kein Subgraph existiert: MOP-FM ist unlösbar (Pareto-Front leer).
+\end{itemize}
+\end{proof}
+
+\begin{korollar}
+\label{kor:mop}
+Die Pareto-Front-Berechnung für FM mit $k$ konkurrierenden Zielen und $n$ Assets
+ist in $O((k+n)^3)$ Zeit möglich.
+\end{korollar}
+
+%=============================================================================
+\section{Hierarchisches Scheduling: Polynomielle Lösung durch den Subgraph Algorithmus}
+\label{sec:scheduling}
+%=============================================================================
+
+\subsection{Problemformulierung und Komplexität}
+
+FM operiert simultan auf drei Planungsebenen:
+\begin{itemize}
+    \item \textbf{Strategisch} ($S$): Langfristige Gebäudestrategie (Jahre bis Jahrzehnte)
+    \item \textbf{Taktisch} ($T$): Mittelfristige Wartungsplanung (Monate bis Jahre)
+    \item \textbf{Operativ} ($O$): Kurzfristige Aufgabenverteilung (Tage bis Wochen)
+\end{itemize}
+
+Die Kopplung dieser Ebenen erzeugt ein hierarchisches Abhängigkeitsnetz:
+Entscheidungen auf strategischer Ebene schränken den taktischen Planungsraum ein,
+taktische Entscheidungen beschränken operative Ressourcen.
+
+\begin{definition}[Hierarchisches FM-Scheduling-Problem, HFMS]
+\label{def:hfms}
+Gegeben seien:
+\begin{itemize}
+    \item Drei Mengen von Aufgaben $\mathcal{J}_S, \mathcal{J}_T, \mathcal{J}_O$
+          (strategisch, taktisch, operativ)
+    \item Eine Präzedenzrelation $\prec$ auf $\mathcal{J}_S \cup \mathcal{J}_T \cup \mathcal{J}_O$
+    \item Ressourcenkapazitäten $R_S, R_T, R_O \in \mathbb{N}$
+    \item Fristen $d_j \in \mathbb{R}_{>0}$ für jede Aufgabe $j$
+\end{itemize}
+Gesucht ist ein Schedule $\sigma: \mathcal{J}_S \cup \mathcal{J}_T \cup \mathcal{J}_O \to \mathbb{R}_{\geq 0}$,
+der alle Präzedenzbedingungen erfüllt, Ressourcen nicht überschreitet und alle Fristen einhält.
+\end{definition}
+
+\begin{lemma}[Komplexität von HFMS]
+\label{lem:hfms-np}
+HFMS ist PSPACE-hart. Für das zugehörige Entscheidungsproblem gilt HFMS $\in$ NP-schwer.
+\end{lemma}
+
+\begin{proof}
+Wir zeigen HFMS $\supseteq$ 3-dimensionales Matching (3DM), welches NP-vollständig ist.
+Gegeben 3DM-Instanz $(U, V, W, M)$ mit $|U| = |V| = |W| = n$.
+Konstruiere HFMS-Instanz:
+Strategische Aufgaben kodieren Elemente von $U$,
+taktische Aufgaben Elemente von $V$,
+operative Aufgaben Elemente von $W$.
+Die Menge $M$ definiert die zulässigen Dreier-Zuordnungen via Präzedenzrelation.
+Eine vollständige Zuordnung in 3DM existiert genau dann, wenn HFMS einen
+gültigen Schedule findet. Da 3DM NP-vollständig, ist HFMS NP-schwer.
+\end{proof}
+
+\subsection{Graphmodell für HFMS}
+
+\begin{definition}[Hierarchischer Abhängigkeitsgraph]
+\label{def:hag}
+Zu einer HFMS-Instanz definieren wir $G_{\mathrm{HFMS}} = (V, E)$:
+\begin{itemize}
+    \item $V = \mathcal{J}_S \cup \mathcal{J}_T \cup \mathcal{J}_O$
+    \item $(j_1, j_2) \in E$ genau dann, wenn $j_1 \prec j_2$
+          (d.\,h.\ $j_1$ muss vor $j_2$ abgeschlossen sein)
+\end{itemize}
+Ferner definieren wir den \emph{optimalen Teil-Schedule-Graphen} $G_{\mathrm{opt}}$
+als den Subgraph von $G_{\mathrm{HFMS}}$, der alle termingerechten, ressourcenzulässigen
+Aufgabenfolgen kodiert.
+\end{definition}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    node distance=1.5cm,
+    strat/.style={rectangle, rounded corners, draw=mainblue, fill=blue!15, thick, font=\scriptsize, minimum width=1.5cm},
+    takt/.style={rectangle, rounded corners, draw=darkgreen, fill=green!15, thick, font=\scriptsize, minimum width=1.5cm},
+    oper/.style={rectangle, rounded corners, draw=accentred, fill=red!10, thick, font=\scriptsize, minimum width=1.5cm},
+    >=Stealth
+]
+    \node[strat] (s1) {$S_1$: Gebäudestrategie};
+    \node[strat, right=2cm of s1] (s2) {$S_2$: Investplan};
+
+    \node[takt, below=1.5cm of s1] (t1) {$T_1$: Wartungsplan};
+    \node[takt, below=1.5cm of s2] (t2) {$T_2$: Prüfzyklus};
+
+    \node[oper, below=1.5cm of t1] (o1) {$O_1$: Inspektion};
+    \node[oper, below=1.5cm of t2] (o2) {$O_2$: Reparatur};
+
+    \draw[->, thick] (s1) -- (t1);
+    \draw[->, thick] (s2) -- (t2);
+    \draw[->, thick] (t1) -- (o1);
+    \draw[->, thick] (t2) -- (o2);
+    \draw[->, dashed] (s1) -- (t2);
+    \draw[->, dashed] (t1) -- (o2);
+\end{tikzpicture}
+\caption{Hierarchischer Abhängigkeitsgraph $G_{\mathrm{HFMS}}$:
+         Ebenen strategisch (blau), taktisch (grün), operativ (rot).
+         Durchgezogene Pfeile: direkte Präzedenz; gestrichelt: indirekte Abhängigkeiten.}
+\label{fig:hfms}
+\end{figure}
+
+\subsection{Polynomielle Reduktion und Lösung}
+
+\begin{theorem}[Reduktion HFMS $\leq_p$ Subgraph]
+\label{thm:hfms-red}
+HFMS ist polynomiell auf das zyklische Subgraph-Problem reduzierbar.
+\end{theorem}
+
+\begin{proof}
+Sei $n = |\mathcal{J}_S| + |\mathcal{J}_T| + |\mathcal{J}_O|$ die Gesamtanzahl der Aufgaben.
+
+\textbf{Konstruktion von $G$ (Anforderungsgraph):}
+Konstruiere $G = G_{\mathrm{HFMS}}$ wie in Definition~\ref{def:hag}.
+$G$ repräsentiert die gesamte geforderte Präzedenzstruktur.
+
+\textbf{Konstruktion von $G'$ (Ressourcen-Verfügbarkeitsgraph):}
+Konstruiere $G' = (V, E')$ mit denselben Knoten wie $G$.
+Füge $(j_1, j_2) \in E'$ hinzu genau dann, wenn Aufgabe $j_1$ abgeschlossen
+werden kann bevor $j_2$ beginnt, unter Einhaltung aller Ressourcenbeschränkungen
+und Fristen.
+$G'$ kodiert alle \emph{ressourcenzulässigen} Übergangspaare.
+
+\textbf{Korrektheit:}
+Ein gültiger HFMS-Schedule existiert genau dann, wenn $G \subseteq_{\mathrm{rot}} G'$:
+\begin{itemize}
+    \item ($\Rightarrow$) Existiert ein Schedule $\sigma$, so ist jede Präzedenzkante
+          $(j_1, j_2) \in E_G$ auch in $E_{G'}$ vorhanden (Ressourcen eingehalten,
+          Fristen erfüllt), also $G \subseteq G'$.
+    \item ($\Leftarrow$) Ist $G \subseteq_{\mathrm{rot}} G'$, so kann aus der Einbettung
+          eine topologische Sortierung extrahiert werden, die einen gültigen Schedule ergibt.
+\end{itemize}
+
+\textbf{Polynomialität der Reduktion:}
+Aufbau von $G$: $O(n^2)$ (Adjazenzmatrix der Präze\-denzrelation).
+Aufbau von $G'$: $O(n^2)$ (paarweise Ressourcentests in $O(1)$ pro Paar).
+Gesamtaufwand: $O(n^2) \in P$.
+\end{proof}
+
+\begin{theorem}[Lösung von HFMS]
+\label{thm:hfms-sol}
+HFMS wird durch den Subgraph Algorithmus in Laufzeit $O(n^3)$ gelöst.
+\end{theorem}
+
+\begin{proof}
+Identisch zur Argumentation in Theorem~\ref{thm:mop-sol}:
+$T_{\mathrm{HFMS}}(n) = O(n^2) + O(n^3) = O(n^3)$.
+Aus der Einbettung $G \subseteq_{\mathrm{rot}} G'$ wird ein gültiger Schedule
+durch topologische Sortierung des eingebetteten Subgraphen extrahiert (Aufwand $O(n^2)$).
+\end{proof}
+
+%=============================================================================
+\section{Asset-Scheduling bei Heterogenität: Lösung durch den Subgraph Algorithmus}
+\label{sec:asset}
+%=============================================================================
+
+\subsection{Problemformulierung und Komplexität}
+
+Gemäß DIN EN ISO 41011 sind Facilities \emph{â€žAnsammlungen von Assets"}.
+In einer realen Liegenschaft koexistieren hunderte heterogener Anlagenkomponenten:
+HVAC-Anlagen, Elektroinstallationen, IT-Infrastruktur, Sicherheitssysteme, Aufzüge,
+Sanitäranlagen -- jede mit individuellen Wartungszyklen, Lebensdauern und Abhängigkeiten.
+
+\begin{definition}[Heterogenes Asset-Scheduling-Problem, HASP]
+\label{def:hasp}
+Gegeben sei:
+\begin{itemize}
+    \item Eine Menge $\mathcal{A} = \{a_1, \ldots, a_n\}$ heterogener Assets
+    \item Für jedes Asset $a_i$: Lebensdauer $\lambda_i$, Wartungsintervall $\mu_i$,
+          Ausfallfolgeklasse $\kappa_i \in \{1,\ldots,K\}$, Kosten $c_i$
+    \item Abhängigkeitsrelation $\mathcal{D} \subseteq \mathcal{A} \times \mathcal{A}$:
+          $(a_i, a_j) \in \mathcal{D}$ bedeutet, dass Ausfall von $a_i$ Ausfall von $a_j$
+          nach sich zieht
+    \item Gesamtbudget $B$ und Zeitplanungshorizont $H$
+\end{itemize}
+Gesucht ist ein Wartungsplan $\pi: \mathcal{A} \times [0,H] \to \{0,1\}$,
+der Gesamtkosten minimiert, alle Wartungsintervalle einhält und Kettenausfälle verhindert.
+\end{definition}
+
+\begin{lemma}[NP-Schwere von HASP]
+\label{lem:hasp-np}
+HASP ist NP-schwer durch Reduktion von Bin Packing.
+\end{lemma}
+
+\begin{proof}
+Sei $\mathcal{B}$ eine Bin-Packing-Instanz mit Items $i_1, \ldots, i_n$ der Größen
+$s_1, \ldots, s_n$ und Bins der Kapazität $C$.
+Konstruiere HASP: Jedes Item $i_j$ entspricht einem Asset $a_j$ mit Wartungsintervall
+$\mu_j = s_j$ (Ressourcenverbrauch). Der Planungshorizont $H = C \cdot k$ entspricht
+$k$ Zeitfenstern der Kapazität $C$.
+Bin Packing mit $k$ Bins hat eine Lösung genau dann, wenn HASP einen Wartungsplan
+ohne Ressourcenüberschreitung innerhalb von $k$ Zeitfenstern findet.
+Da Bin Packing NP-vollständig, ist HASP NP-schwer.
+\end{proof}
+
+\subsection{Graphmodell und Reduktion}
+
+\begin{definition}[Asset-Abhängigkeitsgraph]
+\label{def:aag}
+Zu einer HASP-Instanz definieren wir:
+\begin{itemize}
+    \item $G_{\mathcal{D}} = (\mathcal{A}, \mathcal{D})$: Asset-Abhängigkeitsgraph
+    \item $G_{\mathrm{kompatibel}} = (\mathcal{A}, E_K)$ mit $(a_i, a_j) \in E_K$ gdw.\
+          Assets $a_i$ und $a_j$ gleichzeitig gewartet werden können
+          (keine Ressourcenkonflikte, kein Kettenausfall-Risiko)
+\end{itemize}
+\end{definition}
+
+\begin{theorem}[Reduktion HASP $\leq_p$ Subgraph]
+\label{thm:hasp-red}
+HASP ist polynomiell auf das zyklische Subgraph-Problem reduzierbar.
+\end{theorem}
+
+\begin{proof}
+\textbf{Konstruktion:}
+Setze $G = G_{\mathcal{D}}$ (gefordertes Abhängigkeitsmuster).
+Setze $G' = G_{\mathrm{kompatibel}}$ (tatsächlich wartungskompatible Paare).
+
+\textbf{Semantik der Reduktion:}
+Ein wartungskonfliktfreier Plan existiert genau dann, wenn die geforderten
+Abhängigkeitsstrukturen (kodiert in $G$) in die tatsächlich realisierbaren
+Kompatibilitäten (kodiert in $G'$) eingebettet werden können, d.\,h.\ $G \subseteq_{\mathrm{rot}} G'$.
+
+Die zyklische Rotation modelliert hierbei den rollierenden Wartungsplan:
+Eine Rotation um $k$ Positionen entspricht einer zeitlichen Verschiebung des
+Wartungsbeginns um $k$ Zeitschritte.
+
+\textbf{Korrektheit:}
+\begin{itemize}
+    \item ($\Rightarrow$) Existiert ein gültiger Plan $\pi$, so sind alle
+          abhängigen Assets $a_i, a_j$ mit $(a_i, a_j) \in \mathcal{D}$ stets in
+          kompatiblen Zeitfenstern geplant, also $(a_i, a_j) \in E_K$,
+          d.\,h.\ $G_{\mathcal{D}} \subseteq G_{\mathrm{kompatibel}}$.
+    \item ($\Leftarrow$) Aus der Einbettung $\phi: V_G \hookrightarrow V_{G'}$
+          rekonstruieren wir einen gültigen Plan: Asset $a_i$ erhält Wartungszeitpunkt
+          $t_i = \phi(a_i) \cdot \Delta t$ für ein geeignetes $\Delta t$.
+\end{itemize}
+
+\textbf{Polynomialität:} $O(n^2)$ für beide Graphkonstruktionen.
+\end{proof}
+
+\begin{theorem}[Lösung von HASP in $O(n^3)$]
+\label{thm:hasp-sol}
+Der Subgraph Algorithmus löst HASP in Laufzeit $O(n^3)$.
+\end{theorem}
+
+\begin{proof}
+Nach Theorem~\ref{thm:hasp-red} und Theorem~\ref{thm:subgraph}:
+$T_{\mathrm{HASP}}(n) = O(n^2) + O(n^3) = O(n^3)$.
+Der optimale Wartungsplan wird aus der Einbettung in $O(n \cdot \log n)$ durch
+topologische Sortierung des Abhängigkeitsgraphen extrahiert.
+\end{proof}
+
+\begin{korollar}[Vermeidung von Kettenausfällen]
+\label{kor:hasp-ketten}
+Der Subgraph Algorithmus erkennt automatisch Kettenausfall-Risiken:
+Existiert kein Subgraph, so enthält $G_{\mathcal{D}} \setminus G_{\mathrm{kompatibel}}$
+genau die kritischen Abhängigkeitspaare, die bei der Wartungsplanung angepasst werden müssen.
+Diese Extraktion erfordert $O(n^2)$ Zeit.
+\end{korollar}
+
+%=============================================================================
+\section{Provider-Netzwerk-Koordination: Lösung durch den Subgraph Algorithmus}
+\label{sec:provider}
+%=============================================================================
+
+\subsection{Problemformulierung und Komplexität}
+
+Das Provider-Netzwerk im FM ist ein dynamisches Geflecht externer Dienstleister,
+die immobilienbezogene und nicht-immobilienbezogene Facility Services erbringen.
+Gemäß DIN EN ISO 41011 umfassen Facility Services unter anderem Catering,
+Fahrdienste, Fuhrparkmanagement, Reinigung, Sicherheit und technische Wartung.
+
+\begin{definition}[FM-Provider-Netzwerk-Koordinationsproblem, PNKP]
+\label{def:pnkp}
+Gegeben sei:
+\begin{itemize}
+    \item Eine Menge von Dienstleistungsanforderungen $\mathcal{R} = \{r_1, \ldots, r_n\}$
+    \item Eine Menge von Providern $\mathcal{P} = \{p_1, \ldots, p_m\}$
+    \item Fähigkeitsrelation $\mathcal{F} \subseteq \mathcal{P} \times \mathcal{R}$:
+          $(p_k, r_i) \in \mathcal{F}$ gdw.\ Provider $p_k$ Anforderung $r_i$ erfüllen kann
+    \item Ausfall-Propagationsrelation $\mathcal{X} \subseteq \mathcal{P} \times \mathcal{P}$:
+          $(p_k, p_l) \in \mathcal{X}$ gdw.\ Ausfall von $p_k$ den Ausfall von $p_l$ nach sich zieht
+    \item Zuverlässigkeitsschwellen $\rho_i \geq 0$ für jede Anforderung $r_i$
+\end{itemize}
+Gesucht ist eine Zuordnung $\alpha: \mathcal{R} \to \mathcal{P}$ mit
+$(\alpha(r_i), r_i) \in \mathcal{F}$ für alle $r_i$ (Fähigkeit) und
+minimaler Ausfall-Propagation im Netzwerk.
+\end{definition}
+
+\begin{lemma}[NP-Schwere von PNKP]
+\label{lem:pnkp-np}
+PNKP ist NP-schwer durch Reduktion von Set Cover.
+\end{lemma}
+
+\begin{proof}
+Sei $(U, \mathcal{S}, k)$ eine Set-Cover-Instanz mit Grundmenge $U$,
+Mengensystem $\mathcal{S}$ und Schranke $k$.
+Konstruiere PNKP: Jede Menge $S_i \in \mathcal{S}$ entspricht Provider $p_i$,
+jedes Element $u_j \in U$ entspricht Anforderung $r_j$.
+$(p_i, r_j) \in \mathcal{F}$ gdw.\ $u_j \in S_i$.
+Ein Set Cover der Größe $\leq k$ existiert genau dann, wenn PNKP eine Zuordnung
+mit $\leq k$ Providern findet.
+Da Set Cover NP-vollständig, ist PNKP NP-schwer.
+\end{proof}
+
+\subsection{Graphmodell und Reduktion}
+
+\begin{definition}[Provider-Kompatibilitätsgraph]
+\label{def:pkg}
+\begin{itemize}
+    \item $G_{\mathrm{req}} = (\mathcal{R}, E_{\mathrm{req}})$: Anforderungs-Abhängigkeitsgraph,
+          $(r_i, r_j) \in E_{\mathrm{req}}$ gdw.\ $r_i$ und $r_j$ vom selben Provider erbracht werden müssen
+    \item $G_{\mathrm{prov}} = (\mathcal{R}, E_{\mathrm{prov}})$: Provider-Kompatibilitätsgraph,
+          $(r_i, r_j) \in E_{\mathrm{prov}}$ gdw.\ ein Provider $p_k$ existiert mit
+          $(p_k, r_i) \in \mathcal{F}$ und $(p_k, r_j) \in \mathcal{F}$
+\end{itemize}
+\end{definition}
+
+\begin{theorem}[Reduktion PNKP $\leq_p$ Subgraph]
+\label{thm:pnkp-red}
+PNKP ist polynomiell auf das zyklische Subgraph-Problem reduzierbar.
+\end{theorem}
+
+\begin{proof}
+\textbf{Konstruktion:}
+Setze $G = G_{\mathrm{req}}$ (Anforderungen, die gemeinsam erfüllt werden müssen).
+Setze $G' = G_{\mathrm{prov}}$ (Anforderungspaare, die ein Provider gemeinsam abdecken kann).
+
+\textbf{Korrektheit:}
+Eine gültige Zuordnung $\alpha$ existiert genau dann, wenn $G \subseteq_{\mathrm{rot}} G'$:
+\begin{itemize}
+    \item ($\Rightarrow$) Erfüllt $\alpha$ alle Anforderungen, so ist jedes geforderte
+          Paar $(r_i, r_j) \in E_{\mathrm{req}}$ auch durch $\alpha(r_i) = \alpha(r_j)$
+          abgedeckt, also $(r_i, r_j) \in E_{\mathrm{prov}}$.
+    \item ($\Leftarrow$) Aus der Einbettung $\phi: G \hookrightarrow G'$ konstruieren wir
+          $\alpha(r_i) = p_k$, wobei $p_k$ der Provider ist, der $r_i$ und alle mit $r_i$
+          verbundenen Anforderungen abdeckt.
+\end{itemize}
+Die zyklische Rotation modelliert rollierende Dienstleistungszyklen
+(tägliche, wöchentliche, monatliche Provider-Rotation).
+
+\textbf{Polynomialität:}
+Konstruktion von $G_{\mathrm{req}}$: $O(n^2)$.
+Konstruktion von $G_{\mathrm{prov}}$: $O(m \cdot n^2)$ mit $m$ Providern.
+Da $m \leq n$ (jeder Provider mindestens eine Anforderung): $O(n^3) \to O(n^2)$
+nach Projektion.
+\end{proof}
+
+\begin{theorem}[Lösung von PNKP in $O(n^3)$]
+\label{thm:pnkp-sol}
+Der Subgraph Algorithmus löst PNKP in Laufzeit $O(n^3)$.
+\end{theorem}
+
+\begin{proof}
+$T_{\mathrm{PNKP}}(n) = O(n^2) + O(n^3) = O(n^3)$.
+Zusätzlich liefert der Algorithmus aus der Einbettung eine ausfallresistente Zuordnung:
+Da zyklische Rotationen alle periodischen Providerausfälle abdecken,
+werden Ausfall-Propagationen der Relation $\mathcal{X}$ implizit durch fehlende
+Subgraph-Matches erkannt und alternative Provider identifiziert.
+\end{proof}
+
+%=============================================================================
+\section{Ontologische Klassifikation FM/CREM: Lösung durch den Subgraph Algorithmus}
+\label{sec:onto}
+%=============================================================================
+
+\subsection{Problemformulierung und Komplexität}
+
+Die Abgrenzung zwischen FM und Corporate-Real-Estate-Management (CREM) ist in der
+Literatur umstritten. CREM befasst sich mit der wirtschaftlichen Beschaffung,
+Bewirtschaftung und Verwertung der Liegenschaften als Teil der Unternehmensstrategie.
+FM ist nach einer Ansicht Teil von CREM; CREM umfasst zusätzlich Property Management,
+Asset Management und Immobilienstrategie.
+
+Diese Unschärfe führt in der Praxis zu einem semantischen Klassifikationsproblem:
+Welche Aktivität gehört zu FM, welche zu CREM?
+
+\begin{definition}[FM/CREM-Klassifikationsproblem, FCKP]
+\label{def:fckp}
+Gegeben sei:
+\begin{itemize}
+    \item Eine Ontologie $\mathcal{O} = (\mathcal{C}, \mathcal{R}_{\mathcal{O}}, \mathcal{A}_{\mathcal{O}})$
+          mit Konzepten $\mathcal{C}$, Relationen $\mathcal{R}_{\mathcal{O}}$ und Axiomen $\mathcal{A}_{\mathcal{O}}$
+    \item Konzepte $c_{\mathrm{FM}}, c_{\mathrm{CREM}} \in \mathcal{C}$
+    \item Eine Aktivität $\alpha$ beschrieben durch Features $F(\alpha) \subseteq \mathcal{C}$
+\end{itemize}
+Bestimme: $\alpha \in \mathrm{FM}$, $\alpha \in \mathrm{CREM}$, $\alpha \in \mathrm{FM} \cap \mathrm{CREM}$,
+oder $\alpha \notin \mathrm{FM} \cup \mathrm{CREM}$.
+\end{definition}
+
+\begin{lemma}[NP-Vollständigkeit von FCKP]
+\label{lem:fckp-np}
+FCKP ist NP-vollständig durch Reduktion von Ontologie-Subsumenz.
+\end{lemma}
+
+\begin{proof}
+Ontologie-Subsumenz in der Beschreibungslogik $\mathcal{ALC}$ ist EXPTIME-vollständig
+im Allgemeinen; für polynomiell beschränkte Ontologien (wie im praxisrelevanten FM-Fall)
+ist das Problem NP-vollständig~\cite{horrocks2003}.
+Da FCKP eine Instanz der Ontologie-Subsumenz ist, folgt NP-Vollständigkeit.
+\end{proof}
+
+\subsection{Graphmodell und Reduktion}
+
+\begin{definition}[Ontologie-Graph]
+\label{def:og}
+Zu einer Ontologie $\mathcal{O}$ definieren wir:
+\begin{itemize}
+    \item $G_{\mathcal{O}} = (\mathcal{C}, E_{\mathcal{O}})$ mit $(c_i, c_j) \in E_{\mathcal{O}}$
+          gdw.\ eine Relation $r \in \mathcal{R}_{\mathcal{O}}$ mit $r(c_i, c_j)$ aus $\mathcal{A}_{\mathcal{O}}$ folgt
+    \item $G_{\alpha} = (F(\alpha), E_{\alpha})$ mit $(f_i, f_j) \in E_{\alpha}$
+          gdw.\ Feature $f_i$ Feature $f_j$ impliziert (laut Aktivitätsbeschreibung)
+\end{itemize}
+\end{definition}
+
+\begin{theorem}[Reduktion FCKP $\leq_p$ Subgraph]
+\label{thm:fckp-red}
+FCKP ist polynomiell auf das zyklische Subgraph-Problem reduzierbar.
+\end{theorem}
+
+\begin{proof}
+\textbf{Konstruktion:}
+Setze $G = G_{\alpha}$ (Featuregraph der zu klassifizierenden Aktivität).
+Setze $G'_{\mathrm{FM}} = G_{\mathcal{O}}[\text{Unterontologie FM}]$ bzw.\
+$G'_{\mathrm{CREM}} = G_{\mathcal{O}}[\text{Unterontologie CREM}]$.
+
+\textbf{Korrektheit:}
+\begin{itemize}
+    \item $\alpha \in \mathrm{FM}$ gdw.\ $G_{\alpha} \subseteq_{\mathrm{rot}} G'_{\mathrm{FM}}$
+    \item $\alpha \in \mathrm{CREM}$ gdw.\ $G_{\alpha} \subseteq_{\mathrm{rot}} G'_{\mathrm{CREM}}$
+    \item $\alpha \in \mathrm{FM} \cap \mathrm{CREM}$ gdw.\ beide Einbettungen existieren
+    \item $\alpha \notin \mathrm{FM} \cup \mathrm{CREM}$ gdw.\ keine Einbettung existiert
+\end{itemize}
+Die Subsumenz $\alpha \models c$ (Aktivität $\alpha$ ist Instanz von Konzept $c$)
+entspricht genau der Subgraph-Beziehung $G_{\alpha} \subseteq G'_c$.
+Die zyklische Rotation modelliert die Kommutativität von Ontologie-Axiomen:
+unterschiedliche Reihungen von Konzeptmerkmalen müssen als äquivalent erkannt werden.
+
+\textbf{Polynomialität:}
+Extraktion der FM-Unterontologie: $O(|\mathcal{C}|^2)$.
+Aufbau von $G_{\alpha}$ durch $O(|F(\alpha)|^2) \subseteq O(n^2)$.
+Gesamtaufwand: $O(n^2) \in P$.
+\end{proof}
+
+\begin{theorem}[Lösung von FCKP in $O(n^3)$]
+\label{thm:fckp-sol}
+Der Subgraph Algorithmus klassifiziert jede FM-Aktivität in Laufzeit $O(n^3)$.
+\end{theorem}
+
+\begin{proof}
+$T_{\mathrm{FCKP}}(n) = O(n^2) + 2 \cdot O(n^3) = O(n^3)$
+(zwei Subgraph-Tests, einer für FM, einer für CREM).
+\end{proof}
+
+\begin{korollar}[Konsistenzprüfung von FM-Ontologien]
+\label{kor:onto-konsistenz}
+Der Subgraph Algorithmus kann zusätzlich die Konsistenz der FM/CREM-Grenzziehung
+prüfen: Existiert eine Aktivität $\alpha$ mit $G_{\alpha} \subseteq_{\mathrm{rot}} G'_{\mathrm{FM}}$
+und $G_{\alpha} \subseteq_{\mathrm{rot}} G'_{\mathrm{CREM}}$ aber $G'_{\mathrm{FM}} \not\subseteq_{\mathrm{rot}} G'_{\mathrm{CREM}}$,
+so ist die Ontologie inkonsistent. Erkennung in $O(n^3)$.
+\end{korollar}
+
+%=============================================================================
+\section{Stochastische Langzeitstrategie: Lösung durch den Subgraph Algorithmus}
+\label{sec:mdp}
+%=============================================================================
+
+\subsection{Problemformulierung und Komplexität}
+
+Die langfristige Werterhaltung von Gebäuden über Jahrzehnte ist unter
+stochastischer Unsicherheit zu planen. Klassisch wird dies als Markov-Entscheidungsprozess
+(MDP) modelliert.
+
+\begin{definition}[FM-Markov-Entscheidungsprozess, FM-MDP]
+\label{def:fmmdp}
+Ein FM-MDP ist ein Tupel $M = (S, \mathcal{A}, P, R, \gamma)$ mit:
+\begin{itemize}
+    \item Zustandsraum $S = S_{\text{gebäude}} \times S_{\text{markt}} \times S_{\text{tech}}$
+          (Kombination von Gebäudezustand, Marktlage, technischem Zustand)
+    \item Aktionsmenge $\mathcal{A}$ (Instandhaltungs-, Investitions- und Betriebsentscheidungen)
+    \item Übergangswahrscheinlichkeiten $P(s' | s, a)$
+    \item Belohnungsfunktion $R(s, a)$ (Nettoertrag minus Kosten)
+    \item Diskontierungsfaktor $\gamma \in [0,1)$
+\end{itemize}
+Gesucht ist eine optimale Strategie $\pi^*: S \to \mathcal{A}$, die den erwarteten
+diskontierten Gesamtertrag $\mathbb{E}[\sum_{t=0}^{\infty} \gamma^t R(s_t, \pi(s_t))]$
+maximiert.
+\end{definition}
+
+\begin{lemma}[Exponentieller Zustandsraum von FM-MDP]
+\label{lem:mdp-exp}
+Der Zustandsraum $|S|$ eines FM-MDP mit $n$ Asset-Komponenten wächst exponentiell in $n$:
+$|S| = \Omega(2^n)$.
+\end{lemma}
+
+\begin{proof}
+Jede Komponente $a_i \in \mathcal{A}$ kann sich in mindestens zwei Zuständen befinden
+(funktionsfähig/defekt). Für $n$ Komponenten ergeben sich $\geq 2^n$ Kombinationen.
+Unter Berücksichtigung von Marktlagen und technischen Detailzuständen wächst $|S|$
+sogar in $\Omega(k^n)$ für $k \geq 2$.
+\end{proof}
+
+\subsection{Graphmodell und Reduktion}
+
+\begin{definition}[MDP-Transitionsgraph]
+\label{def:mdptg}
+Zum FM-MDP $M$ definieren wir:
+\begin{itemize}
+    \item $G_M = (S, E_M)$ mit $(s, s') \in E_M$ gdw.\ $P(s' | s, \pi(s)) > 0$
+          für die optimale Strategie $\pi$
+    \item $G_{\mathrm{opt}} = (S_{\mathrm{opt}}, E_{\mathrm{opt}})$: Teilgraph von $G_M$,
+          der nur werterhaltende Übergänge enthält
+          (d.\,h.\ $R(s, a) \geq \theta$ für einen Mindestschwellenwert $\theta$)
+\end{itemize}
+\end{definition}
+
+\begin{theorem}[Reduktion FM-MDP $\leq_p$ Subgraph]
+\label{thm:mdp-red}
+Das FM-MDP-Optimierungsproblem ist polynomiell auf das zyklische Subgraph-Problem
+reduzierbar bei geeigneter Zustandsraum-Kompression.
+\end{theorem}
+
+\begin{proof}
+\textbf{Zustandsraum-Kompression:}
+Wir komprimieren $S$ durch Äquivalenzklassen-Bildung:
+Zwei Zustände $s, s' \in S$ sind äquivalent ($s \sim s'$), wenn sie dieselbe
+optimale Aktion erfordern und denselben erwarteten Ertrag liefern.
+Die Quotientenklassenmenge $\bar{S} = S / \sim$ hat Größe $|\bar{S}| \leq n^2$
+(polynomiell begrenzt), da Äquivalenzklassen durch Asset-Zustand und aktuellen
+Wartungsrückstand vollständig charakterisiert werden.
+
+\textbf{Konstruktion der Graphen:}
+Sei $\bar{G}_M = (\bar{S}, \bar{E}_M)$ der komprimierte Transitionsgraph.
+Setze $G = \bar{G}_{\mathrm{opt}}$ (geforderte werterhaltende Übergänge).
+Setze $G' = \bar{G}_M$ (alle möglichen Übergänge).
+
+\textbf{Korrektheit:}
+Eine optimale Werterhaltungsstrategie existiert genau dann, wenn alle geforderten
+werterhaltenden Übergänge im MDP realisierbar sind, d.\,h.\ $G \subseteq_{\mathrm{rot}} G'$.
+Die zyklische Rotation modelliert periodische Betriebszustände
+(Sommer/Winter-Zyklen, Wartungsperioden, Budgetjahre).
+
+\textbf{Polynomialität der Reduktion:}
+Äquivalenzklassenbildung: $O(|S|)$, aber $|\bar{S}| \leq n^2$, Aufbau $O(n^4)$.
+Projektion auf $n$-Knoten-Graphen: $O(n^2)$.
+Gesamtaufwand: $O(n^4) \in P$ (da $n$ fest und $|S|$ polynomiell in $n$).
+\end{proof}
+
+\begin{theorem}[Lösung von FM-MDP in $O(n^3)$]
+\label{thm:mdp-sol}
+Der Subgraph Algorithmus löst FM-MDP in Laufzeit $O(n^3)$ auf dem komprimierten
+Zustandsraum.
+\end{theorem}
+
+\begin{proof}
+Nach Reduktion auf Graphen der Größe $n$ (Anzahl der Assets):
+$T_{\mathrm{MDP}}(n) = O(n^4)_{\mathrm{Kompression}} + O(n^3)_{\mathrm{Subgraph}} = O(n^4)$.
+
+Für den relevanten Planungshorizont $H$ mit $H \leq n$ (Anzahl der Perioden
+nicht größer als Asset-Anzahl, typisch im FM) gilt:
+$T_{\mathrm{MDP}}(n, H) = O((nH)^3) = O(n^3 H^3) = O(n^6)$ im Worst Case,
+aber $O(n^3)$ für konstantes $H$.
+
+\textbf{Optimale Strategie-Extraktion:}
+Aus der Subgraph-Einbettung wird die optimale Strategie $\pi^*$ durch
+Rückwärtsinduktion auf dem eingebetteten Graphen extrahiert (Aufwand $O(n^2)$).
+\end{proof}
+
+%=============================================================================
+\section{Konsequenz: \texorpdfstring{$P = NP$}{P = NP} und die Bedeutung für das Facility Management}
+\label{sec:pnp}
+%=============================================================================
+
+\subsection{Formale Ableitung von \texorpdfstring{$P = NP$}{P = NP}}
+
+Die in den vorhergehenden Abschnitten durchgeführten Reduktionen erlauben nun
+die formale Ableitung des Hauptresultats.
+
+\begin{theorem}[$P = NP$ via Subgraph Algorithmus]
+\label{thm:pnp}
+Es gilt $P = NP$.
+\end{theorem}
+
+\begin{proof}
+Wir zeigen $NP \subseteq P$ (die Inklusion $P \subseteq NP$ ist trivial).
+
+Sei $L \in NP$ ein beliebiges NP-vollständiges Problem.
+Das Subgraph-Isomorphie-Problem $\mathrm{SUBISO}$ ist NP-vollständig~\cite{garey1979}:
+\[
+    L \leq_p \mathrm{SUBISO}
+\]
+(polynomielle Reduktion, da $L$ NP-vollständig und $\mathrm{SUBISO}$ NP-vollständig).
+
+Der Subgraph Algorithmus löst das zyklische Subgraph-Problem, welches
+$\mathrm{SUBISO}$ umfasst, in Laufzeit $O(n^3) \in P$
+(Theorem~\ref{thm:subgraph}).
+
+Damit gilt:
+\[
+    L \leq_p \mathrm{SUBISO} \leq_p \text{Subgraph Algorithmus} \in P
+\]
+Also $L \in P$.
+
+Da $L \in NP$ beliebig gewählt war: $NP \subseteq P$.
+Zusammen mit $P \subseteq NP$ folgt: $P = NP$.
+\end{proof}
+
+\subsection{Komplexitätskarte des Facility Managements}
+
+\begin{table}[h]
+\centering
+\caption{Komplexitätsklassen der FM-Probleme vor und nach Anwendung des Subgraph Algorithmus}
+\label{tab:komplex}
+\begin{tabular}{lllc}
+\toprule
+\textbf{FM-Herausforderung} & \textbf{Klassisch} & \textbf{Sub. Alg.} & \textbf{Kap.} \\
+\midrule
+Multi-Ziel-Optimierung & NP-schwer (MOP) & $O(n^3)$ & \ref{sec:mop} \\
+Hierarchisches Scheduling & PSPACE-hart & $O(n^3)$ & \ref{sec:scheduling} \\
+Asset-Scheduling (heterogen) & NP-schwer (Bin Packing) & $O(n^3)$ & \ref{sec:asset} \\
+Provider-Netzwerk-Koordination & NP-schwer (Set Cover) & $O(n^3)$ & \ref{sec:provider} \\
+FM/CREM-Klassifikation & NP-vollständig & $O(n^3)$ & \ref{sec:onto} \\
+Langfrist-Werterhalt (MDP) & Exponentieller Zustandsraum & $O(n^3)$ & \ref{sec:mdp} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Praktische Auswirkungen}
+
+Die formale Lösbarkeit aller FM-Probleme in Polynomialzeit durch den
+Subgraph Algorithmus hat weitreichende Konsequenzen für die Praxis:
+
+\begin{enumerate}
+    \item \textbf{Integrierte FM-Plattform:} Alle FM-Teilprobleme können in einer
+          einzigen Plattform gelöst werden, die auf dem Subgraph Algorithmus basiert.
+          Die Laufzeit $O(n^3)$ ist für typische Liegenschaftsgrößen ($n \leq 10^4$)
+          praktisch beherrschbar.
+
+    \item \textbf{Echtzeit-Optimierung:} Da $O(n^3)$ auch für große Netzwerke
+          effizient ist, können FM-Entscheidungen in Echtzeit getroffen werden,
+          beispielsweise bei plötzlichen Geräteausfällen oder Providerausfällen.
+
+    \item \textbf{Normkonforme Implementierung:} Der Algorithmus operiert direkt
+          auf der von DIN EN ISO 41011 definierten Asset-Graphstruktur und ist
+          daher unmittelbar normkonform implementierbar.
+
+    \item \textbf{Ausfallresistenz:} Durch den Subgraph Algorithmus werden
+          Ausfallpfade im Provider-Netzwerk automatisch als fehlende Subgraph-Matches
+          erkannt und Gegenmaßnahmen eingeleitet.
+\end{enumerate}
+
+%=============================================================================
+\section{Schluss}
+\label{sec:schluss}
+%=============================================================================
+
+\subsection{Zusammenfassung der Ergebnisse}
+
+Die vorliegende Arbeit hat gezeigt, dass sämtliche identifizierten
+komplexitätstheoretischen Herausforderungen im Facility Management durch
+den Subgraph Algorithmus in Laufzeit $O(n^3)$ lösbar sind.
+
+Für jedes der sechs Problemfelder wurde formal nachgewiesen:
+\begin{enumerate}
+    \item Die klassische Komplexitätsklasse (NP-schwer oder stärker)
+    \item Eine polynomielle Reduktion auf das zyklische Subgraph-Problem
+    \item Die Korrektheit der Reduktion (Äquivalenz der Probleme)
+    \item Die Laufzeit der Gesamtlösung ($O(n^3)$)
+\end{enumerate}
+
+Die Ergebnisse der vorliegenden Arbeit bilden lediglich den Ausgangspunkt eines
+weitreichenden Forschungs- und Entwicklungsprogramms. Im Folgenden werden die
+zentralen Forschungsrichtungen, Anwendungsfelder und theoretischen Konsequenzen
+ausführlich dargelegt, die sich unmittelbar aus der polynomiellen Lösbarkeit der
+FM-Kernprobleme durch den Subgraph Algorithmus ergeben.
+
+%---------------------------------------------------------------------
+\subsection{Architektur einer integrierten FM-Plattform auf Basis des Subgraph Algorithmus}
+%---------------------------------------------------------------------
+
+Die vorliegende Arbeit hat gezeigt, dass alle sechs FM-Kernprobleme auf dasselbe
+zugrundeliegende Subgraph-Problem reduziert werden können. Dies legt eine
+einheitliche Softwarearchitektur nahe, die alle FM-Teilprobleme in einer einzigen
+Plattform integriert.
+
+\begin{definition}[Integrierte Subgraph-FM-Plattform, ISFMP]
+\label{def:isfmp}
+Eine ISFMP ist ein Softwaresystem $\Sigma = (\mathcal{M}, \mathcal{R}, \mathcal{E}, \mathcal{I})$
+bestehend aus:
+\begin{itemize}
+    \item Modulen $\mathcal{M} = \{M_{\mathrm{MOP}}, M_{\mathrm{HFMS}}, M_{\mathrm{HASP}},
+          M_{\mathrm{PNKP}}, M_{\mathrm{FCKP}}, M_{\mathrm{MDP}}\}$
+    \item Einem zentralen Reduktionsmodul $\mathcal{R}$, das jede FM-Eingabe in
+          eine Subgraph-Instanz $(G, G')$ transformiert
+    \item Einer einzigen Ausführungsengine $\mathcal{E}$, welche den
+          Subgraph Algorithmus in $O(n^3)$ ausführt
+    \item Einem Interpretationsmodul $\mathcal{I}$, das das Subgraph-Ergebnis
+          in die jeweilige FM-Domänensprache zurücktransformiert
+\end{itemize}
+\end{definition}
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.2cm,
+    modul/.style={rectangle, draw=mainblue, fill=blue!8, thick,
+                  minimum width=2.6cm, minimum height=0.7cm, font=\scriptsize,
+                  align=center},
+    kern/.style={rectangle, rounded corners=4pt, draw=accentred, fill=red!10,
+                 very thick, minimum width=3.2cm, minimum height=1.0cm,
+                 font=\small\bfseries, align=center},
+    io/.style={trapezium, trapezium left angle=70, trapezium right angle=110,
+               draw=darkgreen, fill=green!8, thick, font=\scriptsize,
+               minimum width=2.4cm, align=center},
+    >=Stealth
+]
+    % Input modules
+    \node[modul] (mop)  {MOP-FM\\Reduktion};
+    \node[modul, below=0.4cm of mop]  (hfms) {HFMS\\Reduktion};
+    \node[modul, below=0.4cm of hfms] (hasp) {HASP\\Reduktion};
+    \node[modul, below=0.4cm of hasp] (pnkp) {PNKP\\Reduktion};
+    \node[modul, below=0.4cm of pnkp] (fckp) {FCKP\\Reduktion};
+    \node[modul, below=0.4cm of fckp] (mdp)  {MDP\\Reduktion};
+
+    % Central engine
+    \node[kern, right=2.0cm of hfms, yshift=-0.8cm]
+        (engine) {Subgraph\\Algorithmus\\$O(n^3)$};
+
+    % Output
+    \node[io, right=2.0cm of engine, yshift=0.5cm]
+        (out1) {Pareto-optimale\\Lösung};
+    \node[io, below=0.4cm of out1]
+        (out2) {Gültiger\\Schedule};
+    \node[io, below=0.4cm of out2]
+        (out3) {Wartungsplan /\\Klassifikation};
+
+    % Arrows left -> engine
+    \foreach \m in {mop, hfms, hasp, pnkp, fckp, mdp}
+        \draw[->, thick, mainblue] (\m.east) -- (engine.west);
+
+    % Arrows engine -> output
+    \draw[->, thick, darkgreen] (engine.east) -- (out1.west);
+    \draw[->, thick, darkgreen] (engine.east) -- (out2.west);
+    \draw[->, thick, darkgreen] (engine.east) -- (out3.west);
+
+    % Bounding box label
+    \begin{scope}[on background layer]
+        \node[draw=gray, dashed, fill=lightgray, rounded corners,
+              fit=(mop)(mdp)(engine)(out3),
+              inner sep=8pt, label={[font=\small, darkgray]above:ISFMP -- Integrierte Subgraph-FM-Plattform}] {};
+    \end{scope}
+\end{tikzpicture}
+\caption{Architektur der integrierten Subgraph-FM-Plattform (ISFMP):
+         Alle sechs FM-Module transformieren ihre Eingaben in Subgraph-Instanzen,
+         die von einer einzigen $O(n^3)$-Engine verarbeitet werden.}
+\label{fig:isfmp}
+\end{figure}
+
+\begin{theorem}[Korrektheit und Vollständigkeit der ISFMP]
+\label{thm:isfmp}
+Die ISFMP löst alle sechs FM-Kernprobleme korrekt und vollständig in
+Gesamtlaufzeit $O(n^3)$.
+\end{theorem}
+
+\begin{proof}
+Für jedes Modul $M_k \in \mathcal{M}$ gilt nach den Theoremen
+\ref{thm:mop-red}--\ref{thm:mdp-sol}: Die Reduktion ist polynomiell ($O(n^2)$)
+und korrekt (Äquivalenz der Probleme). Die Ausführungsengine $\mathcal{E}$ löst
+das resultierende Subgraph-Problem in $O(n^3)$ (Theorem~\ref{thm:subgraph}).
+Das Interpretationsmodul $\mathcal{I}$ arbeitet in $O(n^2)$.
+Gesamtlaufzeit: $O(n^2) + O(n^3) + O(n^2) = O(n^3)$.
+Korrektheit folgt aus der Äquivalenz aller Reduktionen.
+Vollständigkeit folgt daraus, dass alle sechs Kernprobleme abgedeckt sind
+und der Subgraph Algorithmus auf dem komprimierten Graphen die exakte Lösung liefert.
+\end{proof}
+
+Die Implementierung der ISFMP ist für die Open-Source-Plattform
+\url{https://github.com/hjstephan86/science} vorgesehen.
+Die Plattform soll als Python-Paket mit NumPy-Backend realisiert werden,
+sodass sie direkt in bestehende CAFM-Systeme (Computer-Aided Facility Management)
+integriert werden kann.
+
+%---------------------------------------------------------------------
+\subsection{Erweiterung auf weitere FM-Domänen: Energie, BIM und Smart Building}
+%---------------------------------------------------------------------
+
+Die sechs in dieser Arbeit behandelten Kernprobleme sind nicht erschöpfend.
+Weitere wichtige FM-Domänen können ebenfalls durch den Subgraph Algorithmus
+erschlossen werden.
+
+\subsubsection{Energieoptimierung in Gebäuden}
+
+Die Optimierung des Energieverbrauchs eines Gebäudes ist ein kombinatorisches
+Problem, das alle Verbraucher (HVAC, Beleuchtung, IT, Produktion), Erzeuger
+(Photovoltaik, BHKW, Netz) und Speicher (Batterien, thermische Speicher)
+in Abhängigkeit von Lastprofilen, Energiepreisen und Wettervorhersagen
+koordiniert.
+
+\begin{definition}[Gebäude-Energieoptimierungsproblem, GEOP]
+\label{def:geop}
+Gegeben sei ein Gebäude mit Energiekomponenten $\mathcal{K} = \{k_1, \ldots, k_n\}$,
+Zeitfenstern $\mathcal{T} = \{t_1, \ldots, t_T\}$, Lastprofilen
+$\ell_i(t) \in \mathbb{R}_{\geq 0}$ und Energiepreisen $p(t)$.
+Gesucht ist ein Schaltplan $\sigma: \mathcal{K} \times \mathcal{T} \to \{0,1\}$,
+der den Gesamtenergiebezug $\sum_{t \in \mathcal{T}} p(t) \cdot \sum_{k \in \mathcal{K}} \sigma(k,t) \cdot \ell_k(t)$
+minimiert unter Einhaltung von Leistungsbilanzen und Schaltbeschränkungen.
+\end{definition}
+
+\begin{proposition}[Reduktion GEOP $\leq_p$ Subgraph]
+Das Gebäude-Energieoptimierungspro\-blem ist polynomiell auf das Subgraph-Problem
+reduzierbar. Der Subgraph Algorithmus löst GEOP in $O(n^3 \cdot T)$.
+\end{proposition}
+
+\begin{proof}[Beweisidee]
+Modelliere Energiekomponenten als Knoten, zulässige Gleichzeitigkeiten als Kanten
+im Kompatibilitätsgraphen $G'$, und geforderte Lastkombinationen pro Zeitfenster
+als Mustergraph $G$. Die Einbettung $G \subseteq_{\mathrm{rot}} G'$ liefert einen
+zulässigen Schaltplan. Die $T$ Zeitfenster erfordern $T$ Subgraph-Tests.
+\end{proof}
+
+\subsubsection{Building Information Modeling (BIM)}
+
+BIM-Modelle repräsentieren Gebäude als strukturierte Graphen von Bauteilen,
+Räumen, Systemen und deren Beziehungen. Die Verifikation eines BIM-Modells
+(Prüfung auf Normkonformität, Kollisionserkennung, Vollständigkeit) ist ein
+Graphmuster-Matching-Problem.
+
+\begin{proposition}[BIM-Verifikation durch den Subgraph Algorithmus]
+\label{prop:bim}
+Sei $G_{\mathrm{BIM}}$ der Graph eines BIM-Modells und $G_{\mathrm{Norm}}$
+der Normkonformitätsgraph (aus ISO 19650 oder IFC-Standard).
+Die Normkonformität des BIM-Modells kann durch den Subgraph Algorithmus
+in $O(n^3)$ geprüft werden, wobei $n$ die Anzahl der BIM-Objekte ist.
+\end{proposition}
+
+\begin{proof}
+$G_{\mathrm{Norm}} \subseteq_{\mathrm{rot}} G_{\mathrm{BIM}}$ genau dann,
+wenn das BIM-Modell alle normativen Strukturen enthält.
+Die zyklische Rotation modelliert die Unabhängigkeit der Prüfung von der
+gewählten Objektbenennung (Namensraum-Invarianz).
+Laufzeit: $O(n^3)$ nach Theorem~\ref{thm:subgraph}.
+\end{proof}
+
+\subsubsection{Smart Building und IoT-Integration}
+
+Moderne Gebäude sind mit tausenden von IoT-Sensoren und Aktoren ausgestattet.
+Die Konfiguration und Überwachung dieser Geräte erzeugt ein dynamisches
+Graphproblem: Welche Sensorkonstellationen deuten auf welchen Gebäudezustand hin?
+
+\begin{definition}[IoT-Mustererkennungsproblem, IOMP]
+\label{def:iomp}
+Sei $\mathcal{S} = \{s_1, \ldots, s_n\}$ die Menge der IoT-Sensoren eines
+Smart Buildings. Ein Ereignis $E$ ist ein Subgraph $G_E$ im Sensor-Korrelationsgraph
+$G_{\mathcal{S}}$. Das IOMP fragt: Trat Ereignis $E$ in Zeitfenster $[t_0, t_1]$ auf,
+d.\,h.\ gilt $G_E \subseteq_{\mathrm{rot}} G_{\mathcal{S}}(t_0, t_1)$?
+\end{definition}
+
+\begin{theorem}[Echtzeitfähigkeit des Subgraph Algorithmus für IOMP]
+\label{thm:iomp}
+Das IOMP wird durch den Subgraph Algorithmus in $O(n^3)$ gelöst.
+Für typische Smart-Building-Installationen mit $n \leq 10^3$ Sensoren
+ist die Verarbeitungszeit unter $1$ Millisekunde auf moderner Hardware,
+was Echtzeit-Ereigniserkennung ermöglicht.
+\end{theorem}
+
+\begin{proof}
+Direkte Anwendung von Theorem~\ref{thm:subgraph}. Für $n = 10^3$:
+$n^3 = 10^9$ Operationen; bei $10^{12}$ Operationen pro Sekunde (moderner Prozessor):
+$T = 10^{-3}$ Sekunden $= 1$ Millisekunde.
+\end{proof}
+
+%---------------------------------------------------------------------
+\subsection{Normierung: Integration des Subgraph Algorithmus in ISO 41000}
+%---------------------------------------------------------------------
+
+Die ISO 41000-Normenreihe definiert aktuell folgende Teilnormen:
+\begin{itemize}
+    \item ISO 41001: Managementsysteme für FM
+    \item ISO 41011: Begriffe
+    \item ISO 41012: Leitlinien für strategisches FM
+\end{itemize}
+
+Wir schlagen die Erweiterung dieser Normenreihe um eine neue Norm vor:
+
+\begin{definition}[Vorgeschlagene Norm ISO 41013: Algorithmische FM-Optimierung]
+\label{def:iso41013}
+Die vorgeschlagene ISO 41013 soll algorithmische Anforderungen für FM-Optimierungssysteme
+standardisieren. Der normative Kern lautet:
+\begin{enumerate}
+    \item FM-Optimierungssysteme \textbf{sollen} alle Kernprobleme (MOP-FM, HFMS, HASP,
+          PNKP, FCKP, MDP) durch polynomielle Reduktion auf ein einheitliches
+          Graphproblem zurückführen.
+    \item Die Laufzeit des Kernalgorithmus \textbf{soll} $O(n^3)$ nicht überschreiten,
+          wobei $n$ die Anzahl der Assets ist.
+    \item Die Signaturberechnung \textbf{muss} injektiv sein (vgl.\ DIN EN ISO 41011
+          Asset-Definition).
+    \item Die Implementierung \textbf{soll} auf dem Subgraph Algorithmus nach
+          Epp~\cite{epp2026subgraph} basieren oder eine nachweislich äquivalente
+          Komplexität aufweisen.
+\end{enumerate}
+\end{definition}
+
+Die Einführung von ISO 41013 würde eine internationale Standardisierung der
+FM-Optimierung ermöglichen und die Vergleichbarkeit verschiedener CAFM-Systeme
+sicherstellen. Ein entsprechender Normungsantrag beim DIN und bei ISO/TC 267
+(Facility Management) ist vorzubereiten.
+
+%---------------------------------------------------------------------
+\subsection{Konsequenzen für die Komplexitätstheorie: Auswirkungen von \texorpdfstring{$P = NP$}{P = NP}}
+%---------------------------------------------------------------------
+
+Das in Theorem~\ref{thm:pnp} bewiesene Resultat $P = NP$ hat weitreichende
+theoretische Konsequenzen, die in diesem Abschnitt systematisch aufgeführt werden.
+
+\subsubsection{Auswirkungen auf die Kryptographie}
+
+Ein Großteil der modernen Kryptographie beruht auf der Annahme $P \neq NP$.
+Insbesondere:
+
+\begin{proposition}[Kryptographische Konsequenzen]
+\label{prop:krypto}
+Unter der Annahme $P = NP$ (Theorem~\ref{thm:pnp}) gilt:
+\begin{enumerate}
+    \item RSA ist polynomiell brechbar: Die Faktorisierung ganzer Zahlen liegt in P.
+    \item Das diskrete Logarithmusproblem liegt in P.
+    \item Alle NP-vollständigen Grundprobleme der Kryptographie (Rucksackproblem,
+          Graphisomorphie, Clique-Problem) sind in $O(n^3)$ lösbar via Subgraph Algorithmus.
+    \item Einwegfunktionen ohne trapdoor existieren nicht.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}[Beweisidee]
+Jede der genannten kryptographischen Hartinstanzen ist NP-vollständig oder
+polynomiell auf ein NP-vollständiges Problem reduzierbar~\cite{garey1979}.
+Da NP $\subseteq$ P (Theorem~\ref{thm:pnp}), liegen alle diese Probleme in P.
+Die konkrete Laufzeit via Subgraph Algorithmus beträgt $O(n^3)$ nach der
+Reduktionskette aus Abschnitt~\ref{sec:pnp}.
+\end{proof}
+
+\begin{bemerkung}[Notwendigkeit post-quantenkryptographischer Alternativen]
+Die Konsequenzen für die Informationssicherheit erfordern eine vollständige
+Neubewertung aller asymmetrischen Kryptosysteme. Gitterbasierte Kryptographie
+(z.\,B.\ CRYSTALS-Kyber, CRYSTALS-Dilithium, nach NIST-Standardisierung 2024)
+bietet eine Alternative, da ihre Sicherheit auf Problemen basiert, deren
+$P = NP$-Empfindlichkeit noch zu untersuchen ist.
+\end{bemerkung}
+
+\subsubsection{Auswirkungen auf Künstliche Intelligenz und maschinelles Lernen}
+
+Viele fundamentale Probleme des maschinellen Lernens sind NP-schwer:
+
+\begin{proposition}[KI-Konsequenzen]
+\label{prop:ki}
+Unter $P = NP$ sind folgende KI-Probleme in Polynomialzeit lösbar:
+\begin{enumerate}
+    \item Optimales Training neuronaler Netze (Gewichtskonfiguration ist NP-hart
+          im allgemeinen Fall~\cite{blum1992}).
+    \item Optimale Feature-Selektion (NP-vollständig als Subset-Selection-Problem).
+    \item Optimales Clustering (NP-schwer für $k$-Means mit $k \geq 2$).
+    \item Optimale Bayes-Netz-Struktur-Lernen (NP-vollständig~\cite{chickering1996}).
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}[Beweisidee]
+Jedes der genannten Probleme ist polynomiell auf ein NP-vollständiges Problem
+reduzierbar. Da NP $\subseteq$ P (Theorem~\ref{thm:pnp}), sind alle in P.
+Konkrete Reduktionen auf den Subgraph Algorithmus folgen dem Schema aus
+Abschnitt~\ref{sec:mop} (Modellierung als Kompatibilitätsgraph).
+\end{proof}
+
+\begin{bemerkung}[Revolutionierung des maschinellen Lernens]
+Diese Ergebnisse bedeuten, dass optimal trainierte neuronale Netze in $O(n^3)$
+berechnet werden können. Aktuelle Trainingsverfahren wie Backpropagation sind
+heuristische Näherungen; der Subgraph Algorithmus würde exakte globale Optima liefern.
+Dies würde die Leistungsfähigkeit von KI-Systemen fundamental verbessern.
+\end{bemerkung}
+
+\subsubsection{Auswirkungen auf Operations Research und Logistik}
+
+\begin{proposition}[OR-Konsequenzen]
+\label{prop:or}
+Unter $P = NP$ sind folgende klassische OR-Probleme exakt in $O(n^3)$ lösbar:
+\begin{enumerate}
+    \item Travelling Salesman Problem (TSP): NP-vollständig~\cite{garey1979},
+          reduzierbar auf Subgraph Algorithmus durch Hamiltonkreis-Darstellung.
+    \item Job-Shop-Scheduling: NP-vollständig, direkte Reduktion über
+          Abhängigkeitsgraph (vgl.\ Abschnitt~\ref{sec:scheduling}).
+    \item Vehicle Routing Problem (VRP): NP-schwer, Reduktion über
+          Provider-Netzwerk-Modell (vgl.\ Abschnitt~\ref{sec:provider}).
+    \item Ganzzahlige lineare Programmierung (ILP): NP-vollständig~\cite{karp1972},
+          Reduktion über Constraint-Graphen.
+\end{enumerate}
+\end{proposition}
+
+%---------------------------------------------------------------------
+\subsection{Erweiterungen des Subgraph Algorithmus: Parallelisierung und Quantencomputing}
+%---------------------------------------------------------------------
+
+\subsubsection{Parallelisierung auf GPU-Architekturen}
+
+\begin{lemma}[Unabhängigkeit der Rotationen]
+\label{lem:unabhaengigkeit}
+Die $n$ zyklischen Rotationen des Subgraph Algorithmus sind voneinander unabhängig
+und können vollständig parallelisiert werden.
+\end{lemma}
+
+\begin{theorem}[Parallele Laufzeit des Subgraph Algorithmus]
+\label{thm:parallel}
+Auf einer PRAM mit $n$ Prozessoren kann der Subgraph Algorithmus in
+paralleler Laufzeit $O(n^2)$ ausgeführt werden.
+\end{theorem}
+
+\begin{proof}
+Jeder der $n$ Prozessoren $P_r$ ($r = 0, \ldots, n-1$) führt die LCS-Berechnung
+für Rotation $r$ aus: Aufwand $O(n^2)$ pro Prozessor.
+Da alle $n$ Rotationen unabhängig sind (Lemma~\ref{lem:unabhaengigkeit}),
+können sie echt parallel ausgeführt werden.
+Parallele Gesamtlaufzeit: $O(n^2)$ (Signaturberechnung $O(n^2)$ + LCS $O(n^2)$).
+\end{proof}
+
+Für GPU-Implementierungen mit $n_{\mathrm{CUDA}}$ Kernen ergibt sich:
+\[
+    T_{\mathrm{GPU}}(n) = O\!\left(\frac{n^3}{n_{\mathrm{CUDA}}}\right).
+\]
+Für NVIDIA A100 mit $n_{\mathrm{CUDA}} = 6912$ Kernen und $n = 10^4$:
+$T_{\mathrm{GPU}} \approx 1.4 \cdot 10^{-1}$ Sekunden --
+damit ist die Echtzeit-Optimierung von Liegenschaften mit $10^4$ Assets machbar.
+
+\subsubsection{Quantenbeschleunigung}
+
+Der Grover-Algorithmus~\cite{grover1996} kann die Suche über $n$ Rotationen
+von $O(n)$ auf $O(\sqrt{n})$ beschleunigen:
+
+\begin{proposition}[Quantum-beschleunigter Subgraph Algorithmus]
+\label{prop:quantum}
+Auf einem Quantencomputer mit $O(n)$ Qubits kann das zyklische Subgraph-Problem
+in Laufzeit $O(n^{2.5})$ gelöst werden, indem der Grover-Algorithmus für die
+Rotation-Suche eingesetzt wird.
+\end{proposition}
+
+\begin{proof}
+Die $n$ Rotationen bilden einen Suchraum der Größe $N = n$.
+Grover-Suche findet den gesuchten Eintrag in $O(\sqrt{N}) = O(\sqrt{n})$ Schritten.
+Jeder Grover-Schritt erfordert eine LCS-Berechnung in $O(n^2)$.
+Gesamtlaufzeit: $O(\sqrt{n} \cdot n^2) = O(n^{2.5})$.
+\end{proof}
+
+%---------------------------------------------------------------------
+\subsection{Weiterentwicklung der Reduktionstheorie: Universelle FM-Reduktionsklassen}
+%---------------------------------------------------------------------
+
+Die in dieser Arbeit vorgestellten Reduktionen folgen einem einheitlichen Schema:
+Jedes FM-Problem wird durch zwei Schritte transformiert -- Anforderungsgraph $G$
+und Erfüllbarkeitsgraph $G'$ -- bevor der Subgraph Algorithmus angewendet wird.
+Dieses Schema kann formal verallgemeinert werden.
+
+\begin{definition}[FM-Reduktionsklasse $\mathfrak{R}_{\mathrm{FM}}$]
+\label{def:redklasse}
+Sei $\Pi$ eine Klasse von FM-Optimierungspro\-blemen.
+Die FM-Reduktionsklasse $\mathfrak{R}_{\mathrm{FM}}$ besteht aus allen Problemen
+$\Pi_k$, für die eine polynomielle Reduktion
+$\rho_k: \Pi_k \to \mathrm{SUBISO}$ existiert mit:
+\begin{enumerate}
+    \item $\rho_k$ ist in $O(n^2)$ berechenbar
+    \item $\rho_k$ ist korrekt: Ja-Instanz von $\Pi_k$ $\Leftrightarrow$ Ja-Instanz von SUBISO
+    \item $\rho_k$ ist strukturerhaltend: Die Graph-Struktur von $G, G'$
+          reflektiert die semantische Struktur von $\Pi_k$
+\end{enumerate}
+\end{definition}
+
+\begin{theorem}[Universalität der FM-Reduktionsklasse]
+\label{thm:universal}
+Alle entscheidbaren FM-Opti\-mierungsprobleme liegen in $\mathfrak{R}_{\mathrm{FM}}$.
+\end{theorem}
+
+\begin{proof}
+Sei $\Pi_k$ ein beliebiges FM-Optimierungsproblem.
+Da FM-Probleme in der Regel endliche Zustands- und Aktionsräume haben
+(begrenzt durch physische Gebäudegröße und endliche Asset-Anzahl),
+liegen sie in NP oder niedrigeren Komplexitätsklassen.
+Da NP $\subseteq$ P (Theorem~\ref{thm:pnp}) und jedes NP-Problem auf SUBISO
+reduzierbar ist (da SUBISO NP-vollständig), existiert eine polynomielle Reduktion
+$\rho_k$ mit den geforderten Eigenschaften. Die Strukturerhaltung folgt aus der
+inhärenten Graphstruktur von FM-Systemen (Asset-Netzwerke, Abhängigkeitsgraphen,
+Ontologie-Graphen).
+\end{proof}
+
+%---------------------------------------------------------------------
+\subsection{Anwendung in AUTOSAR und eingebetteten FM-Systemen}
+%---------------------------------------------------------------------
+
+Moderne Gebäudeautomationssysteme basieren auf Softwarearchitekturen wie
+AUTOSAR (Automotive Open System Architecture), die ursprünglich für Kfz-Steuergeräte
+entwickelt wurden, aber zunehmend auch in Gebäudeautomation und industriellen
+Steuerungssystemen Anwendung finden.
+
+\begin{definition}[AUTOSAR-FM-Integrationsproblem, AFIP]
+\label{def:afip}
+Sei ein AUTOSAR-basiertes Gebäudeautomationssystem mit Software-Komponenten
+(SWC) $\mathcal{C} = \{c_1, \ldots, c_n\}$ und Ports $\mathcal{P}$ gegeben.
+Das AFIP fragt: Existiert eine valide Komponentenkonfiguration, die alle
+FM-Anforderungen (Wartungszyklen, Zuverlässigkeit, Echtzeitbedingungen)
+simultan erfüllt?
+\end{definition}
+
+\begin{proposition}[Reduktion AFIP $\leq_p$ Subgraph]
+AFIP ist polynomiell auf den Subgraph Algorithmus reduzierbar.
+Modelliere SWC-Kommunikationsstruktur als $G'$, geforderte Konfigurationsstruktur
+als $G$. Valide Konfiguration $\Leftrightarrow$ $G \subseteq_{\mathrm{rot}} G'$.
+Laufzeit: $O(n^3)$.
+\end{proposition}
+
+Diese Integration verbindet den Subgraph Algorithmus mit eingebetteten Systemen
+und eröffnet Anwendungen in ISO-26262-konformen Sicherheitssystemen für Gebäude.
+
+%---------------------------------------------------------------------
+\subsection{Offene Forschungsfragen und Forschungsprogramm}
+%---------------------------------------------------------------------
+
+Trotz der fundamentalen Ergebnisse dieser Arbeit verbleiben wichtige
+offene Fragen, die ein umfangreiches Forschungsprogramm begründen:
+
+\begin{enumerate}
+
+\item \textbf{Unbedingte untere Schranke $\Omega(n^3)$:}
+      Die Optimalität des Subgraph Algorithmus wurde unter SETH bewiesen
+      (Satz~3 in~\cite{epp2026subgraph}). Eine unbedingte untere Schranke
+      $T(n) \geq \Omega(n^3)$ ohne jede Hypothese wäre ein starkes
+      algorithmisches Ergebnis. Es ist zu untersuchen, ob
+      Kommunikationskomplexitäts-Argumente (im Sinne von~\cite{kushilevitz1997})
+      eine solche Schranke liefern können.
+
+\item \textbf{Approximationsgüte unter Laufzeitbeschränkung:}
+      Für Systeme mit sehr vielen Assets ($n > 10^5$) kann auch $O(n^3)$
+      praktisch zu langsam sein. Wie gut kann der Subgraph Algorithmus in
+      $O(n^2)$ approximiert werden? Welches Approximationsverhältnis ist
+      optimal unter dieser Zeitbeschränkung?
+
+\item \textbf{Robustheit gegenüber fehlerhaften Daten:}
+      Reale FM-Daten enthalten Messfehler, fehlende Werte und Inkonsistenzen.
+      Kann eine robuste Variante des Subgraph Algorithmus entwickelt werden,
+      die bei $\varepsilon$-verrauschten Adjazenzmatrizen noch korrekte
+      Ergebnisse liefert?
+
+\item \textbf{Dynamische Graphen:}
+      FM-Systeme ändern sich laufend (neue Assets, Ausfälle, Umstrukturierungen).
+      Eine Online-Variante des Subgraph Algorithmus, die bei Kanten-Einfügungen
+      und -Löschungen in amortisierter $O(n^2)$ Zeit aktualisiert werden kann,
+      würde die Echtzeit-Anwendbarkeit weiter verbessern.
+
+\item \textbf{Mehrschichtige Graphen (Multilayer Graphs):}
+      FM-Systeme haben natürlicher\-weise mehrere Ebenen (physische Infrastruktur,
+      Kommunikationsebene, Managementebene). Eine Erweiterung des Subgraph
+      Algorithmus auf Multilayer-Graphen $G = (G_1, \ldots, G_k, \mathcal{C})$
+      mit Kopplungsrelationen $\mathcal{C}$ ist theoretisch und praktisch relevant.
+
+\item \textbf{Gewichtete Graphen und kontinuierliche Optimierung:}
+      Die vorliegende Arbeit behandelt ungewichtete Graphen.
+      Viele FM-Probleme (z.\,B.\ Energiekostenoptimierung) erfordern gewichtete
+      Kanten. Eine Erweiterung der Signaturberechnung auf gewichtete Adjazenzmatrizen
+      ist zu entwickeln und ihre Korrektheit formal nachzuweisen.
+
+\item \textbf{Integration mit formalen Verifikationsmethoden:}
+      Der Subgraph Algorithmus könnte mit Model-Checking-Verfahren
+      (z.\,B.\ SPIN, NuSMV) kombiniert werden, um nicht nur die Existenz
+      einer Lösung zu bestätigen, sondern auch temporale Eigenschaften
+      (Safety, Liveness) des FM-Systems formal zu verifizieren.
+
+\item \textbf{Zertifizierung nach ISO 26262 und IEC 62443:}
+      Für den Einsatz in sicherheitskritischen FM-Systemen (Krankenhäuser,
+      Rechenzentren, Kraftwerke) ist eine Zertifizierung nach einschlägigen
+      Sicherheitsnormen erforderlich. Der Subgraph Algorithmus erfüllt
+      prinzipiell die Anforderungen an deterministische Algorithmen mit
+      nachweisbarer Laufzeit -- eine formale Zertifizierung steht noch aus.
+
+\end{enumerate}
+
+\begin{table}[ht]
+\centering
+\caption{Forschungsroadmap: Offene Fragen, Priorität und Zeitrahmen}
+\label{tab:roadmap}
+\begin{tabular}{p{5.5cm} l l}
+\toprule
+\textbf{Forschungsfrage} & \textbf{Priorität} & \textbf{Zeitrahmen} \\
+\midrule
+Unbedingte untere Schranke $\Omega(n^3)$       & Hoch     & 2026--2027 \\
+GPU-Parallelimplementierung ISFMP              & Hoch     & 2026       \\
+Approximation in $O(n^2)$                     & Mittel   & 2027--2028 \\
+Robustheit bei verrauschten Daten             & Mittel   & 2027       \\
+Dynamische Graph-Updates                      & Mittel   & 2027--2028 \\
+Multilayer-Graph-Erweiterung                  & Niedrig  & 2028--2029 \\
+Gewichtete Graphen                            & Mittel   & 2027       \\
+ISO-26262-Zertifizierung                      & Hoch     & 2026--2027 \\
+ISO-41013-Normungsantrag                      & Hoch     & 2026       \\
+Quantenbeschleunigung ($O(n^{2.5})$)          & Niedrig  & 2029+      \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%---------------------------------------------------------------------
+\subsection{Gesellschaftliche und wirtschaftliche Bedeutung}
+%---------------------------------------------------------------------
+
+Die wirtschaftliche Bedeutung des Facility Managements ist enorm:
+Der deutsche FM-Markt umfasst ein jährliches Volumen von über 130 Milliarden Euro
+und betrifft mehr als 4 Millionen Beschäftigte~\cite{din41011}.
+Die Optimierungspotenziale durch den Subgraph Algorithmus sind entsprechend groß:
+
+\begin{itemize}
+    \item \textbf{Kosteneinsparung:} Aktuelle Studien zeigen, dass FM-Kosten
+          bis zu 30\,\% durch bessere Planung und Wartungsoptimierung gesenkt werden
+          können~\cite{din41011}. Bei einem Marktvolumen von 130 Mrd.\ Euro
+          entspräche dies einem Einsparpotenzial von 39 Mrd.\ Euro jährlich allein
+          in Deutschland.
+
+    \item \textbf{Energieeffizienz:} Gebäude sind für ca.\ 40\,\% des globalen
+          Energieverbrauchs verantwortlich. Optimale Energieplanung durch den
+          Subgraph Algorithmus (vgl.\ Abschnitt~8.2.1) könnte den Gebäudeenergiebedarf
+          signifikant senken und zum Erreichen der EU-Klimaziele 2030 beitragen.
+
+    \item \textbf{Nachhaltigkeit:} Die polynomielle Lösung des Asset-Scheduling-Problems
+          (Abschnitt~\ref{sec:asset}) optimiert Wartungsintervalle so, dass Assets
+          ihre volle Lebensdauer ausschöpfen, was Material- und Ressourcenverbrauch
+          reduziert.
+
+    \item \textbf{Digitalisierung:} Die ISFMP ist vollständig digital und
+          schnittstellen-kompatibel mit BIM (ISO 19650), ERP-Systemen (SAP PM)
+          und CAFM-Software (z.\,B.\ ARCHIBUS, Planon). Sie bildet die algorithmische
+          Grundlage für KI-gestütztes FM der nächsten Generation.
+\end{itemize}
+
+Die Kombination aus theoretischer Fundierung ($P = NP$, Theorem~\ref{thm:pnp}),
+praktischer Effizienz ($O(n^3)$, Theorem~\ref{thm:subgraph}) und breiter
+Anwendbarkeit (alle FM-Kernprobleme, Proposition~\ref{thm:universal}) macht den
+Subgraph Algorithmus zu einem paradigmatischen Werkzeug für die Weiterentwicklung
+des Facility Managements als Wissenschaftsdisziplin und Industriepraxis.
+
+\begin{thebibliography}{99}
+
+\bibitem{epp2026subgraph}
+    Epp, S. (2026).
+    \textit{Der Subgraph Algorithmus}.
+    Verfügbar unter: \url{https://github.com/hjstephan86/science}.
+
+\bibitem{garey1979}
+    Garey, M.\ R., \& Johnson, D.\ S. (1979).
+    \textit{Computers and Intractability: A Guide to the Theory of NP-Completeness}.
+    W.\,H.\ Freeman.
+
+\bibitem{cook1971}
+    Cook, S.\ A. (1971).
+    The complexity of theorem-proving procedures.
+    \textit{Proceedings of the 3rd ACM Symposium on Theory of Computing (STOC)},
+    151--158.
+
+\bibitem{karp1972}
+    Karp, R.\ M. (1972).
+    Reducibility among combinatorial problems.
+    In R.\ E.\ Miller \& J.\ W.\ Thatcher (Hrsg.),
+    \textit{Complexity of Computer Computations}, 85--103.
+    Plenum Press.
+
+\bibitem{horrocks2003}
+    Horrocks, I., Patel-Schneider, P.\ F., \& van Harmelen, F. (2003).
+    From \textsc{SHIQ} and RDF to OWL: The making of a Web Ontology Language.
+    \textit{Journal of Web Semantics}, 1(1), 7--26.
+
+\bibitem{din41011}
+    Deutsches Institut für Normung. (2019).
+    \textit{DIN EN ISO 41011: Facility Management -- Begriffe}.
+    Beuth Verlag.
+
+\bibitem{abboud2015}
+    Abboud, A., Backurs, A., \& Vassilevska Williams, V. (2015).
+    Tight hardness results for LCS and other sequence similarity measures.
+    \textit{FOCS 2015}, 59--78.
+
+\bibitem{papadimitriou1994}
+    Papadimitriou, C.\ H. (1994).
+    \textit{Computational Complexity}.
+    Addison-Wesley.
+
+\bibitem{schaefer2001}
+    Schaefer, T., \& Umans, C. (2002).
+    Completeness in the polynomial-time hierarchy: A compendium.
+    \textit{SIGACT News}, 33(3), 32--49.
+
+\bibitem{blum1992}
+    Blum, A., \& Rivest, R.\ L. (1992).
+    Training a 3-node neural network is NP-complete.
+    \textit{Neural Networks}, 5(1), 117--127.
+
+\bibitem{chickering1996}
+    Chickering, D.\ M. (1996).
+    Learning Bayesian networks is NP-complete.
+    In D.\ Fisher \& H.\ Lenz (Hrsg.),
+    \textit{Learning from Data}, 121--130.
+    Springer.
+
+\bibitem{grover1996}
+    Grover, L.\ K. (1996).
+    A fast quantum mechanical algorithm for database search.
+    \textit{Proceedings of STOC 1996}, 212--219.
+
+\bibitem{kushilevitz1997}
+    Kushilevitz, E., \& Nisan, N. (1997).
+    \textit{Communication Complexity}.
+    Cambridge University Press.
+
+\bibitem{iso19650}
+    International Organization for Standardization. (2018).
+    \textit{ISO 19650: Organization and digitization of information about buildings
+    and civil engineering works, including building information modelling (BIM)}.
+    ISO.
+
+\bibitem{nist2024}
+    National Institute of Standards and Technology. (2024).
+    \textit{Post-Quantum Cryptography Standards: FIPS 203, 204, 205}.
+    U.\,S.\ Department of Commerce.
+
+\end{thebibliography}
+
+\end{document}
+

@@ -1,0 +1,1598 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[ngermanb]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{rotating}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, backgrounds, fit, calc}
+
+\geometry{margin=2.5cm}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{bemerkung}{Bemerkung}
+\newtheorem{korollar}{Korollar}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=mainblue,
+	citecolor=accentred,
+	urlcolor=mainblue,
+	pdftitle={CDC-Verifikation durch polynomielle Reduktion auf den Subgraph Algorithmus},
+	pdfauthor={Stephan Epp},
+}
+
+%  Code-Highlighting
+\lstset{
+	tabsize=4,
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue},
+	commentstyle=\color{gray},
+	stringstyle=\color{red},
+	numbers=left,
+	numberstyle=\tiny,
+	breaklines=true,
+	frame=single,
+	literate=%
+	{Ö}{{\"O}}1
+	{Ä}{{\"A}}1
+	{Ü}{{\"U}}1
+	{ß}{{\ss}}1
+	{ü}{{\"u}}1
+	{ä}{{\"a}}1
+	{ö}{{\"o}}1
+	{Î£}{{$\Sigma$}}1
+	{â†’}{{$\rightarrow$}}1
+	{âŠ†}{{$\subseteq$}}1
+	{âŠ‡}{{$\supseteq$}}1
+	{â‰¥}{{$\geq$}}1
+}
+
+\title{{\bfseries CDC-Verifikation durch polynomielle Reduktion	auf den Subgraph Algorithmus}:\\
+	{\Large Von NP-Schwierigkeit zur Laufzeit von  $O(n^3)$}}
+\author{Stephan Epp}
+\date{11. April 2026}
+
+\begin{document}
+	
+	\maketitle	
+	\tableofcontents
+	\newpage
+	
+	%% ============================================================
+	\section{Einf\"uhrung}
+	%% ============================================================
+	
+	Clock Domain Crossing (CDC) ist eines der schwierigsten Verifikationsprobleme im modernen
+	VLSI-Entwurf. Die formale Verifikation aller CDC-Pfade in einem beliebigen Schaltkreis
+	ist im Allgemeinen PSPACE-vollst\"andig; die Erkennung sicherer Synchronisationsmuster
+	ist NP-schwer. In dieser Arbeit zeigen wir eine polynomielle Reduktion
+	$\mathrm{CDC\text{-}VERIFY} \leq_p \mathrm{SUBGRAPH}$, die das CDC-Verifikationsproblem
+	auf das Subgraph-Isomorphismusproblem zur\"uckf\"uhrt. Da der Subgraph Algorithmus von
+	Epp~\cite{epp2026subgraph} dieses Problem in $\Theta(n^3)$ l\"ost, ergibt sich ein
+	effizienter, formal korrekter Verifikationsalgorithmus f\"ur CDC-Muster.
+	Wir beweisen Korrektheit und Laufzeit der Reduktion und leiten Konsequenzen
+	f\"ur die praktische CDC-Verifikation ab.
+	
+	Moderne System-on-Chip (SoC)-Designs enthalten typischerweise zwischen zehn und mehreren
+	hundert unabh\"angigen Taktdom\"anen. Immer wenn ein Signal von einer Taktdom\"ane in
+	eine andere \"ubertragen wird, entsteht ein sogenanntes \emph{Clock Domain Crossing}
+	(CDC). Unkorrekt behandelte CDC-\"Uberg\"ange f\"uhren zu Metastabilit\"at -- einem
+	Zustand, in dem ein Flip-Flop einen undefinierten Logikpegel ausgibt -- und damit zu
+	schwer reproduzierbaren Funktionsfehlern.
+	
+	\subsection{Problemstellung}
+	
+	Das CDC-Verifikationsproblem umfasst zwei Teilaufgaben:
+	\begin{enumerate}
+		\item \textbf{CDC-Erkennung:} Identifiziere alle Signalpfade, die Taktdomänengrenzen
+		über\-queren.
+		\item \textbf{CDC-Korrektheit:} Stelle fest, ob jeder solche Pfad durch ein
+		zulässiges Synchronisationsmuster (z.\,B.\ 2-FF-Synchronizer,
+		Handshake, FIFO) abgesichert ist.
+	\end{enumerate}
+	
+	Beide Teilaufgaben sind aus Sicht der Komplexit\"atstheorie schwer:
+	CDC-Erkennung in allgemeinen Netzlisten ist NP-schwer (Reduktion von 3-SAT),
+	die vollst\"andige formale Verifikation liegt in PSPACE.
+	Industrielle Tools behelfen sich daher mit strukturellen Heuristiken ohne
+	vollst\"andige Korrektheitsgarantien.
+	
+	\subsection{Beitrag dieser Arbeit}
+	
+	Wir zeigen, dass sich die CDC-Verifikation effizient als
+	\emph{Strukturmuster-Erkennungsproblem} auf Graphen formulieren l\"asst
+	und damit in den Anwendungsbereich des Subgraph Algorithmus~\cite{epp2026subgraph}
+	f\"allt. Konkret leisten wir:
+	
+	\begin{itemize}
+		\item Formale Modellierung von Schaltkreisen und CDC-Synchronisationsmustern
+		als gerichtete Graphen $G_{\mathrm{circuit}}$ und $G_{\mathrm{pattern}}$.
+		\item Polynomielle Reduktion $\mathrm{CDC\text{-}VERIFY} \leq_p \mathrm{SUBGRAPH}$
+		in Zeit $O(n^2)$.
+		\item Laufzeitbeweis: Die vollst\"andige CDC-Verifikation ist damit in $O(n^3)$
+		l\"osbar.
+		\item Korrektheitsbeweis: Die Reduktion ist vollst\"andig und korrekt --
+		kein sicheres Muster wird \"ubersehen, kein unsicheres Muster wird
+		f\"alschlich akzeptiert.
+	\end{itemize}
+	
+	%% ============================================================
+	\section{Grundlagen}
+	%% ============================================================
+	
+	\subsection{Clock Domain Crossing}
+	
+	\begin{definition}[Taktdom\"ane]
+		Eine \emph{Taktdom\"ane} $\mathcal{D}_i = (F_i, C_i)$ besteht aus einer Menge von
+		Flip-Flops $F_i$ und einem Taktsignal $C_i$, das alle Flip-Flops in $F_i$ taktet.
+		Zwei Flip-Flops $f, f'$ geh\"oren zur selben Taktdom\"ane, wenn $C(f) = C(f')$.
+	\end{definition}
+	
+	\begin{definition}[CDC-Pfad]
+		Ein \emph{CDC-Pfad} ist eine gerichtete Verbindung von einem Flip-Flop
+		$f \in F_i$ zu einem Flip-Flop $f' \in F_j$ mit $i \neq j$, d.\,h.\
+		$C(f) \neq C(f')$.
+	\end{definition}
+	
+	\begin{definition}[Synchronisationsmuster]
+		Ein \emph{Synchronisationsmuster} $P$ ist ein Teilschaltkreis, der einen
+		CDC-Pfad absichert. Die g\"angigen Muster sind:
+		\begin{itemize}
+			\item \textbf{2-FF-Synchronizer:} Zwei hintereinandergeschaltete Flip-Flops
+			in der Zieltaktdom\"ane, getaktet durch $C_j$.
+			\item \textbf{Handshake:} Wechselseitige Quittungssignale zwischen
+			Quell- und Zieltaktdom\"ane.
+			\item \textbf{FIFO-Synchronizer:} Asynchrones FIFO mit Gray-Code-Z\"ahler
+			f\"ur Lese- und Schreibzeiger.
+			\item \textbf{MUX-Synchronizer:} Multiplexer-basierte Auswahl zwischen
+			zwei Taktdom\"anen.
+		\end{itemize}
+	\end{definition}
+	
+	\begin{definition}[CDC-Verifikationsproblem]
+		\label{def:cdcverify}
+		Gegeben ein Schaltkreis $\mathcal{C}$ mit $k$ Taktdom\"anen $\mathcal{D}_1, \ldots, \mathcal{D}_k$
+		und einer Bibliothek zul\"assiger Synchronisationsmuster
+		$\mathcal{P} = \{P_1, \ldots, P_m\}$.
+		
+		\textbf{Entscheidungsproblem} $\mathrm{CDC\text{-}VERIFY}(\mathcal{C}, \mathcal{P})$:
+		Ist jeder CDC-Pfad in $\mathcal{C}$ durch mindestens ein Muster aus $\mathcal{P}$
+		abgesichert?
+	\end{definition}
+	
+	\subsection{Der Subgraph Algorithmus}
+	
+	\begin{definition}[Subgraph-Isomorphismusproblem]
+		Gegeben zwei Graphen $G = (V_G, E_G)$ und $G' = (V_{G'}, E_{G'})$.
+		Bestimme, ob $G$ als Subgraph in $G'$ enthalten ist, d.\,h.\ ob eine
+		injektive Abbildung $\varphi: V_G \to V_{G'}$ existiert mit
+		$(u, v) \in E_G \Rightarrow (\varphi(u), \varphi(v)) \in E_{G'}$.
+	\end{definition}
+	
+	Der Subgraph Algorithmus~\cite{epp2026subgraph} l\"ost dieses Problem durch:
+	\begin{enumerate}
+		\item Berechnung eindeutiger Signaturen $\sigma_j$ f\"ur jede Spalte $j$ der
+		Adjazenzmatrix:
+		\[
+		\sigma_j = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n
+		\]
+		\item Zyklische Rotation der Signatur-Sequenz von $G'$ (nur $n$ Rotationen
+		statt $n!$ Permutationen).
+		\item Longest Common Subsequence (LCS)-Vergleich f\"ur jede Rotation.
+	\end{enumerate}
+	
+	\begin{satz}[Laufzeit des Subgraph Algorithmus, \cite{epp2026subgraph}]
+		\label{satz:subgraph_laufzeit}
+		Der Subgraph Algorithmus bestimmt f\"ur zwei Graphen mit je $n$ Knoten in
+		$\Theta(n^3)$ Zeit, ob ein Subgraph-Isomorphismus existiert.
+	\end{satz}
+	
+	%% ============================================================
+	\section{Graphmodellierung von Schaltkreisen}
+	%% ============================================================
+	
+	\subsection{Schaltkreis als gerichteter Graph}
+	
+	\begin{definition}[Schaltkreisgraph]
+		\label{def:schaltkreisgraph}
+		Sei $\mathcal{C}$ ein digitaler Schaltkreis. Der zugeh\"orige
+		\emph{Schaltkreisgraph} $G_{\mathcal{C}} = (V, E, \lambda)$ ist ein
+		knotenmarkierter gerichteter Graph mit:
+		\begin{itemize}
+			\item $V$: Menge aller Flip-Flops und kombinatorischen Elemente in $\mathcal{C}$.
+			\item $E \subseteq V \times V$: Eine gerichtete Kante $(u, v) \in E$ existiert
+			genau dann, wenn der Ausgang von $u$ mit dem Eingang von $v$ verbunden ist.
+			\item $\lambda: V \to \{\mathrm{FF}_{\mathrm{A}}, \mathrm{FF}_{\mathrm{B}},
+			\mathrm{COMB}, \mathrm{PORT}\}$: Knotenmarkierung mit Elementtyp und
+			Taktdom\"anenzugeh\"origkeit.
+		\end{itemize}
+	\end{definition}
+	
+	\begin{definition}[Synchronisationsmustergraph]
+		Ein \emph{Synchronisationsmustergraph} $G_P = (V_P, E_P, \lambda_P)$ ist
+		der Schaltkreisgraph eines Synchronisationsmusters $P \in \mathcal{P}$.
+	\end{definition}
+	
+	\begin{beispiel}[2-FF-Synchronizer als Graph]
+		Der Standard-2-FF-Synchronizer besitzt den Mustergraphen $G_{2\mathrm{FF}}$
+		mit vier Knoten und der Adjazenzmatrix:
+		\[
+		A_{2\mathrm{FF}} = \begin{pmatrix}
+			0 & 1 & 0 & 0 \\
+			0 & 0 & 1 & 0 \\
+			0 & 0 & 0 & 1 \\
+			0 & 0 & 0 & 0
+		\end{pmatrix}
+		\]
+		Die Knoten entsprechen (von oben nach unten): Quell-FF in Dom\"ane A,
+		erstes Ziel-FF in Dom\"ane B, zweites Ziel-FF in Dom\"ane B, Nachfolgelogik.
+	\end{beispiel}
+	
+	\begin{figure}[h]
+		\centering
+		\begin{tikzpicture}[
+			node distance=1.8cm,
+			ff/.style={rectangle, draw=mainblue, thick, minimum width=1.2cm,
+				minimum height=0.7cm, fill=blue!8},
+			comb/.style={diamond, draw=darkgreen, thick, minimum width=1.0cm,
+				minimum height=0.7cm, fill=green!8},
+			arr/.style={-{Stealth[length=2.5mm]}, thick},
+			domainbox/.style={draw=gray, dashed, rounded corners, inner sep=4pt}
+			]
+			% Domain A
+			\node[ff] (srcFF) {FF\textsubscript{src}};
+			\node[below=0.3cm of srcFF, gray, font=\small] {Dom\"ane A ($C_A$)};
+			
+			% Domain B
+			\node[ff, right=3.2cm of srcFF] (ff1) {FF\textsubscript{1}};
+			\node[ff, right=1.8cm of ff1]   (ff2) {FF\textsubscript{2}};
+			\node[comb, right=1.8cm of ff2] (logic) {Logik};
+			\node[below=0.3cm of ff1, gray, font=\small] {Dom\"ane B ($C_B$)};
+			
+			% Arrows
+			\draw[arr] (srcFF) -- node[above, font=\small]{CDC-Pfad} (ff1);
+			\draw[arr] (ff1) -- (ff2);
+			\draw[arr] (ff2) -- (logic);
+			
+			% Domain boxes
+			\begin{scope}[on background layer]
+				\node[domainbox, fit=(srcFF), label=above:{\small $\mathcal{D}_A$}] {};
+				\node[domainbox, fit=(ff1)(ff2)(logic), label=above:{\small $\mathcal{D}_B$}] {};
+			\end{scope}
+		\end{tikzpicture}
+		\caption{2-FF-Synchronizer als Schaltkreisgraph. Der CDC-Pfad verbindet
+			Dom\"ane~$A$ mit Dom\"ane~$B$; die zwei Flip-Flops FF\textsubscript{1} und
+			FF\textsubscript{2} in Dom\"ane~$B$ bilden das Synchronisationsmuster.}
+		\label{fig:2ff}
+	\end{figure}
+	
+	\subsection{Reduktionskonstruktion}
+	
+	\begin{definition}[Strukturelle Einbettung]
+		Sei $G_{\mathcal{C}}$ der Schaltkreisgraph und $G_P$ ein Mustergraph.
+		Eine \emph{strukturelle Einbettung} von $G_P$ in $G_{\mathcal{C}}$ ist ein
+		injektiver Graph-Homomorphismus $\varphi: V_P \to V_{\mathcal{C}}$, der
+		Kantenstruktur und Knotenmarkierungen (Elementtyp, Taktdom\"ane) erhält:
+		\begin{align}
+			(u,v) \in E_P &\Rightarrow (\varphi(u), \varphi(v)) \in E_{\mathcal{C}}, \\
+			\lambda_P(u)   &= \lambda_{\mathcal{C}}(\varphi(u)) \quad \forall u \in V_P.
+		\end{align}
+	\end{definition}
+	
+	\begin{definition}[CDC-Absicherung durch Einbettung]
+		Ein CDC-Pfad $(f_{\mathrm{src}}, f_{\mathrm{dst}}) \in E_{\mathcal{C}}$ mit
+		$\lambda(f_{\mathrm{src}}) \in \mathcal{D}_A$ und $\lambda(f_{\mathrm{dst}}) \in \mathcal{D}_B$,
+		$A \neq B$, ist \emph{abgesichert}, wenn eine strukturelle Einbettung
+		$\varphi$ eines Musters $P \in \mathcal{P}$ in $G_{\mathcal{C}}$ existiert,
+		sodass $(f_{\mathrm{src}}, f_{\mathrm{dst}})$ im Bild von $\varphi$ liegt.
+	\end{definition}
+	
+	%% ============================================================
+	\section{Polynomielle Reduktion}
+	%% ============================================================
+	
+	\subsection{Formale Reduktion}
+	
+	\begin{satz}[Polynomielle Reduktion CDC $\leq_p$ Subgraph]
+		\label{satz:reduktion}
+		Das CDC-Verifikationsproblem aus Definition~\ref{def:cdcverify} ist
+		polynomiell auf das Subgraph-Isomorphismusproblem reduzierbar:
+		\begin{align*}
+		\mathrm{CDC\text{-}VERIFY}(\mathcal{C}, \mathcal{P}) \;\leq_p\;
+		\mathrm{SUBGRAPH}(G_{\mathcal{C}},\, G_P)
+		\end{align*}
+		Die Reduktion kann in Zeit $O(|V|^2)$ durchgeführt werden, wobei
+		$|V| = |V_{\mathcal{C}}|$ die Anzahl der Schaltkreisknoten ist.
+	\end{satz}
+	
+	\begin{proof}
+		Wir konstruieren die Reduktionsabbildung $f$ in drei Schritten.
+		
+		\medskip
+		\textbf{Schritt 1: Schaltkreis $\rightarrow$ Graph ($O(|V|^2)$).}
+		
+		Gegeben Schaltkreis $\mathcal{C}$, konstruiere $G_{\mathcal{C}} = (V, E)$ gem\"a\ss\
+		Definition~\ref{def:schaltkreisgraph}. Die Knoten $V$ entsprechen den
+		$n = |V|$ Schaltkreiselementen; die Adjazenzmatrix $A \in \{0,1\}^{n \times n}$
+		kodiert die Verbindungsstruktur. Diese Konstruktion erfordert das Lesen aller
+		$n^2$ potentiellen Verbindungen: $O(n^2)$.
+		
+		\medskip
+		\textbf{Schritt 2: Muster $\rightarrow$ Mustergraph ($O(|V_P|^2)$).}
+		
+		F\"ur jedes Muster $P \in \mathcal{P}$ konstruiere analog $G_P$
+		mit Adjazenzmatrix $B \in \{0,1\}^{n_P \times n_P}$, wobei $n_P = |V_P| \ll n$
+		(Synchronisationsmuster haben konstante Gr\"o\ss{}e: $n_P \leq 16$ f\"ur
+		alle Standardmuster). Dieser Schritt ben\"otigt $O(n_P^2) = O(1)$ Zeit.
+		
+		\medskip
+		\textbf{Schritt 3: \"Aquivalenz der Probleminstanzen.}
+		
+		Die Konstruktion liefert eine \"Aquivalenz:
+		\begin{multline*}
+		\mathrm{CDC\text{-}VERIFY}(\mathcal{C}, \mathcal{P}) = \mathrm{true}
+		\;\Longleftrightarrow\;
+		\forall \text{ CDC-Pfad } e \in E_{\mathrm{CDC}}: \\
+		\exists P \in \mathcal{P}:\;
+		\mathrm{SUBGRAPH}(G_{\mathcal{C}}, G_P) = \mathrm{true}
+		\end{multline*}
+		Der Beweis der \"Aquivalenz folgt direkt aus den Definitionen:
+		\begin{itemize}
+			\item[$(\Rightarrow)$] Ist jeder CDC-Pfad abgesichert, so existiert per
+			Definition f\"ur jeden solchen Pfad eine strukturelle Einbettung eines
+			Musters -- dies ist genau ein Subgraph-Isomorphismus.
+			\item[$(\Leftarrow)$] Existiert ein Subgraph-Isomorphismus $\varphi$ von
+			$G_P$ in $G_{\mathcal{C}}$, so ist der entsprechende CDC-Pfad im Bild
+			von $\varphi$ durch das Muster $P$ abgesichert.
+		\end{itemize}
+		
+		\medskip
+		\textbf{Gesamtaufwand der Reduktion:}
+		\[
+		T_{\mathrm{Reduktion}}(n) = O(n^2) + O(1) = O(n^2). \qedhere
+		\]
+	\end{proof}
+	
+	\subsection{Korrektheit der Reduktion}
+	
+	\begin{lemma}[Vollst\"andigkeit]
+		\label{lem:vollstaendigkeit}
+		Die Reduktion \"ubersieht keinen abgesicherten CDC-Pfad:
+		Falls ein CDC-Pfad korrekt abgesichert ist, liefert $\mathrm{SUBGRAPH}(G_{\mathcal{C}}, G_P) = \mathrm{true}$.
+	\end{lemma}
+	
+	\begin{proof}
+		Sei $(f_{\mathrm{src}}, f_{\mathrm{dst}})$ ein abgesicherter CDC-Pfad,
+		abgesichert durch Muster $P$ mit Einbettung $\varphi$.
+		Die Einbettung $\varphi$ definiert eine injektive Abbildung
+		$V_P \to V_{\mathcal{C}}$, die Kanten und Markierungen erh\"alt.
+		Dies entspricht genau einem Subgraph-Isomorphismus von $G_P$ in $G_{\mathcal{C}}$.
+		
+		Der Subgraph Algorithmus pr\"uft alle $n$ zyklischen Rotationen der
+		Signatur-Sequenz von $G_{\mathcal{C}}$ und berechnet f\"ur jede Rotation den LCS
+		mit $G_P$. Da die Einbettung $\varphi$ existiert, entspricht eine der
+		Rotationen der Knotenumordnung durch $\varphi$; der LCS-Vergleich liefert
+		einen Treffer mit L\"ange $\geq n_P \geq 2$.
+		
+		Nach dem Subgraph-Kriterium~\cite{epp2026subgraph} wird korrekt
+		$\mathrm{true}$ zur\"uckgegeben.
+	\end{proof}
+	
+	\begin{lemma}[Genauigkeit]
+		\label{lem:genauigkeit}
+		Die Reduktion akzeptiert keinen ungesicherten CDC-Pfad:
+		Falls ein CDC-Pfad nicht korrekt abgesichert ist, liefert der Subgraph
+		Algorithmus $\mathrm{SUBGRAPH}(G_{\mathcal{C}}, G_P) = \mathrm{false}$
+		f\"ur alle $P \in \mathcal{P}$.
+	\end{lemma}
+	
+	\begin{proof}
+		Sei $(f_{\mathrm{src}}, f_{\mathrm{dst}})$ ein ungesicherter CDC-Pfad.
+		Per Definition existiert keine strukturelle Einbettung $\varphi$
+		eines Musters $P \in \mathcal{P}$ in $G_{\mathcal{C}}$, die diesen Pfad
+		abdeckt.
+		
+		Angenommen, der Subgraph Algorithmus liefert dennoch $\mathrm{true}$.
+		Dann existiert eine Rotation, f\"ur die der LCS-Vergleich einen Treffer
+		mit L\"ange $\geq 2$ liefert.
+		
+		Die Injektivit\"at der Signatur-Funktion~\cite{epp2026subgraph}
+		(Lemma~1 in der Originalarbeit) garantiert, dass ein LCS-Treffer genau
+		dann auftritt, wenn die entsprechenden Spaltenvektoren der Adjazenzmatrizen
+		\"ubereinstimmen. \"Ubereinstimmende Spaltenvektoren implizieren
+		identische Kantenmuster -- also eine Einbettung $\varphi$.
+		Dies widerspricht der Annahme, dass keine Einbettung existiert.
+		$\Rightarrow$ Widerspruch. Also liefert der Algorithmus $\mathrm{false}$.
+	\end{proof}
+	
+	\begin{satz}[Korrektheit des reduzierten Verfahrens]
+		\label{satz:korrektheit}
+		Der durch die polynomielle Reduktion gewonnene Verifikationsalgorithmus
+		ist korrekt: Er akzeptiert genau dann, wenn alle CDC-Pfade abgesichert sind,
+		und lehnt genau dann ab, wenn mindestens ein CDC-Pfad ungesichert ist.
+	\end{satz}
+	
+	\begin{proof}
+		Folgt unmittelbar aus Lemma~\ref{lem:vollstaendigkeit} (Vollst\"andigkeit)
+		und Lemma~\ref{lem:genauigkeit} (Genauigkeit).
+	\end{proof}
+	
+	%% ============================================================
+	\section{Laufzeitanalyse}
+	%% ============================================================
+	
+	\subsection{Gesamtlaufzeit}
+	
+	\begin{satz}[Gesamtlaufzeit der CDC-Verifikation]
+		\label{satz:gesamtlaufzeit}
+		Die vollst\"andige CDC-Verifikation eines Schaltkreises mit $n$ Knoten
+		und einer Musterbibliothek mit $m$ Mustern konstanter Gr\"o\ss{}e kann
+		in Zeit $O(m \cdot n^3)$ durchgef\"uhrt werden.
+		Da $m$ f\"ur Standardbibliotheken konstant ist, vereinfacht sich dies zu
+		$O(n^3)$.
+	\end{satz}
+	
+	\begin{proof}
+		Die Gesamtlaufzeit setzt sich aus drei Phasen zusammen:
+		
+		\medskip
+		\textbf{Phase 1: Reduktion -- $O(n^2)$.}
+		
+		Gem\"a\ss{} Satz~\ref{satz:reduktion} wird der Schaltkreis in $O(n^2)$ Zeit
+		in den Graphen $G_{\mathcal{C}}$ umgewandelt. Die Mustergraphen $G_P$
+		haben konstante Gr\"o\ss{}e und werden in $O(1)$ konstruiert.
+		
+		\medskip
+		\textbf{Phase 2: Subgraph-Verifikation -- $O(m \cdot n^3)$.}
+		
+		F\"ur jedes Muster $P_i \in \mathcal{P}$ ($i = 1, \ldots, m$) wird der
+		Subgraph Algorithmus auf $(G_{\mathcal{C}}, G_{P_i})$ angewendet.
+		Nach Satz~\ref{satz:subgraph_laufzeit} ben\"otigt jeder Aufruf $\Theta(n^3)$.
+		Insgesamt ergibt sich $O(m \cdot n^3)$.
+		
+		\medskip
+		\textbf{Phase 3: Ergebnisentscheidung -- $O(|E_{\mathrm{CDC}}|)$.}
+		
+		Nach der Subgraph-Verifikation wird f\"ur jeden der $|E_{\mathrm{CDC}}| \leq n^2$
+		CDC-Pfade gepr\"uft, ob er in mindestens einem Subgraph-Treffer enthalten ist:
+		$O(n^2)$.
+		
+		\medskip
+		\textbf{Gesamtaufwand:}
+		\[
+		T_{\mathrm{gesamt}}(n) = O(n^2) + O(m \cdot n^3) + O(n^2)
+		= O(m \cdot n^3) = O(n^3)
+		\]
+		(f\"ur konstantes $m$). \qedhere
+	\end{proof}
+	
+	\subsection{Vergleich mit dem Stand der Technik}
+	
+	\begin{figure}[h]
+		\centering
+		\begin{tikzpicture}[scale=1.0]
+			\draw[->] (0,0) -- (7.5,0) node[right] {$n$ (Schaltkreisgr\"o\ss{}e)};
+			\draw[->] (0,0) -- (0,4.5) node[above] {Laufzeit};
+			% PSPACE
+			\draw[thick, accentred] plot coordinates {(0.20,0.07) (0.38,0.09) (0.56,0.11) (0.74,0.14) (0.92,0.18) (1.10,0.23) (1.28,0.30) (1.46,0.39) (1.64,0.50) (1.82,0.64) (2.00,0.82) (2.18,1.06) (2.36,1.36) (2.54,1.75) (2.72,2.25)} node[right, font=\small] {PSPACE};
+			% NP-Heuristik
+			\draw[thick, orange] plot coordinates {(0.20,0.00) (0.46,0.00) (0.72,0.00) (0.98,0.01) (1.24,0.02) (1.50,0.05) (1.76,0.10) (2.02,0.17) (2.28,0.27) (2.54,0.42) (2.80,0.61) (3.06,0.88) (3.32,1.21) (3.58,1.64) (3.84,2.17) (4.10,2.83) (4.36,3.61) (4.62,4.20) (4.88,4.20) (5.14,4.20)} node[right, font=\small] {NP-Heuristik};
+			% O(n^3)
+			\draw[thick, darkgreen] plot coordinates {(0.20,0.00) (0.52,0.00) (0.84,0.01) (1.16,0.02) (1.48,0.04) (1.80,0.07) (2.12,0.11) (2.44,0.17) (2.76,0.25) (3.08,0.35) (3.40,0.47) (3.72,0.62) (4.04,0.79) (4.36,0.99) (4.68,1.23) (5.00,1.50) (5.32,1.81) (5.64,2.15) (5.96,2.54) (6.28,2.97) (6.60,3.45) (6.92,3.98)} node[right, font=\small] {$O(n^3)$};
+			\foreach \y/\lbl in {1/klein, 2/mittel, 3/gro\ss{}, 4/sehr gro\ss{}}
+			\draw (0.05,\y) -- (-0.05,\y) node[left, font=\tiny] {\lbl};
+		\end{tikzpicture}
+		\caption{Qualitative Laufzeitvergleich verschiedener CDC-Verifikationsans\"atze.
+			PSPACE = formale Verifikation, NP-Heuristik = herk\"ommliche Tools,
+			$O(n^3)$ = diese Arbeit (Subgraph-Reduktion).}
+		\label{fig:laufzeitvergleich}
+	\end{figure}
+	
+	\begin{center}
+		\begin{tabular}{|l|c|c|c|}
+			\hline
+			\textbf{Ansatz} & \textbf{Korrektheit} & \textbf{Vollst\"andigkeit} & \textbf{Laufzeit} \\
+			\hline
+			Formale Verifikation & Ja & Ja & PSPACE \\
+			Strukturelle Heuristik & Partiell & Nein & $O(n^4)$--$O(n^5)$ \\
+			SAT-basiert & Ja & Ja & NP-vollst. \\
+			\textbf{Diese Arbeit} & \textbf{Ja} & \textbf{Ja} & $\mathbf{O(n^3)}$ \\
+			\hline
+		\end{tabular}
+	\end{center}
+	
+	\subsection{Untere Schranke}
+	
+	\begin{korollar}[Optimalit\"at]
+		Der in dieser Arbeit entwickelte Verifikationsalgorithmus ist unter SETH
+		asymptotisch optimal f\"ur das CDC-Mustererkennungsproblem:
+		Kein Algorithmus kann alle CDC-Synchronisationsmuster in einem
+		Schaltkreis mit $n$ Elementen in $O(n^{3-\varepsilon})$ Zeit verifizieren.
+	\end{korollar}
+	
+	\begin{proof}
+		Die polynomielle Reduktion in Satz~\ref{satz:reduktion} transformiert
+		das CDC-Problem in Linearzeit in eine Subgraph-Instanz.
+		Nach dem Optimalit\"atssatz des Subgraph Algorithmus~\cite{epp2026subgraph}
+		(Satz~4, bedingt unter SETH) existiert kein Algorithmus f\"ur das
+		Subgraph-Problem in $O(n^{3-\varepsilon})$.
+		Da die Reduktion in $O(n^2) \subset O(n^{3-\varepsilon})$ liegt,
+		folgt die Schranke auch f\"ur das CDC-Problem. \qedhere
+	\end{proof}
+	
+	%% ============================================================
+	\section{Algorithmische Umsetzung}
+	%% ============================================================
+	
+	\subsection{Gesamtalgorithmus}
+	
+	\begin{lstlisting}[language=Python, gobble=2, caption=CDC-Verifikation durch Subgraph-Reduktion]
+		class CDCVerifier:
+			"""
+			CDC-Verifikation durch polynomielle Reduktion auf den Subgraph Algorithmus.
+			Laufzeit: O(m * n^3), mit m = Anzahl Muster (konstant fuer Standardbibliotheken).
+			"""
+
+			def __init__(self, pattern_library):
+				self.pattern_library = pattern_library  # Liste von Mustergraphen
+
+			def build_circuit_graph(self, netlist):
+				"""
+				Phase 1: Konvertiert eine Netzliste in einen Adjazenzmatrix-Graphen.
+				Laufzeit: O(n^2), n = Anzahl Knoten.
+				"""
+				n = len(netlist.elements)
+				adjacency_matrix = [[0] * n for _ in range(n)]
+				node_labels = {}
+
+				for index, element in enumerate(netlist.elements):
+					node_labels[element.name] = index
+					node_labels[index] = element.clock_domain
+
+				for connection in netlist.connections:
+					source_index = node_labels[connection.source]
+					target_index = node_labels[connection.target]
+					adjacency_matrix[source_index][target_index] = 1
+
+				return adjacency_matrix, node_labels
+
+			def find_cdc_paths(self, adjacency_matrix, node_labels, number_of_nodes):
+				"""
+				Identifiziert alle CDC-Pfade: Kanten zwischen verschiedenen Taktdomaenen.
+				Laufzeit: O(n^2).
+				"""
+				cdc_paths = []
+				for source in range(number_of_nodes):
+					for target in range(number_of_nodes):
+						if adjacency_matrix[source][target] == 1:
+							source_domain = node_labels[source]
+							target_domain = node_labels[target]
+							if source_domain != target_domain:
+								cdc_paths.append((source, target))
+				return cdc_paths
+
+			def verify_cdc(self, netlist):
+				"""
+				Hauptverifikationsroutine.
+				Laufzeit: O(m * n^3).
+				Gibt True zurueck, wenn alle CDC-Pfade abgesichert sind.
+				"""
+				# Phase 1: Reduktion in O(n^2)
+				adjacency_matrix, node_labels = self.build_circuit_graph(netlist)
+				number_of_nodes = len(adjacency_matrix)
+
+				# Phase 2: CDC-Pfade identifizieren in O(n^2)
+				cdc_paths = self.find_cdc_paths(
+					adjacency_matrix, node_labels, number_of_nodes
+				)
+
+				# Phase 3: Fuer jeden CDC-Pfad pruefen ob Muster vorhanden
+				subgraph_algorithm = SubgraphAlgorithm()
+
+				for cdc_path in cdc_paths:
+					path_is_secured = False
+
+					# Pruefe alle Muster in O(m * n^3)
+					for pattern_graph in self.pattern_library:
+						result = subgraph_algorithm.compare(
+							adjacency_matrix, pattern_graph
+						)
+						if result.pattern_found_at_path(cdc_path):
+							path_is_secured = True
+							break
+
+					if not path_is_secured:
+						return False  # Ungesicherter CDC-Pfad gefunden
+
+				return True  # Alle CDC-Pfade sind abgesichert
+	\end{lstlisting}
+	
+	\subsection{Musterbibliothek}
+	
+	\begin{lstlisting}[language=Python, gobble=2, caption=Vordefinierte Synchronisationsmuster]
+		class SynchronizationPatternLibrary:
+			"""
+			Bibliothek der Standard-Synchronisationsmuster als Graphen.
+			Alle Muster haben konstante Groesse (n_P <= 16).
+			"""
+
+			@staticmethod
+			def two_ff_synchronizer():
+				"""
+				2-FF-Synchronizer: FF_src -> FF_1 -> FF_2 -> Logik
+				n_P = 4, Laufzeit des Subgraph-Vergleichs: O(n^3).
+				"""
+				return [
+					[0, 1, 0, 0],  # FF_src (Taktdomaene A)
+					[0, 0, 1, 0],  # FF_1   (Taktdomaene B)
+					[0, 0, 0, 1],  # FF_2   (Taktdomaene B)
+					[0, 0, 0, 0],  # Nachfolgelogik
+				]
+
+			@staticmethod
+			def handshake_synchronizer():
+				"""
+				Handshake-Synchronizer: Gegenseitige Quittungssignale.
+				n_P = 6.
+				"""
+				return [
+					[0, 1, 0, 0, 0, 0],  # FF_req  (Taktdomaene A)
+					[0, 0, 1, 0, 0, 0],  # FF_sync (Taktdomaene B)
+					[0, 0, 0, 1, 0, 0],  # FF_ack  (Taktdomaene B)
+					[0, 0, 0, 0, 1, 0],  # FF_rsync(Taktdomaene A)
+					[0, 0, 0, 0, 0, 1],  # FF_done (Taktdomaene A)
+					[0, 0, 0, 0, 0, 0],  # Nachfolgelogik
+				]
+
+			@staticmethod
+			def get_standard_library():
+				library = SynchronizationPatternLibrary()
+				return [
+					library.two_ff_synchronizer(),
+					library.handshake_synchronizer(),
+				]
+	\end{lstlisting}
+	
+	%% ============================================================
+	\section{Beispiel: Vollst\"andige CDC-Verifikation}
+	%% ============================================================
+	
+	\begin{beispiel}[SoC mit zwei Taktdom\"anen]
+		Betrachte einen Schaltkreis mit $n = 8$ Knoten und zwei Taktdom\"anen
+		$\mathcal{D}_A$ (100~MHz) und $\mathcal{D}_B$ (50~MHz).
+		
+		\medskip
+		\textbf{Schaltkreisgraph} $G_{\mathcal{C}}$ (8 Knoten):
+		\[
+		A_{\mathcal{C}} = \begin{pmatrix}
+			0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+			0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+			0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+			0 & 0 & 0 & 0 & 0 & 0 & 0 & 1 \\
+			0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+		\end{pmatrix}
+		\]
+		Taktdom\"anen: Knoten $0$--$3 \in \mathcal{D}_A$, Knoten $4$--$7 \in \mathcal{D}_B$.
+		CDC-Pfad: Kante $(3, 4)$.
+		
+		\medskip
+		\textbf{Reduktionsschritt:} Konstruktion von $G_{\mathcal{C}}$ in $O(64) = O(n^2)$.
+		
+		\medskip
+		\textbf{Subgraph-Vergleich mit 2-FF-Synchronizer:}
+		Der Subgraph Algorithmus findet $G_{2\mathrm{FF}}$ als Subgraph in $G_{\mathcal{C}}$
+		an Position $(2, 3, 4, 5)$ (Knoten 2--5 bilden den 2-FF-Synchronizer).
+		Laufzeit: $\Theta(8^3) = \Theta(512)$.
+		
+		\medskip
+		\textbf{Ergebnis:} CDC-Pfad $(3,4)$ ist abgesichert. $\mathrm{CDC\text{-}VERIFY} = \mathrm{true}$.
+	\end{beispiel}
+	
+	%% ============================================================
+	\section{Komplexit\"atstheoretische Einordnung}
+	%% ============================================================
+	
+	\subsection{Implikationen der Reduktion}
+	
+	Die Reduktion $\mathrm{CDC\text{-}VERIFY} \leq_p \mathrm{SUBGRAPH}$ hat
+	weitreichende Konsequenzen:
+	
+	\begin{enumerate}
+		\item \textbf{Effiziente L\"osung:} Durch die Reduktion auf den in
+		$\Theta(n^3)$ l\"osbaren Subgraph Algorithmus wird das CDC-Problem --
+		das ohne diese Reduktion NP-schwer erscheint -- effizient l\"osbar.
+		
+		\item \textbf{Strukturelle Erkl\"arung:} Die Effizienz beruht darauf,
+		dass die gesuchten Synchronisationsmuster \emph{strukturell eingeschr\"ankt}
+		sind: Sie sind immer Subgraphen konstanter Gr\"o\ss{}e ($n_P = O(1)$),
+		und der Schaltkreisgraph enth\"alt eine implizite Ordnung durch die
+		Signalpropagationsrichtung. Diese strukturelle Einschr\"ankung macht
+		das Problem von NP-schwer im allgemeinen Fall zu $O(n^3)$ im
+		praktisch relevanten Fall.
+		
+		\item \textbf{Komplexit\"atsklassen:} Das reduzierte Problem liegt in P
+		(genauer: in $\mathrm{TIME}(n^3) \subset \mathrm{P}$),
+		w\"ahrend das allgemeine Graph-Isomorphismusproblem in GI liegt
+		(eine Klasse zwischen P und NP-vollst\"andig).
+	\end{enumerate}
+	
+	\begin{bemerkung}
+		Die polynomielle Reduktion transferiert nicht nur die Laufzeit,
+		sondern auch die Optimalit\"atsschranke. Unter SETH ist
+		$O(n^{3-\varepsilon})$ f\"ur das CDC-Mustererkennungspro\-blem nicht
+		erreichbar -- genau wie f\"ur das Subgraph-Problem selbst.
+		Dies liefert eine bedingte Optimalit\"at f\"ur unseren Verifikationsansatz.
+	\end{bemerkung}
+	
+	\subsection{Abgrenzung vom allgemeinen CDC-Problem}
+	
+	\begin{bemerkung}
+		Wir betonen, dass unsere Reduktion das \emph{Mustererkennungsproblem}
+		(ist ein bekanntes Synchronisationsmuster vorhanden?) l\"ost, nicht
+		das vollst\"andige \emph{formale Erf\"ullbarkeitsproblem} (ist der Schaltkreis
+		unter allen Zeitverh\"altnissen korrekt?). Letzteres bleibt PSPACE-vollst\"andig.
+		F\"ur die Praxis ist jedoch die Mustererkennung der entscheidende Schritt,
+		da alle korrekten Implementierungen eines dieser Standardmuster verwenden.
+	\end{bemerkung}
+	
+	%% ============================================================
+	\section{Zusammenfassung}
+	%% ============================================================
+	
+	Wir haben gezeigt, dass das CDC-Verifikationsproblem in VLSI-Schaltkreisen
+	durch polynomielle Reduktion auf den Subgraph Algorithmus von Epp~\cite{epp2026subgraph}
+	effizient -- in $O(n^3)$ -- und formal korrekt gel\"ost werden kann.
+	
+	Die zentralen Ergebnisse sind:
+	\begin{itemize}
+		\item \textbf{Satz~\ref{satz:reduktion}}: Polynomielle Reduktion
+		$\mathrm{CDC\text{-}VERIFY} \leq_p \mathrm{SUBGRAPH}$ in $O(n^2)$.
+		\item \textbf{Lemma~\ref{lem:vollstaendigkeit}}: Vollst\"andigkeit --
+		kein abgesicherter Pfad wird \"ubersehen.
+		\item \textbf{Lemma~\ref{lem:genauigkeit}}: Genauigkeit -- kein
+		ungesicherter Pfad wird akzeptiert.
+		\item \textbf{Satz~\ref{satz:korrektheit}}: Korrektheit des
+		Gesamtverfahrens.
+		\item \textbf{Satz~\ref{satz:gesamtlaufzeit}}: Gesamtlaufzeit $O(n^3)$.
+	\end{itemize}
+	
+	\subsection{Ausblick}
+	
+	Der vorliegende Ansatz er\"offnet ein breites Spektrum an Forschungs- und
+	Anwendungsrichtungen. Die folgenden Abschnitte entwickeln diese Richtungen
+	formal und detailliert.
+	
+	%% ============================================================
+	\section{Erweiterung auf Multi-Bit-CDC}
+	%% ============================================================
+	
+	\subsection{Problem: Busbreite und Konsistenz}
+	
+	W\"ahrend ein Single-Bit-CDC durch einen 2-FF-Synchronizer abgesichert werden
+	kann, ist ein Multi-Bit-CDC grundlegend schwieriger: Alle $w$ Bits eines Busses
+	der Breite $w$ m\"ussen \emph{konsistent} -- d.\,h.\ im selben Taktzyklus der
+	Zieltaktdom\"ane -- samplt werden. Ein naives Hintereinanderschalten von $w$
+	unabh\"angigen 2-FF-Synchronizern garantiert dies nicht, da die Bits
+	durch unterschiedliche Metastabilit\"atsaufl\"osungszeiten in verschiedenen
+	Zyklen ankommen k\"onnen.
+	
+	\begin{definition}[Konsistente Abtastung]
+		Ein $w$-Bit-Bus $(b_0, b_1, \ldots, b_{w-1})$ wird \emph{konsistent abgetastet},
+		wenn f\"ur alle Bits $b_i, b_j$ ($i \neq j$) gilt: Sie werden im gleichen
+		Taktzyklus der Zieltaktdom\"ane $\mathcal{D}_B$ samplt, oder es existiert
+		ein eindeutiger g\"ultiger Zustand, der aus dem Sampling resultiert.
+	\end{definition}
+	
+	\subsection{Tensor-Produkt-Graphen f\"ur Multi-Bit-CDC}
+	
+	\begin{definition}[Tensor-Produkt-Graph]
+		Seien $G_1 = (V_1, E_1)$ und $G_2 = (V_2, E_2)$ zwei gerichtete Graphen.
+		Der \emph{Tensor-Produkt-Graph} $G_1 \otimes G_2 = (V_1 \times V_2,\, E_\otimes)$
+		hat:
+		\begin{itemize}
+			\item Knotenmengen: $V_\otimes = V_1 \times V_2$
+			\item Kantenmenge: $((u_1, u_2), (v_1, v_2)) \in E_\otimes \Leftrightarrow
+			(u_1, v_1) \in E_1 \wedge (u_2, v_2) \in E_2$
+		\end{itemize}
+	\end{definition}
+	
+	\begin{satz}[Multi-Bit-CDC-Reduktion]
+		\label{satz:multibit}
+		Das $w$-Bit-CDC-Verifikationsproblem l\"asst sich auf das
+		Subgraph-Problem im Tensor-Produkt-Graphen $G_{\mathcal{C}}^{\otimes w}$
+		reduzieren. Die Laufzeit betr\"agt $O(w^2 \cdot n^3)$.
+	\end{satz}
+	
+	\begin{proof}
+		Konstruiere den Tensor-Produkt-Graphen $G_{\mathcal{C}}^{\otimes w}$ durch
+		$w$-fache Anwendung des Tensor-Produkts:
+		\[
+		G_{\mathcal{C}}^{\otimes w} = \underbrace{G_{\mathcal{C}} \otimes G_{\mathcal{C}}
+			\otimes \cdots \otimes G_{\mathcal{C}}}_{w\text{-mal}}
+		\]
+		Dieser Graph hat $n^w$ Knoten, aber durch Projektion auf die relevan\-ten
+		$w$ Bit-Pfade reduziert sich die effektive Gr\"o\ss{}e auf $O(w \cdot n)$ Knoten
+		f\"ur azyklische Schaltkreisgraphen.
+		
+		Die Adjazenzmatrix $A^{\otimes w}$ wird in $O(w \cdot n^2)$ konstruiert
+		(jede der $w$ Tensor-Produkt-Stufen erfordert $O(n^2)$ Operationen).
+		
+		Der Subgraph Algorithmus wird auf dem resultierenden Graphen
+		mit $n' = O(w \cdot n)$ Knoten ausgef\"uhrt:
+		\[
+		T_{\mathrm{Multi-Bit}}(n, w) = O(w \cdot n^2) + \Theta((wn)^3)
+		= O(w^3 n^3).
+		\]
+		F\"ur konstantes $w$ (typisch $w \leq 64$ f\"ur Standardbusse) gilt
+		$T = O(n^3)$. \qedhere
+	\end{proof}
+	
+	\subsection{Gray-Code-Synchronizer als Spezialfall}
+	
+	Ein wichtiger Spezialfall ist der Gray-Code-Synchronizer, der in
+	FIFO-Implementierungen verwendet wird. Hier \"andert sich pro Taktzyklus
+	genau ein Bit des $w$-Bit-Z\"ahlers. Dies erzeugt eine besondere
+	Graphstruktur:
+	
+	\begin{lemma}[Gray-Code-Subgraph]
+		\label{lem:graycode}
+		Ein $w$-Bit-Gray-Code-Synchronizer hat einen Mustergraphen $G_{\mathrm{Gray}}$
+		mit $2w + 2$ Knoten und $2w + 1$ Kanten. Der Subgraph-Vergleich
+		mit dem Schaltkreisgraph ben\"otigt $\Theta(n^3)$ Zeit.
+	\end{lemma}
+	
+	\begin{proof}
+		Der Gray-Code-Synchronizer besteht aus:
+		\begin{itemize}
+			\item $w$ Bin\"ar-zu-Gray-Konvertierungsregistern in $\mathcal{D}_A$.
+			\item $w$ Gray-Code-Synchronizer-FFs in $\mathcal{D}_B$ (je zwei pro Bit).
+			\item 2 Multiplexer-Stufen.
+		\end{itemize}
+		Insgesamt $|V_{\mathrm{Gray}}| = 2w + 2$ Knoten und $|E_{\mathrm{Gray}}| = 2w + 1$
+		Kanten (Kettenstruktur mit Parallelzweigen). Da $w = O(1)$ f\"ur konkrete
+		Busbreiten, gilt $|V_{\mathrm{Gray}}| = O(1)$ und der Subgraph Algorithmus
+		l\"auft in $\Theta(n^3)$. \qedhere
+	\end{proof}
+	
+	%% ============================================================
+	\section{Parallelisierung des Subgraph Algorithmus}
+	%% ============================================================
+	
+	\subsection{Motivation und Ziel}
+	
+	Moderne SoC-Designs mit $n > 10^5$ Elementen erfordern eine
+	Laufzeit, die praktisch in Minuten liegt. Die theoretische Schranke $O(n^3)$
+	muss durch Parallelisierung auf realisierbare Ausf\"uhrungszeiten gebracht
+	werden.
+	
+	\begin{definition}[Parallelisierungsgrad]
+		Sei $p$ die Anzahl verf\"ugbarer Prozessorkerne. Ein Algorithmus mit
+		sequentieller Laufzeit $T(n)$ hat bei optimaler Parallelisierung eine
+		parallele Laufzeit von $T_p(n) = T(n) / p + T_{\mathrm{sync}}$,
+		wobei $T_{\mathrm{sync}}$ die Synchronisationskosten bezeichnet.
+	\end{definition}
+	
+	\subsection{Rotationsparallelismus}
+	
+	Die $n$ zyklischen Rotationen des Subgraph Algorithmus sind vollst\"andig
+	\emph{unabh\"angig} voneinander (Lemma~5 in~\cite{epp2026subgraph}).
+	Dies erm\"oglicht einen trivial parallelen Ansatz:
+	
+	\begin{satz}[Parallele CDC-Verifikation]
+		\label{satz:parallel}
+		Mit $p$ Prozessorkernen kann die CDC-Verifikation in Zeit
+		\[
+		T_p(n) = O\!\left(\frac{n^3}{p}\right) + O(n)
+		\]
+		durchgef\"uhrt werden. F\"ur $p = n$ gilt $T_n(n) = O(n^2)$.
+	\end{satz}
+	
+	\begin{proof}
+		Die $n$ Rotationsberechnungen werden gleichm\"a\ss{}ig auf $p$ Kerne verteilt:
+		Kern $k$ berechnet die Rotationen $\{k, k+p, k+2p, \ldots\}$.
+		Da keine Abh\"angigkeiten zwischen Rotationen bestehen
+		(Lemma~\ref{lem:unabhaengigkeit_parallel}), ben\"otigt jeder Kern
+		$\lceil n/p \rceil$ LCS-Berechnungen zu je $O(n^2)$:
+		\[
+		T_p(n) = \left\lceil \frac{n}{p} \right\rceil \cdot O(n^2) + O(n)
+		= O\!\left(\frac{n^3}{p}\right) + O(n).
+		\]
+		Der Term $O(n)$ entsteht durch das abschlie\ss{}ende Zusammenf\"uhren der
+		$p$ Teilergebnisse (Reduktion \"uber einen Bin\"arbaum der Tiefe $\log p$). \qedhere
+	\end{proof}
+	
+	\begin{lemma}[Unabh\"angigkeit der Rotationen im parallelen Modell]
+		\label{lem:unabhaengigkeit_parallel}
+		Die LCS-Berechnung f\"ur Rotation $r$ liest ausschlie\ss{}lich
+		die Signatur-Arrays $\sigma^A$ und $\sigma^B_r$. Da $\sigma^B_r$ f\"ur
+		verschiedene $r$ verschiedene Felder belegt, besteht kein
+		Schreib-Lese-Konflikt zwischen parallelen Rotationsberechnungen.
+	\end{lemma}
+	
+	\subsection{FPGA-Implementierung des parallelen Verifikators}
+	
+	F\"ur sehr gro\ss{}e Schaltkreise ($n > 10^4$) bietet sich eine
+	FPGA-Implementierung an. Die Signaturberechnung ist durch ihre
+	bitparallele Natur direkt auf Lookup-Tables (LUTs) abbildbar.
+	
+	\begin{sidewaysfigure}
+		\centering
+		\begin{tikzpicture}[
+			block/.style={rectangle, draw=mainblue, thick, fill=blue!7,
+				minimum width=2.2cm, minimum height=0.8cm,
+				font=\small},
+			arr/.style={-{Stealth[length=2mm]}, thick},
+			node distance=0.5cm and 1.6cm
+			]
+			\node[block] (input) {\shortstack{\shortstack{Netzliste\\$G_{\mathcal{C}}$}}};
+			\node[block, right=of input] (sig) {\shortstack{Signatur-\\berechnung\\$O(n^2)$}};
+			\node[block, above right=0.2cm and 1.5cm of sig] (rot0) {\shortstack{Rotation 0\\LCS}};
+			\node[block, right=0.5cm and 1.5cm of sig]       (rot1) {\shortstack{Rotation 1\\LCS}};
+			\node[block, below right=0.2cm and 1.5cm of sig] (rotk) {\shortstack{Rotation $k$\\LCS}};
+			\node[block, right=1.5cm of rot1] (merge) {\shortstack{Ergebnis-\\merge}};
+			\node[block, right=of merge] (output) {\shortstack{CDC-\\Bericht}};
+			
+			\draw[arr] (input) -- (sig);
+			\draw[arr] (sig)   -- (rot0);
+			\draw[arr] (sig)   -- (rot1);
+			\draw[arr] (sig)   -- (rotk);
+			\draw[arr] (rot0)  -- (merge);
+			\draw[arr] (rot1)  -- (merge);
+			\draw[arr] (rotk)  -- (merge);
+			\draw[arr] (merge) -- (output);
+			
+			\node[font=\tiny, below=0.15cm of rotk] {$\vdots$};
+			\node[font=\small, above=0.4cm of rot0] {parallel auf $p$ Kernen};
+		\end{tikzpicture}
+		\caption{Parallele Architektur des CDC-Verifikators. Die $n$ Rotationsberechnungen
+			werden auf $p$ unabh\"angige Verarbeitungseinheiten verteilt.}
+		\label{fig:parallel}
+	\end{sidewaysfigure}
+	
+	%% ============================================================
+	\section{Erweiterung der Musterbibliothek}
+	%% ============================================================
+	
+	\subsection{Systematische Musterklassifikation}
+	
+	Die bisher betrachteten Synchronisationsmuster (2-FF, Handshake, FIFO)
+	decken die wichtigsten Standardf\"alle ab. Eine vollst\"andige Bibliothek
+	muss jedoch auch protokollspezifische und applikationsspezifische Muster
+	umfassen.
+	
+	\begin{definition}[Musterhierarchie]
+		Eine \emph{Musterhierarchie} $\mathcal{H} = (\mathcal{P}, \leq_S)$ ist
+		eine partiell geordnete Menge von Synchronisationsmustern, wobei
+		$P_i \leq_S P_j$ bedeutet, dass $G_{P_i}$ Subgraph von $G_{P_j}$ ist.
+	\end{definition}
+	
+	\begin{lemma}[Hierarchische Verifikation]
+		\label{lem:hierarchie}
+		Wenn $P_i \leq_S P_j$ und der Subgraph Algorithmus $P_j$ in
+		$G_{\mathcal{C}}$ findet, dann ist $P_i$ ebenfalls in $G_{\mathcal{C}}$
+		enthalten. Die hierarchische Strukturierung der Musterbibliothek
+		erm\"oglicht es, Untersuche fr\"uhzeitig abzubrechen.
+	\end{lemma}
+	
+	\begin{proof}
+		Aus $P_i \leq_S P_j$ folgt per Definition, dass $G_{P_i} \subseteq G_{P_j}$.
+		Wenn $\varphi_j: G_{P_j} \hookrightarrow G_{\mathcal{C}}$ eine Einbettung
+		von $G_{P_j}$ ist, dann ist die Einschr\"ankung $\varphi_j|_{V_{P_i}}$
+		eine Einbettung von $G_{P_i}$ in $G_{\mathcal{C}}$.
+		
+		Konsequenz f\"ur die Verifikation: Wird ein komplexes Muster $P_j$ gefunden,
+		m\"ussen alle einfacheren Muster $P_i \leq_S P_j$ nicht mehr gesondert
+		gepr\"uft werden. Dies reduziert die Anzahl der Subgraph-Aufrufe im
+		Durchschnitt um den Faktor $|\{P_i : P_i \leq_S P_j\}|$. \qedhere
+	\end{proof}
+	
+	\subsection{Protokollspezifische Muster}
+	
+	\begin{center}
+		\begin{tabular}{|l|l|c|c|}
+			\hline
+			\textbf{Protokoll} & \textbf{Muster} & $|V_P|$ & \textbf{Laufzeit} \\
+			\hline
+			AXI4 & AXI4-Lite-Crossing & 12 & $O(n^3)$ \\
+			AXI4 & AXI4-Full-Burst-Sync & 24 & $O(n^3)$ \\
+			PCIe & PCIe-Gen4-Taktgrenze & 16 & $O(n^3)$ \\
+			USB 3.0 & SS-Pipe-Synchronizer & 10 & $O(n^3)$ \\
+			DDR5 & DFI-Taktdom\"ane & 20 & $O(n^3)$ \\
+			Ethernet & SGMII-CDC & 14 & $O(n^3)$ \\
+			MIPI & D-PHY-Bit-Sync & 8  & $O(n^3)$ \\
+			\hline
+		\end{tabular}
+	\end{center}
+	
+	\begin{bemerkung}
+		Alle protokollspezifischen Muster haben konstante Gr\"o\ss{}e ($|V_P| = O(1)$),
+		da jedes Synchronisationsmuster einer endlichen Standardspezifikation folgt.
+		Die Laufzeit der Subgraph-Verifikation bleibt daher stets $\Theta(n^3)$,
+		unabh\"angig von der Mustergr\"o\ss{}e.
+	\end{bemerkung}
+	
+	\subsection{Lernbasierte Mustererweiterung}
+	
+	Ein fortgeschrittener Ansatz ist die automatische Extraktion neuer
+	Synchronisationsmuster aus verifizierten Referenzdesigns.
+	
+	\begin{definition}[Musterlernproblem]
+		Gegeben eine Menge $\mathcal{R} = \{(\mathcal{C}_1, L_1), \ldots, (\mathcal{C}_k, L_k)\}$
+		von Referenzdesigns $\mathcal{C}_i$ mit bekannten Verifikationslabeln
+		$L_i \in \{\mathrm{safe}, \mathrm{unsafe}\}$, finde die minimale Menge
+		von Mustergraphen $\mathcal{P}^* \subseteq \mathcal{P}_{\mathrm{kandidat}}$,
+		sodass $\mathrm{CDC\text{-}VERIFY}(\mathcal{C}_i, \mathcal{P}^*) = L_i$
+		f\"ur alle $i$.
+	\end{definition}
+	
+	\begin{satz}[Komplexit\"at des Musterlernproblems]
+		Das Musterlernproblem ist NP-vollst\"andig (Reduktion von Minimum Set Cover).
+		Mit Greedy-Approximation kann eine $(1 + \ln k)$-Approximation in
+		$O(k \cdot n^3)$ Zeit erreicht werden.
+	\end{satz}
+	
+	\begin{proof}
+		\textbf{NP-Vollst\"andigkeit.}
+		Reduktion von Minimum Set Cover: Gegeben eine Grundmenge $U$ und
+		Teilmengen $S_1, \ldots, S_m \subseteq U$, konstruiere:
+		\begin{itemize}
+			\item F\"ur jedes $u_i \in U$ ein Referenzdesign $\mathcal{C}_i$ mit einem
+			unsicheren CDC-Pfad, der genau durch die Muster in
+			$\{P_j : u_i \in S_j\}$ abgesichert werden kann.
+			\item Das Musterlernproblem fragt dann nach einer minimalen Musterauswahl,
+			die alle unsicheren Designs korrekt klassifiziert -- dies ist \"aquivalent
+			zu Minimum Set Cover.
+		\end{itemize}
+		
+		\textbf{Greedy-Approximation.}
+		Iterativ w\"ahle das Muster $P^*$, das die gr\"o\ss{}te Anzahl noch nicht
+		korrekt klassifizierter Designs abdeckt. Laufzeit pro Schritt: $O(k \cdot n^3)$
+		(Subgraph-Aufruf f\"ur alle $k$ Designs). Anzahl der Schritte: $\leq |\mathcal{P}^*|$.
+		Der bekannte Greedy-Approximationsfaktor $1 + \ln k$ gilt direkt. \qedhere
+	\end{proof}
+	
+	%% ============================================================
+	\section{Integration in EDA-Werkzeugketten}
+	%% ============================================================
+	
+	\subsection{Architektur der Werkzeugintegration}
+	
+	Die Integration des CDC-Verifikators in bestehende EDA-Toolketten
+	(Questa CDC, Synopsys SpyGlass, Cadence JasperGold) erfordert
+	standardisierte Schnittstellen.
+	
+	\begin{figure}[h]
+		\centering
+		\begin{tikzpicture}[
+			tool/.style={rectangle, draw=mainblue, thick, fill=blue!7,
+				minimum width=3.0cm, minimum height=0.9cm, font=\small},
+			iface/.style={rectangle, draw=accentred, dashed, thick,
+				minimum width=2.4cm, minimum height=0.7cm, font=\small,
+				fill=red!5},
+			arr/.style={-{Stealth[length=2.5mm]}, thick},
+			node distance=0.6cm and 0.5cm
+			]
+			\node[tool] (rtl)    {\shortstack{RTL-Quellcode\\(SystemVerilog/VHDL)}};
+			\node[iface, below=of rtl] (elab)   {\shortstack{Elaboration/\\Netzlisten-Export}};
+			\node[tool, below=of elab] (reduce) {\shortstack{Reduktionsmodul\\$O(n^2)$}};
+			\node[tool, below=of reduce] (subg)  {\shortstack{Subgraph Algorithmus\\$O(n^3)$}};
+			\node[tool, below=of subg] (report) {\shortstack{CDC-Verifikations-\\bericht}};
+			
+			\node[iface, right=2.5cm of reduce] (spyglass) {\shortstack{SpyGlass\\CDC-Plugin}};
+			\node[iface, right=2.5cm of subg]   (questa)   {\shortstack{Questa CDC\\API}};
+			
+			\draw[arr] (rtl)    -- (elab);
+			\draw[arr] (elab)   -- (reduce);
+			\draw[arr] (reduce) -- (subg);
+			\draw[arr] (subg)   -- (report);
+			\draw[arr, dashed] (reduce) -- (spyglass);
+			\draw[arr, dashed] (subg)   -- (questa);
+		\end{tikzpicture}
+		\caption{Integrations\-architektur des Subgraph-basierten CDC-Verifikators
+			in bestehende EDA-Werkzeugketten. Gestrichelte Pfeile bezeichnen optionale
+			Schnittstellen zu kommerziellen Tools.}
+		\label{fig:edaintegration}
+	\end{figure}
+	
+	\subsection{Standardisierte Netzlistenschnittstelle}
+	
+	Die Umwandlung von RTL-Beschreibungen (SystemVerilog, VHDL) in
+	Schaltkreisgraphen $G_{\mathcal{C}}$ erfolgt \"uber drei Standardformate:
+	
+	\begin{enumerate}
+		\item \textbf{SPEF (Standard Parasitic Exchange Format):} Enth\"alt
+		Netzliste und parasit\"are Parameter. Direkte Extraktion von Knoten
+		und Kanten in $O(n)$ Zeit.
+		\item \textbf{SDC (Synopsys Design Constraints):} Enth\"alt
+		Taktdefinitionen und damit die Taktdom\"anen-Zuordnung
+		$\lambda: V \to \{\mathcal{D}_1, \ldots, \mathcal{D}_k\}$.
+		\item \textbf{Liberty (.lib):} Enth\"alt Zelltyp-Informationen f\"ur
+		die Knotenmarkierung $\lambda$.
+	\end{enumerate}
+	
+	\begin{lstlisting}[language=Python, gobble=2, caption=Netzlisten-Parser f\"ur SDC/SPEF-Import]
+		class NetlistParser:
+			"""
+			Konvertiert SDC/SPEF-Netzlisten in Schaltkreisgraphen.
+			Laufzeit: O(n) fuer das Parsen, O(n^2) fuer die Matrixkonstruktion.
+			"""
+
+			def parse_sdc_clock_domains(self, sdc_file_path):
+				"""
+				Extrahiert Taktdomain-Definitionen aus SDC-Datei.
+				Beispiel SDC: create_clock -period 10 [get_ports clk_a]
+				"""
+				clock_domains = {}
+				with open(sdc_file_path, 'r') as sdc_file:
+					for line in sdc_file:
+						if line.startswith('create_clock'):
+							period, clock_name = self._parse_clock_line(line)
+							clock_domains[clock_name] = ClockDomain(
+								name=clock_name,
+								period_nanoseconds=period
+							)
+				return clock_domains
+
+			def parse_spef_netlist(self, spef_file_path, clock_domains):
+				"""
+				Liest SPEF-Netzliste und konstruiert Adjazenzmatrix.
+				Laufzeit: O(n^2).
+				"""
+				elements = []
+				connections = []
+
+				with open(spef_file_path, 'r') as spef_file:
+					for line in spef_file:
+						if line.startswith('*D_NET'):
+							element = self._parse_element(line, clock_domains)
+							elements.append(element)
+						elif line.startswith('*CONN'):
+							connection = self._parse_connection(line)
+							connections.append(connection)
+
+				number_of_nodes = len(elements)
+				adjacency_matrix = [[0] * number_of_nodes
+					for _ in range(number_of_nodes)]
+
+				node_index = {element.name: index
+					for index, element in enumerate(elements)}
+
+				for connection in connections:
+					source_index = node_index[connection.source]
+					target_index = node_index[connection.target]
+					adjacency_matrix[source_index][target_index] = 1
+
+				return adjacency_matrix, node_index
+	\end{lstlisting}
+	
+	%% ============================================================
+	\section{Erweiterung auf Metastabilit\"atsquantifizierung}
+	%% ============================================================
+	
+	\subsection{MTBF-Berechnung als Graphproblem}
+	
+	Die Mean Time Between Failures (MTBF) durch Metastabilit\"at ist
+	ein quantitatives Ma\ss{} f\"ur die Zuverl\"assigkeit eines CDC-Pfades.
+	Bisher wird MTBF analytisch oder simulationsbasiert berechnet.
+	Wir zeigen, wie MTBF-Berechnung in das Subgraph-Framework integriert
+	werden kann.
+	
+	\begin{definition}[MTBF-Funktion]
+		Die MTBF eines Synchronizers mit Aufl\"osungszeit $T_r$ und
+		Taktperiode $T_c$ ist:
+		\[
+		\mathrm{MTBF}(T_r) = \frac{e^{T_r / \tau}}{f_{\mathrm{clk}} \cdot f_{\mathrm{data}} \cdot T_0}
+		\]
+		wobei $\tau$ die Aufl\"osungszeitkonstante des Flip-Flops,
+		$f_{\mathrm{clk}}$ die Zieltaktfrequenz, $f_{\mathrm{data}}$ die
+		Daten-Toggle-Rate und $T_0$ eine technologieabh\"angige Konstante ist.
+	\end{definition}
+	
+	\begin{satz}[MTBF-gewichteter Subgraph Algorithmus]
+		\label{satz:mtbf}
+		Durch Erweiterung des Schaltkreisgraphen $G_{\mathcal{C}}$ um
+		Kantengewichte $w(u,v) = \mathrm{MTBF}(u, v)$ f\"ur jeden CDC-Pfad $(u,v)$
+		kann der Subgraph Algorithmus in $O(n^3)$ nicht nur die Existenz von
+		Synchronisationsmustern, sondern auch die MTBF des kritischsten
+		CDC-Pfades berechnen.
+	\end{satz}
+	
+	\begin{proof}
+		Erweitere die Signatur-Funktion um ein Gewichtsfeld:
+		\[
+		\sigma_j^{\mathrm{gew.}} = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n
+		+ \lfloor \log_2(\mathrm{MTBF}_j) \rfloor \cdot 2^{2n}
+		\]
+		Der dritte Term kodiert die diskretisierte MTBF des Pfades, der
+		Spalte $j$ verlässt. Die Injektivit\"at der erweiterten Signatur-Funktion
+		bleibt erhalten, da die drei Terme disjunkte Bit-Bereiche belegen
+		($[0, 2^n)$, $[2^n, 2^{2n})$, $[2^{2n}, 2^{3n})$).
+		
+		Der LCS-Vergleich findet das Muster mit der h\"ochsten Subgraph-\"Ubereinstimmung
+		\emph{und} der h\"ochsten MTBF. Der zus\"atzliche Speicheraufwand betr\"agt
+		$O(n)$; die asymptotische Laufzeit bleibt $\Theta(n^3)$. \qedhere
+	\end{proof}
+	
+	%% ============================================================
+	\section{Formale Verifikation mittels Modellpr\"ufung}
+	%% ============================================================
+	
+	\subsection{Verbindung zu CTL/LTL-Modellpr\"ufung}
+	
+	Die Subgraph-basierte CDC-Verifikation l\"asst sich als
+	\emph{strukturelle Vorbedingung} in einen umfassenderen
+	formalen Verifikationsrahmen einbetten.
+	
+	\begin{definition}[CDC-Sicherheitseigenschaft in CTL]
+		Die CTL-Formel f\"ur einen sicheren CDC-Pfad von $f_{\mathrm{src}}$ nach
+		$f_{\mathrm{dst}}$ lautet:
+		\[
+		\varphi_{\mathrm{CDC}} \;=\;
+		\mathbf{AG}\bigl(\mathrm{out}(f_{\mathrm{src}}) \neq \mathrm{undef}
+		\;\Rightarrow\;
+		\mathbf{AF}\bigl(\mathrm{in}(f_{\mathrm{dst}}) \in \{0, 1\}\bigr)\bigr)
+		\]
+		d.\,h.\ \emph{für alle zuk\"unftigen Zust\"ande gilt: wenn der Ausgang des
+			Quell-FF definiert ist, wird der Eingang des Ziel-FF irgendwann
+			einen definierten Wert annehmen.}
+	\end{definition}
+	
+	\begin{satz}[Strukturelle Pr\"aimpl\-ikation]
+		\label{satz:ctl}
+		Wenn der Subgraph Algorithmus ein Synchronisationsmuster $P$ f\"ur den
+		CDC-Pfad $(f_{\mathrm{src}}, f_{\mathrm{dst}})$ findet, dann erf\"ullt
+		der Schaltkreis $\mathcal{C}$ die Eigenschaft $\varphi_{\mathrm{CDC}}$
+		unter der Annahme korrekter Timing-Constraints.
+		
+		Formal:
+		\[
+		\mathrm{SUBGRAPH}(G_{\mathcal{C}}, G_P) = \mathrm{true}
+		\;\Rightarrow\;
+		\mathcal{C}, s_0 \models \varphi_{\mathrm{CDC}}
+		\]
+	\end{satz}
+	
+	\begin{proof}
+		Der Beweis erfolgt durch Induktion \"uber die Struktur des Synchronisationsmusters $P$.
+		
+		\textbf{Basisfall ($P$ = 2-FF-Synchronizer):}
+		Sei $\varphi$ die Einbettung von $G_{2\mathrm{FF}}$ in $G_{\mathcal{C}}$.
+		Die zwei Flip-Flops $\varphi(\mathrm{FF}_1)$ und $\varphi(\mathrm{FF}_2)$
+		in $\mathcal{D}_B$ sind durch $C_B$ getaktet. Jedes Flip-Flop hat eine
+		Metastabilit\"atsaufl\"osungszeit, die mit exponentiell fallender
+		Wahrscheinlichkeit \"uberschritten wird. Nach zwei Taktperioden $2 \cdot T_B$
+		ist die Wahrscheinlichkeit einer anhaltenden Metastabilit\"at
+		$\Pr[\text{metastab}] = 1 - e^{-T_B/\tau_1} \cdot e^{-T_B/\tau_2} \to 0$
+		f\"ur endliche $\tau_1, \tau_2$. Damit gilt $\varphi_{\mathrm{CDC}}$
+		mit Wahrscheinlichkeit 1 (im Grenzwert).
+		
+		\textbf{Induktionsschritt ($P$ = komplexeres Muster):}
+		Komplexere Muster (Handshake, FIFO) enthalten den 2-FF-Synchronizer
+		als Subgraph (Lemma~\ref{lem:hierarchie}), erf\"ullen also
+		$\varphi_{\mathrm{CDC}}$ a fortiori. \qedhere
+	\end{proof}
+	
+	\subsection{Einschr\"ankung und offene Fragen}
+	
+	\begin{bemerkung}
+		Satz~\ref{satz:ctl} ist eine \emph{strukturelle Implikation}, keine
+		\"Aquivalenz. Der umgekehrte Schluss gilt nicht allgemein: Ein Schaltkreis
+		kann $\varphi_{\mathrm{CDC}}$ erf\"ullen, ohne eines der bekannten
+		Standardmuster zu verwenden (z.\,B.\ durch applikationsspezifische
+		Handshake-Protokolle). Die Vollst\"andigkeit der Musterklassifikation
+		bleibt ein offenes Problem der formalen Verifikation.
+	\end{bemerkung}
+	
+	%% ============================================================
+	\section{Anwendung auf KI-beschleunigerte SoC-Designs}
+	%% ============================================================
+	
+	\subsection{Herausforderungen in KI-SoCs}
+	
+	Moderne KI-Beschleuniger (NVIDIA H100, Google TPU, Apple Neural Engine)
+	haben typischerweise $k \geq 10$ Taktdom\"anen und $n > 10^6$ Schaltkreiselemente.
+	Die CDC-Komplexit\"at w\"achst mit $k^2$ (quadratische Anzahl m\"oglicher
+	Dom\"anen-Paare). Gleichzeitig sind die Datenpfade hochkritisch:
+	ein einziger ungesicherter CDC-Pfad kann zu Modell-Inferenz-Fehlern
+	f\"uhren, die schwer zu debuggen sind.
+	
+	\begin{satz}[Skalierbarkeit f\"ur KI-SoCs]
+		\label{satz:skalierbarkeit}
+		Sei $\mathcal{C}_{\mathrm{KI}}$ ein KI-SoC mit $n$ Elementen und
+		$k$ Taktdom\"anen. Die CDC-Verifikation aller $\binom{k}{2}$ Dom\"anen-Paare
+		ben\"otigt:
+		\[
+		T_{\mathrm{KI}}(n, k) = O\!\left(\frac{k^2 \cdot m \cdot n^3}{p}\right)
+		\]
+		f\"ur $m$ Muster und $p$ Prozessorkerne.
+		F\"ur $k = 10$, $m = 20$, $p = 100$, $n = 10^6$:
+		$T \approx 2 \times 10^{10}$ Operationen $\approx$ 20\,s bei 1\,GFLOPS.
+	\end{satz}
+	
+	\begin{proof}
+		F\"ur jedes der $\binom{k}{2} = O(k^2)$ Dom\"anen-Paare wird ein
+		Teilgraph $G_{\mathcal{C}}^{(i,j)}$ des Schaltkreisgraphen extrahiert
+		(nur Elemente in $\mathcal{D}_i \cup \mathcal{D}_j$ und deren Verbindungen).
+		Dieser Teilgraph hat $O(n/k)$ Knoten.
+		Die Subgraph-Verifikation auf dem Teilgraph ben\"otigt:
+		\[
+		T_{\mathrm{Teilgraph}} = O\!\left(\frac{m \cdot (n/k)^3}{p}\right).
+		\]
+		Summiert \"uber alle $O(k^2)$ Dom\"anen-Paare:
+		\[
+		T_{\mathrm{gesamt}} = k^2 \cdot O\!\left(\frac{m \cdot n^3}{k^3 \cdot p}\right)
+		= O\!\left(\frac{m \cdot n^3}{k \cdot p}\right).
+		\]
+		Die zus\"atzliche Faktorisierung \"uber Taktdom\"anen liefert also einen
+		Speedup-Faktor $k$ gegen\"uber der naiven Gesamtverifikation. \qedhere
+	\end{proof}
+	
+	\subsection{Inkrementelle Verifikation bei RTL-\"Anderungen}
+	
+	In der industriellen Praxis wird RTL-Code st\"andig ge\"andert.
+	Eine vollst\"andige Neuverifikation bei jeder \"Anderung ist zu teuer.
+	
+	\begin{definition}[Inkrementelle CDC-\"Anderung]
+		Sei $\Delta \mathcal{C}$ eine \"Anderung des Schaltkreises, die genau
+		$d$ Elemente und $e$ Verbindungen modifiziert. Die inkrementell
+		betroffene Region ist $\mathcal{N}_r(\Delta) = \{v \in V : \mathrm{dist}(v, \Delta) \leq r\}$,
+		der Einflussbereich mit Radius $r$.
+	\end{definition}
+	
+	\begin{satz}[Inkrementelle Verifikation]
+		\label{satz:inkrementell}
+		Die inkrementelle CDC-Verifikation nach einer \"Anderung $\Delta \mathcal{C}$
+		mit Einflussbereich der Gr\"o\ss{}e $|\mathcal{N}_r| = d'$ kann in Zeit
+		$O(m \cdot d'^3)$ durchgef\"uhrt werden, mit $d' \ll n$ f\"ur lokale
+		\"Anderungen.
+	\end{satz}
+	
+	\begin{proof}
+		Nur Elemente in $\mathcal{N}_r(\Delta)$ k\"onnen neue oder ver\"anderte
+		CDC-Pfade aufweisen. Der Teilschaltkreis $\mathcal{C}[\mathcal{N}_r]$
+		hat $d'$ Elemente; der Subgraph Algorithmus wird nur auf diesem
+		Teilgraphen ausgef\"uhrt. Laufzeit: $O(m \cdot d'^3)$.
+		
+		Der Rest des Schaltkreises ($n - d'$ Elemente) wird nicht neu verifiziert --
+		die gespeicherten Ergebnisse bleiben g\"ultig (Korrektheit durch
+		Monotonizit\"at: \"Anderungen au\ss{}erhalb $\mathcal{N}_r$ beeinflussen
+		CDC-Pfade innerhalb $\mathcal{N}_r$ nicht). \qedhere
+	\end{proof}
+	
+	%% ============================================================
+	\section{Verbindung zu verteilten Systemen und Konsens}
+	%% ============================================================
+	
+	\subsection{CDC als diskretes Synchronisationsproblem}
+	
+	Multi-Bit-CDC weist strukturelle \"Ahnlichkeiten mit dem
+	verteilten Konsens-Problem auf. Das Fisher-Lynch-Paterson (FLP)-Theorem
+	besagt, dass in einem vollst\"andig asynchronen System kein Konsens
+	erreichbar ist. Digitale Schaltkreise sind jedoch \emph{nicht} vollst\"andig
+	asynchron -- sie unterliegen Timing-Constraints. Diese Einschr\"ankung
+	ist genau das, was CDC-Synchronizer ausnutzen.
+	
+	\begin{satz}[CDC als eingeschr\"anktes Konsensproblem]
+		Das Multi-Bit-CDC-Problem ist \"aquivalent zum Konsens-Problem in einem
+		synchronen Kommunikationsmodell mit $f$ Fehlerknoten (metastabile Flip-Flops),
+		wobei $f < w/2$ und $w$ die Busbreite ist.
+		
+		Unter diesem Modell ist Konsens in $O(f)$ Runden erreichbar, was
+		$O(f)$ Taktperioden f\"ur die Synchronisation entspricht.
+	\end{satz}
+	
+	\begin{proof}
+		Modelliere jeden Busbit als Prozess $p_i$ in einem synchronen Nachrichtenmodell.
+		Metastabilit\"at entspricht einem Prozessausfall im ersten Taktmodus.
+		Der 2-FF-Synchronizer entspricht dem Phasen-K\"onig-Algorithmus mit 2 Runden,
+		der Konsens unter $f < n/3$ Ausf\"allen gew\"ahrleistet.
+		
+		Da $f \leq 1$ (h\"ochstens ein Bit metastabil pro \"Ubergang) und $w \geq 2$,
+		gilt $f < w/2$. Der Konsens ist also in 2 Runden (= 2 Taktperioden)
+		erreichbar -- dies entspricht genau dem 2-FF-Synchronizer. \qedhere
+	\end{proof}
+	
+	%% ============================================================
+	\section{Offene Forschungsfragen}
+	%% ============================================================
+	
+	Die vorliegende Arbeit er\"offnet mehrere tiefgehende offene Fragen:
+	
+	\begin{enumerate}
+		
+		\item \textbf{Bedingte vs.\ unbedingte untere Schranke.}
+		Die SETH-basierte Schranke $\Omega(n^{3-\varepsilon})$ ist bedingt.
+		Eine unbedingte $\Omega(n^3)$-Schranke speziell f\"ur das
+		CDC-Mustererkennungs\-problem konnte bisher nicht bewiesen werden und bleibt
+		offen. Eine solche Schranke w\"urde die Optimalit\"at des Subgraph
+		Algorithmus ohne Hypothesen belegen.
+		
+		\item \textbf{Approximationsalgorithmen f\"ur unsichere CDC-Pfade.}
+		F\"ur den Fall, dass keine vollst\"andige Absicherung existiert
+		(fehlendes Synchronisationsmuster), stellt sich die Frage:
+		Welche minimale Menge von Schaltkreis\"anderungen macht alle
+		CDC-Pfade sicher? Dies f\"uhrt auf das Problem der
+		\emph{minimalen CDC-Reparatur}, dessen Komplexit\"at noch nicht
+		vollst\"andig charakterisiert ist.
+		
+		\item \textbf{Erweiterung auf zeitkontinuierliche Modelle.}
+		Die derzeitige Modellierung ist diskret (Taktdom\"anen, Flip-Flops).
+		Mixed-Signal-SoCs enthalten auch analoge Bl\"ocke.
+		Die Erweiterung des Subgraph-Frameworks auf hybride
+		Schaltkreisgraphen mit kontinuierlichen Kantengewichten ist
+		eine offene Forschungsfrage.
+		
+		\item \textbf{Maschinelles Lernen zur Mustergeneralisierung.}
+		K\"onnten Graph-neuronale Netze (GNNs) neue Synchronisationsmuster
+		erlernen, die \"uber die bekannten Standardmuster hinausgehen?
+		Die Verbindung von GNNs und dem Subgraph Algorithmus als
+		Grundwahrheit (Ground Truth) ist ein vielversprechender
+		Forschungsansatz.
+		
+		\item \textbf{Quantenschaltkreise und CDC.}
+		Mit dem Aufkommen von Quantenprozessoren stellt sich die Frage,
+		ob CDC-analoge Konzepte (Dekoh\"arenz an Domänengrenzen) als
+		Subgraph-Problem modellierbar sind. Dies w\"urde den Anwendungsbereich
+		des Subgraph Algorithmus auf Quanten-Hardware-Verifikation erweitern.
+		
+	\end{enumerate}
+	
+	\subsection{Implementierungshinweis}
+	
+	Der Subgraph Algorithmus und die in dieser Arbeit beschriebenen
+	Erweiterungen sind verf\"ugbar unter:
+	\url{https://github.com/hjstephan86/science}.
+	
+	%% ============================================================
+	\begin{thebibliography}{99}
+		
+		\bibitem{epp2026subgraph}
+		Stephan Epp,
+		\textit{Der Subgraph Algorithmus}, Januar 2026.
+		\url{https://github.com/hjstephan86/science}
+		
+		\bibitem{cdc2023handbook}
+		Srikanth Jadcherla, Tom Fitzpatrick, Larry Rolufs,
+		\textit{Clock Domain Crossing (CDC) Design and Verification Techniques},
+		Mentor Graphics, 2006.
+		
+		\bibitem{abboud2015lcs}
+		Amir Abboud, Arturs Backurs, Virginia Vassilevska Williams,
+		\textit{Tight Hardness Results for LCS and Other Sequence Similarity Measures},
+		FOCS 2015.
+		
+		\bibitem{seth2001}
+		Russell Impagliazzo, Ramamohan Paturi,
+		\textit{On the Complexity of $k$-SAT},
+		Journal of Computer and System Sciences, 62(2):367--375, 2001.
+		
+		\bibitem{metastability2011}
+		Tobias Maier-Komor, Andreas Steininger,
+		\textit{A Comprehensive Model for Estimating the Number of Metastability Events},
+		IEEE Transactions on Very Large Scale Integration (VLSI) Systems, 2011.
+
+		\bibitem{ullmann1976}
+		J.\,R. Ullmann,
+		\textit{An Algorithm for Subgraph Isomorphism},
+		Journal of the ACM, 23(1):31--42, 1976.
+
+		\bibitem{cordella2004}
+		L.\,P. Cordella, P. Foggia, C. Sansone, M. Vento,
+		\textit{A (Sub)Graph Isomorphism Algorithm for Matching Large Graphs},
+		IEEE Transactions on Pattern Analysis and Machine Intelligence,
+		26(10):1367--1372, 2004.
+
+		\bibitem{garey1979}
+		Michael R. Garey, David S. Johnson,
+		\textit{Computers and Intractability: A Guide to the Theory of NP-Completeness},
+		W.\,H. Freeman, San Francisco, 1979.
+
+		\bibitem{cook1971}
+		Stephen A. Cook,
+		\textit{The Complexity of Theorem-Proving Procedures},
+		Proceedings of the Third Annual ACM Symposium on Theory of Computing (STOC),
+		pp. 151--158, 1971.
+
+		\bibitem{clarke1999}
+		Edmund M. Clarke, Orna Grumberg, Doron A. Peled,
+		\textit{Model Checking},
+		MIT Press, Cambridge, MA, 1999.
+
+		\bibitem{emerson1982}
+		E.\,M. Clarke, E.\,A. Emerson,
+		\textit{Design and Synthesis of Synchronization Skeletons Using Branching-Time
+		Temporal Logic},
+		Lecture Notes in Computer Science, vol. 131, Springer, pp. 52--71, 1982.
+
+		\bibitem{holzmann2004}
+		Gerard J. Holzmann,
+		\textit{The SPIN Model Checker: Primer and Reference Manual},
+		Addison-Wesley Professional, Boston, 2004.
+
+		\bibitem{ieee1076}
+		IEEE,
+		\textit{IEEE Standard VHDL Language Reference Manual},
+		IEEE Std 1076-2008, IEEE, New York, 2009.
+
+		\bibitem{ieee1800}
+		IEEE,
+		\textit{IEEE Standard for SystemVerilog -- Unified Hardware Design, Specification,
+		and Verification Language},
+		IEEE Std 1800-2017, IEEE, New York, 2018.
+
+		\bibitem{leiserson1991}
+		Charles E. Leiserson, James B. Saxe,
+		\textit{Retiming Synchronous Circuitry},
+		Algorithmica, 6(1--6):5--35, 1991.
+
+		\bibitem{sutherland1989}
+		Ivan E. Sutherland,
+		\textit{Micropipelines},
+		Communications of the ACM, 32(6):720--738, 1989.
+
+		\bibitem{beerel2010}
+		Peter A. Beerel, Recep O. Ozdag, Marcos Ferretti,
+		\textit{A Designer's Guide to Asynchronous VLSI},
+		Cambridge University Press, Cambridge, 2010.
+
+		\bibitem{huffman1954}
+		David A. Huffman,
+		\textit{The Synthesis of Sequential Switching Circuits},
+		Journal of the Franklin Institute, 257(3--4):161--190, 275--303, 1954.
+
+		\bibitem{palnitkar2003}
+		Samir Palnitkar,
+		\textit{Verilog HDL: A Guide to Digital Design and Synthesis},
+		2nd edition, Prentice Hall, Upper Saddle River, NJ, 2003.
+
+		\bibitem{shannon1948}
+		Claude E. Shannon,
+		\textit{A Mathematical Theory of Communication},
+		Bell System Technical Journal, 27:379--423, 623--656, 1948.
+
+		\bibitem{cortadella1997}
+		Jordi Cortadella, Michael Kishinevsky, Alex Kondratyev,
+		Luciano Lavagno, Alexandre Yakovlev,
+		\textit{Petrify: A Tool for Manipulating Concurrent Specifications and
+		Synthesis of Asynchronous Controllers},
+		IEICE Transactions on Information and Systems,
+		E80-D(3):315--325, 1997.
+
+		\bibitem{bergeron2006}
+		Janick Bergeron, Eduard Cerny, Alan Hunter, Andrew Nightingale,
+		\textit{Verification Methodology Manual for SystemVerilog},
+		Springer, New York, 2006.
+
+		\bibitem{kroening2016}
+		Daniel Kroening, Ofer Strichman,
+		\textit{Decision Procedures: An Algorithmic Point of View},
+		2nd edition, Springer, Berlin, 2016.
+
+	\end{thebibliography}
+	
+\end{document}

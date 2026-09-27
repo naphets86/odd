@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>EHAE – EtherCAT HMI App Extension</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #07090f;
+      --panel:     #0d1120;
+      --panel2:    #111827;
+      --border:    #1e2d45;
+      --accent:    #005aaa;
+      --accent2:   #00b4d8;
+      --green:     #00c853;
+      --orange:    #ff8f00;
+      --red:       #e53935;
+      --text:      #c9d6e3;
+      --text-dim:  #5a7a9a;
+      --mono:      'Share Tech Mono', monospace;
+      --ui:        'Rajdhani', sans-serif;
+      --body:      'Exo 2', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Scanline overlay ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px, transparent 3px,
+        rgba(0,0,0,.12) 3px, rgba(0,0,0,.12) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 56px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .logo-icon::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, var(--accent) 0%, transparent 60%);
+      opacity: .5;
+    }
+    .logo-icon svg { position: relative; z-index: 1; }
+    .logo-title { font-family: var(--ui); font-size: 18px; font-weight: 700; letter-spacing: 2px; color: #fff; }
+    .logo-sub { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 1px; }
+
+    .header-right { display: flex; align-items: center; gap: 16px; }
+
+    .role-badge {
+      font-family: var(--mono); font-size: 11px; padding: 4px 10px;
+      border-radius: 2px; letter-spacing: 1px; cursor: pointer;
+      transition: all .2s;
+    }
+    .role-operator { background: rgba(0,90,170,.2); border: 1px solid var(--accent); color: var(--accent2); }
+    .role-engineer  { background: rgba(0,200,83,.15); border: 1px solid var(--green); color: var(--green); }
+
+    .conn-status { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; }
+    .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+    .time-display { font-family: var(--mono); font-size: 13px; color: var(--accent2); }
+
+    /* ── Layout ── */
+    .app-layout {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      grid-template-rows: 1fr;
+      height: calc(100vh - 56px);
+    }
+
+    /* ── Sidebar ── */
+    nav {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 16px 0;
+      overflow-y: auto;
+    }
+    .nav-section-label {
+      font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+      letter-spacing: 2px; padding: 12px 16px 6px; text-transform: uppercase;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; cursor: pointer;
+      font-family: var(--ui); font-size: 14px; font-weight: 500;
+      color: var(--text-dim); transition: all .15s; border-left: 2px solid transparent;
+      letter-spacing: .5px;
+    }
+    .nav-item:hover { color: var(--text); background: rgba(255,255,255,.03); }
+    .nav-item.active { color: var(--accent2); border-left-color: var(--accent2); background: rgba(0,180,216,.07); }
+    .nav-item svg { flex-shrink: 0; }
+    .nav-badge {
+      margin-left: auto; background: var(--red); color: #fff;
+      font-size: 10px; font-family: var(--mono); padding: 1px 5px; border-radius: 10px;
+    }
+
+    /* ── Main content ── */
+    main {
+      overflow-y: auto;
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+
+    /* ── Views ── */
+    .view { display: none; flex-direction: column; gap: 16px; animation: fadeIn .2s ease; }
+    .view.active { display: flex; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 16px;
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-family: var(--ui); font-size: 13px; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim);
+    }
+
+    /* ── Grid helpers ── */
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+    /* ── KPI tiles ── */
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 16px;
+      position: relative; overflow: hidden;
+    }
+    .kpi::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 2px;
+    }
+    .kpi.green::after { background: var(--green); }
+    .kpi.orange::after { background: var(--orange); }
+    .kpi.red::after { background: var(--red); }
+    .kpi.blue::after { background: var(--accent2); }
+
+    .kpi-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 8px; }
+    .kpi-value { font-family: var(--mono); font-size: 28px; color: #fff; line-height: 1; }
+    .kpi-unit  { font-size: 13px; color: var(--text-dim); margin-left: 4px; }
+    .kpi-sub   { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 6px; }
+
+    /* ── Topology diagram ── */
+    .topology-canvas {
+      width: 100%; height: 280px;
+      position: relative;
+      background: var(--panel2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .topo-svg { width: 100%; height: 100%; }
+
+    /* ── Status table ── */
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      letter-spacing: 1px; text-align: left;
+      padding: 6px 10px; border-bottom: 1px solid var(--border);
+    }
+    td {
+      font-family: var(--mono); font-size: 12px; color: var(--text);
+      padding: 8px 10px; border-bottom: 1px solid rgba(30,45,69,.5);
+    }
+    tr:hover td { background: rgba(255,255,255,.02); }
+
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .status-dot.op  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.err { background: var(--red);   box-shadow: 0 0 6px var(--red);  animation: blink .7s infinite; }
+    .status-dot.idle { background: var(--orange); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    /* ── Oscilloscope ── */
+    .osc-canvas { width: 100%; height: 180px; background: #060a10; border-radius: 3px; }
+
+    /* ── Alarm list ── */
+    .alarm-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 10px 12px; border-bottom: 1px solid rgba(30,45,69,.5);
+      font-family: var(--mono); font-size: 12px;
+    }
+    .alarm-item:last-child { border-bottom: none; }
+    .alarm-sev { font-size: 10px; padding: 2px 6px; border-radius: 2px; flex-shrink: 0; margin-top: 1px; }
+    .alarm-sev.crit { background: rgba(229,57,53,.2); color: var(--red); border: 1px solid var(--red); }
+    .alarm-sev.warn { background: rgba(255,143,0,.15); color: var(--orange); border: 1px solid var(--orange); }
+    .alarm-sev.info { background: rgba(0,180,216,.1); color: var(--accent2); border: 1px solid var(--accent2); }
+    .alarm-msg { flex: 1; color: var(--text); line-height: 1.4; }
+    .alarm-time { color: var(--text-dim); font-size: 10px; flex-shrink: 0; }
+    .ack-btn {
+      background: none; border: 1px solid var(--border); color: var(--text-dim);
+      font-family: var(--mono); font-size: 10px; padding: 2px 8px; cursor: pointer;
+      border-radius: 2px; transition: all .15s;
+    }
+    .ack-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    /* ── Controls ── */
+    .ctrl-btn {
+      background: none; border: 1px solid var(--border);
+      color: var(--text); font-family: var(--ui); font-size: 14px; font-weight: 600;
+      padding: 12px 20px; cursor: pointer; border-radius: 3px;
+      transition: all .2s; letter-spacing: 1px; text-transform: uppercase;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ctrl-btn:hover { border-color: var(--accent2); color: var(--accent2); background: rgba(0,180,216,.06); }
+    .ctrl-btn.danger { border-color: var(--red); color: var(--red); }
+    .ctrl-btn.danger:hover { background: rgba(229,57,53,.1); }
+    .ctrl-btn.success { border-color: var(--green); color: var(--green); }
+    .ctrl-btn.success:hover { background: rgba(0,200,83,.1); }
+
+    /* ── SDO Browser ── */
+    .sdo-row { display: grid; grid-template-columns: 80px 120px 1fr 100px; gap: 8px; align-items: center; }
+    .sdo-row input[type="text"], .sdo-row input[type="number"] {
+      background: var(--panel2); border: 1px solid var(--border);
+      color: var(--text); font-family: var(--mono); font-size: 12px;
+      padding: 6px 10px; border-radius: 2px; width: 100%;
+    }
+    .sdo-row input:focus { outline: none; border-color: var(--accent2); }
+
+    /* ── Cost chart ── */
+    .cost-chart { width: 100%; height: 220px; position: relative; }
+
+    /* ── HCP log ── */
+    .log-area {
+      background: var(--panel2); border-radius: 3px;
+      padding: 10px 12px; height: 180px; overflow-y: auto;
+      font-family: var(--mono); font-size: 11px; line-height: 1.7;
+    }
+    .log-ts { color: var(--text-dim); }
+    .log-rx  { color: var(--accent2); }
+    .log-tx  { color: var(--green); }
+    .log-err { color: var(--red); }
+
+    /* ── Range slider ── */
+    .param-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .param-name { font-family: var(--mono); font-size: 11px; color: var(--text-dim); width: 160px; }
+    input[type="range"] {
+      flex: 1; -webkit-appearance: none; height: 4px;
+      background: var(--border); border-radius: 2px; cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px;
+      border-radius: 50%; background: var(--accent2); cursor: pointer;
+    }
+    .param-val { font-family: var(--mono); font-size: 12px; color: var(--accent2); width: 60px; text-align: right; }
+
+    /* ── Migration timeline ── */
+    .timeline { display: flex; gap: 0; position: relative; margin-top: 8px; }
+    .timeline::before { content: ''; position: absolute; top: 20px; left: 0; right: 0; height: 2px; background: var(--border); }
+    .phase {
+      flex: 1; text-align: center; position: relative; padding-top: 40px;
+    }
+    .phase-dot {
+      width: 16px; height: 16px; border-radius: 50%;
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      border: 2px solid;
+    }
+    .phase-dot.done    { background: var(--green);  border-color: var(--green); }
+    .phase-dot.active  { background: var(--accent2); border-color: var(--accent2); animation: pulse 1.5s infinite; }
+    .phase-dot.pending { background: var(--border);  border-color: var(--border); }
+    .phase-label { font-family: var(--ui); font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .phase-sub   { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .app-layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      nav { display: flex; overflow-x: auto; padding: 0; border-right: none; border-bottom: 1px solid var(--border); height: auto; }
+      .nav-section-label { display: none; }
+      .nav-item { padding: 12px 14px; white-space: nowrap; border-left: none; border-bottom: 2px solid transparent; }
+      .nav-item.active { border-bottom-color: var(--accent2); border-left: none; }
+      .grid-4 { grid-template-columns: repeat(2, 1fr); }
+      .grid-3 { grid-template-columns: repeat(2, 1fr); }
+      .sdo-row { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <rect x="2" y="8" width="4" height="4" fill="#005aaa"/>
+        <rect x="8" y="5" width="4" height="10" fill="#00b4d8"/>
+        <rect x="14" y="7" width="4" height="6" fill="#005aaa"/>
+        <line x1="6" y1="10" x2="8" y2="10" stroke="#00b4d8" stroke-width="1.5"/>
+        <line x1="12" y1="10" x2="14" y2="10" stroke="#00b4d8" stroke-width="1.5"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-title">EHAE</div>
+      <div class="logo-sub">EtherCAT HMI App Extension</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="conn-status">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connLabel" style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">HAG:9740</span>
+    </div>
+    <div id="roleBadge" class="role-badge role-operator" onclick="toggleRole()">OPERATOR</div>
+    <div class="time-display" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<div class="app-layout">
+  <nav id="sidebar">
+    <div class="nav-section-label">Overview</div>
+    <div class="nav-item active" data-view="dashboard" onclick="switchView(this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item" data-view="topology" onclick="switchView(this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="13" r="1.5"/><circle cx="14" cy="8" r="1.5"/><line x1="3.5" y1="8" x2="6.5" y2="4"/><line x1="3.5" y1="8" x2="6.5" y2="12"/><line x1="9.5" y1="4" x2="12.5" y2="8"/><line x1="9.5" y1="12" x2="12.5" y2="8"/></svg>
+      Topologie
+    </div>
+    <div class="nav-item" data-view="alarms" onclick="switchView(this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1L1 14h14L8 1z"/><line x1="8" y1="6" x2="8" y2="10"/><circle cx="8" cy="12" r=".5" fill="currentColor"/></svg>
+      Alarme
+      <span class="nav-badge" id="alarmBadge">3</span>
+    </div>
+    <div class="nav-section-label">Steuerung</div>
+    <div class="nav-item" data-view="control" onclick="switchView(this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="8" rx="1"/><line x1="5" y1="4" x2="5" y2="12"/><line x1="11" y1="4" x2="11" y2="12"/><circle cx="8" cy="8" r="1.5"/></svg>
+      Maschinensteuerung
+    </div>
+    <div class="nav-item" data-view="oscilloscope" onclick="switchView(this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="1"/><polyline points="2,10 5,6 7,9 9,4 11,8 14,6"/></svg>
+      Oszilloskop
+    </div>
+    <div class="nav-section-label" id="engSection">Engineer</div>
+    <div class="nav-item engineer-only" data-view="sdo" onclick="switchView(this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><line x1="8" y1="1" x2="8" y2="4"/><line x1="8" y1="12" x2="8" y2="15"/><line x1="1" y1="8" x2="4" y2="8"/><line x1="12" y1="8" x2="15" y2="8"/></svg>
+      SDO Browser
+    </div>
+    <div class="nav-item engineer-only" data-view="protocol" onclick="switchView(this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="12" rx="1"/><line x1="4" y1="6" x2="12" y2="6"/><line x1="4" y1="9" x2="9" y2="9"/></svg>
+      HCP Protokoll
+    </div>
+    <div class="nav-section-label">Analyse</div>
+    <div class="nav-item" data-view="costs" onclick="switchView(this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,13 5,7 9,10 13,3 15,5"/><line x1="1" y1="15" x2="15" y2="15"/></svg>
+      TCO Analyse
+    </div>
+    <div class="nav-item" data-view="migration" onclick="switchView(this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="14" cy="8" r="1.5"/><line x1="3.5" y1="8" x2="6.5" y2="8"/><line x1="9.5" y1="8" x2="12.5" y2="8"/></svg>
+      Migration
+    </div>
+  </nav>
+
+  <main>
+
+    <!-- ══════════════════ DASHBOARD ══════════════════ -->
+    <div class="view active" id="view-dashboard">
+      <div class="grid-4">
+        <div class="kpi green">
+          <div class="kpi-label">NETZWERK-STATUS</div>
+          <div class="kpi-value" style="font-size:18px;color:var(--green)">OPERATIONAL</div>
+          <div class="kpi-sub">Working Counter: 12/12</div>
+        </div>
+        <div class="kpi blue">
+          <div class="kpi-label">ZYKLUSZEIT</div>
+          <div class="kpi-value">250<span class="kpi-unit">µs</span></div>
+          <div class="kpi-sub">Frame Loss: 0</div>
+        </div>
+        <div class="kpi orange">
+          <div class="kpi-label">AKTIVE SLAVES</div>
+          <div class="kpi-value">11<span class="kpi-unit">/12</span></div>
+          <div class="kpi-sub">Drive 3 – ERR</div>
+        </div>
+        <div class="kpi green">
+          <div class="kpi-label">HAG VERBINDUNGEN</div>
+          <div class="kpi-value" id="connCount">3</div>
+          <div class="kpi-sub">WS aktiv</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Prozessvariablen – Live</div>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--green)">● LIVE</span>
+          </div>
+          <table>
+            <thead><tr>
+              <th>Variable</th><th>Wert</th><th>Einheit</th><th>Qualität</th>
+            </tr></thead>
+            <tbody id="pvarTable">
+              <tr><td>Achse_X_Pos</td><td id="v0">—</td><td>mm</td><td><span class="status-dot op"></span>GOOD</td></tr>
+              <tr><td>Achse_Y_Pos</td><td id="v1">—</td><td>mm</td><td><span class="status-dot op"></span>GOOD</td></tr>
+              <tr><td>Achse_Z_Pos</td><td id="v2">—</td><td>mm</td><td><span class="status-dot err"></span>BAD</td></tr>
+              <tr><td>Drehzahl</td><td id="v3">—</td><td>rpm</td><td><span class="status-dot op"></span>GOOD</td></tr>
+              <tr><td>Temperatur</td><td id="v4">—</td><td>°C</td><td><span class="status-dot op"></span>GOOD</td></tr>
+              <tr><td>Strom_I1</td><td id="v5">—</td><td>A</td><td><span class="status-dot op"></span>GOOD</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Aktive Alarme</div>
+          </div>
+          <div id="dashAlarms"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Netzwerk-Topologie (Übersicht)</div>
+        </div>
+        <div class="topology-canvas">
+          <svg class="topo-svg" id="topoMini" viewBox="0 0 800 240" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ TOPOLOGY ══════════════════ -->
+    <div class="view" id="view-topology">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Live Topologie – EtherCAT Netzwerk</div>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--accent2)">Zykluszeit: 250µs | WC: 12/12 | Frame Loss: 0</span>
+        </div>
+        <div class="topology-canvas" style="height:360px">
+          <svg class="topo-svg" id="topoFull" viewBox="0 0 800 320" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Slave-Details</div></div>
+        <table>
+          <thead><tr><th>Slave</th><th>Produkt</th><th>Status</th><th>Vendor</th><th>Zykl. Fehler</th><th>Temp.</th></tr></thead>
+          <tbody>
+            <tr><td>0x0001</td><td>Drive 1 – Achse X</td><td><span class="status-dot op"></span>OP</td><td>Beckhoff</td><td>0</td><td>42°C</td></tr>
+            <tr><td>0x0002</td><td>Drive 2 – Achse Y</td><td><span class="status-dot op"></span>OP</td><td>Beckhoff</td><td>0</td><td>39°C</td></tr>
+            <tr><td>0x0003</td><td>Drive 3 – Achse Z</td><td><span class="status-dot err"></span>ERR</td><td>Beckhoff</td><td>147</td><td>78°C</td></tr>
+            <tr><td>0x0004</td><td>I/O Coupler EK1100</td><td><span class="status-dot op"></span>OP</td><td>Beckhoff</td><td>0</td><td>35°C</td></tr>
+            <tr><td>0x0005</td><td>I/O Modul EL2008</td><td><span class="status-dot op"></span>OP</td><td>Beckhoff</td><td>0</td><td>33°C</td></tr>
+            <tr><td>0x0006</td><td>Encoder EL5151</td><td><span class="status-dot op"></span>OP</td><td>Beckhoff</td><td>0</td><td>31°C</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════════ ALARME ══════════════════ -->
+    <div class="view" id="view-alarms">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Alarm Manager</div>
+          <button class="ack-btn" onclick="ackAll()">Alle ACK</button>
+        </div>
+        <div id="alarmList"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Alarm-Historie</div></div>
+        <table>
+          <thead><tr><th>Zeit</th><th>Schwere</th><th>Quelle</th><th>Meldung</th><th>Quittiert</th></tr></thead>
+          <tbody>
+            <tr><td>08:14:02</td><td style="color:var(--green)">INFO</td><td>Drive 1</td><td>Inbetriebnahme abgeschlossen</td><td>✓ Auto</td></tr>
+            <tr><td>07:55:18</td><td style="color:var(--orange)">WARN</td><td>Drive 3</td><td>Temperatur &gt; 70°C</td><td>✓ Operator</td></tr>
+            <tr><td>07:30:00</td><td style="color:var(--accent2)">INFO</td><td>HAG</td><td>WebSocket Client verbunden (3)</td><td>✓ Auto</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════════ CONTROL ══════════════════ -->
+    <div class="view" id="view-control">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Maschinensteuerung</div></div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+            <button class="ctrl-btn success" onclick="machineCmd('START')">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="2,1 12,7 2,13"/></svg>
+              START
+            </button>
+            <button class="ctrl-btn danger" onclick="machineCmd('STOP')">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10"/></svg>
+              STOP
+            </button>
+            <button class="ctrl-btn" onclick="machineCmd('RESET')">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,4 4,4 4,1"/><path d="M4,4 A6,6,0,1,1,3,9"/></svg>
+              RESET
+            </button>
+          </div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:8px">Status:</div>
+          <div id="machineStatus" style="font-family:var(--mono);font-size:14px;color:var(--green)">● RUNNING</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:8px" id="lastCmd">Letzter Befehl: –</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Rezeptauswahl</div></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="ctrl-btn" onclick="loadRecipe(this,'Rezept A – Standard')">Rezept A – Standard</button>
+            <button class="ctrl-btn" onclick="loadRecipe(this,'Rezept B – Hochgeschwindigkeit')">Rezept B – Hochgeschwindigkeit</button>
+            <button class="ctrl-btn" onclick="loadRecipe(this,'Rezept C – Präzision')">Rezept C – Präzision</button>
+          </div>
+          <div id="activeRecipe" style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:12px">Aktiv: –</div>
+        </div>
+      </div>
+      <div class="card engineer-only">
+        <div class="card-header"><div class="card-title">Parametrierung (Engineer)</div></div>
+        <div id="paramSliders"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ OSCILLOSCOPE ══════════════════ -->
+    <div class="view" id="view-oscilloscope">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Echtzeit-Oszilloskop</div>
+          <div style="display:flex;gap:8px">
+            <button class="ack-btn" onclick="oscRunning=!oscRunning;this.textContent=oscRunning?'PAUSE':'RUN'">PAUSE</button>
+          </div>
+        </div>
+        <canvas class="osc-canvas" id="oscCanvas"></canvas>
+        <div style="display:flex;gap:20px;margin-top:10px;font-family:var(--mono);font-size:11px">
+          <span style="color:#00b4d8">— Achse X</span>
+          <span style="color:#00c853">— Drehzahl</span>
+          <span style="color:#ff8f00">— Temperatur</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ SDO BROWSER ══════════════════ -->
+    <div class="view" id="view-sdo">
+      <div class="card">
+        <div class="card-header"><div class="card-title">SDO Browser (CoE)</div></div>
+        <div style="margin-bottom:12px">
+          <div class="sdo-row" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:4px">
+            <div>Index</div><div>Sub-Index</div><div>Wert</div><div>Aktion</div>
+          </div>
+          <div class="sdo-row">
+            <input type="text" id="sdoIdx" value="0x6064" />
+            <input type="text" id="sdoSub" value="0x00" />
+            <input type="text" id="sdoVal" value="—" readonly />
+            <button class="ack-btn" onclick="sdoRead()" style="padding:6px 8px">SDO Read</button>
+          </div>
+          <div class="sdo-row" style="margin-top:6px">
+            <input type="text" value="0x6060" />
+            <input type="text" value="0x00" />
+            <input type="number" id="sdoWriteVal" value="3" />
+            <button class="ack-btn" onclick="sdoWrite()" style="padding:6px 8px;border-color:var(--orange);color:var(--orange)">SDO Write</button>
+          </div>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:4px">SDO Log:</div>
+        <div class="log-area" id="sdoLog"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">FoE – Firmware Update</div></div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <button class="ctrl-btn" onclick="startFoE()">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="7,1 7,9"/><polyline points="4,6 7,9 10,6"/><line x1="1" y1="13" x2="13" y2="13"/></svg>
+            FoE Upload starten
+          </button>
+          <div id="foeStatus" style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Kein Upload aktiv</div>
+        </div>
+        <div id="foeBar" style="display:none;margin-top:10px">
+          <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+            <div id="foeProgress" style="height:100%;background:var(--accent2);width:0%;transition:width .3s"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ HCP PROTOKOLL ══════════════════ -->
+    <div class="view" id="view-protocol">
+      <div class="card">
+        <div class="card-header"><div class="card-title">HAG Communication Protocol (HCP) – Live Log</div></div>
+        <div class="log-area" id="hcpLog"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Manuelle Nachricht senden</div></div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="hcpInput"
+            value='{"type":"VAR_READ","var":"Achse_X_Pos"}'
+            style="flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 12px;border-radius:2px;"
+          />
+          <button class="ctrl-btn" onclick="sendHcp()">Senden</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ KOSTEN ══════════════════ -->
+    <div class="view" id="view-costs">
+      <div class="grid-2">
+        <div class="kpi green">
+          <div class="kpi-label">KOSTENEINSPARUNG (5J / 20 Stationen)</div>
+          <div class="kpi-value">81<span class="kpi-unit">%</span></div>
+          <div class="kpi-sub">€214k → €40k kumuliert</div>
+        </div>
+        <div class="kpi blue">
+          <div class="kpi-label">EINSPARUNG PRO STATION (5J)</div>
+          <div class="kpi-value">87<span class="kpi-unit">%</span></div>
+          <div class="kpi-sub">€10.700 → €1.300</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">5-Jahres TCO – 20 Stationen (kumuliert)</div></div>
+        <canvas id="costCanvas" height="220" style="width:100%"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">TCO pro Station – Kategorie</div></div>
+        <canvas id="barCanvas" height="200" style="width:100%"></canvas>
+      </div>
+    </div>
+
+    <!-- ══════════════════ MIGRATION ══════════════════ -->
+    <div class="view" id="view-migration">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Migrationsstrategie – 4 Phasen</div></div>
+        <div class="timeline">
+          <div class="phase">
+            <div class="phase-dot done"></div>
+            <div class="phase-label">Phase 1</div>
+            <div class="phase-sub">HAG Pilot<br/>0–1 Monat</div>
+          </div>
+          <div class="phase">
+            <div class="phase-dot done"></div>
+            <div class="phase-label">Phase 2</div>
+            <div class="phase-sub">Parallelbetrieb<br/>1–3 Monate</div>
+          </div>
+          <div class="phase">
+            <div class="phase-dot active"></div>
+            <div class="phase-label">Phase 3</div>
+            <div class="phase-sub">App Rollout<br/>3–6 Monate</div>
+          </div>
+          <div class="phase">
+            <div class="phase-dot pending"></div>
+            <div class="phase-label">Phase 4</div>
+            <div class="phase-sub">Vollbetrieb EHAE<br/>ab 6 Monate</div>
+          </div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Aktueller Status Phase 3</div></div>
+          <div id="migProgress"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Risikominderung</div></div>
+          <div style="font-family:var(--mono);font-size:12px;line-height:2;color:var(--text)">
+            <div><span style="color:var(--green)">✓</span> Fallback-Panel aktiv</div>
+            <div><span style="color:var(--green)">✓</span> Pilotmaschine validiert</div>
+            <div><span style="color:var(--accent2)">⟳</span> Operator Schulung (80%)</div>
+            <div><span style="color:var(--text-dim)">○</span> Schreibrechte freischalten</div>
+            <div><span style="color:var(--text-dim)">○</span> Panel-Abbau planen</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Display-Vergleich: Industrial Panel vs. Consumer Tablet</div></div>
+        <table>
+          <thead><tr><th>Parameter</th><th>Ind. HMI-Panel</th><th>Consumer Tablet</th><th>Faktor</th></tr></thead>
+          <tbody>
+            <tr><td>Auflösung</td><td>1920×1080</td><td>2752×2064</td><td style="color:var(--green)">+2.7×</td></tr>
+            <tr><td>Bildwiederholrate</td><td>60 Hz</td><td>120 Hz (ProMotion)</td><td style="color:var(--green)">+2×</td></tr>
+            <tr><td>Helligkeit</td><td>350–600 nit</td><td>600–1600 nit</td><td style="color:var(--green)">+2.7×</td></tr>
+            <tr><td>Touch-Präzision</td><td>±2–5 mm</td><td>±0.5 mm</td><td style="color:var(--green)">+4–10×</td></tr>
+            <tr><td>Preis (EUR)</td><td>800–5.000</td><td>350–1.300</td><td style="color:var(--green)">−75%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+let isEngineer = false;
+let oscRunning = true;
+const oscData = [[],[],[]];
+const oscColors = ['#00b4d8','#00c853','#ff8f00'];
+let oscT = 0;
+let hcpMessages = [];
+let sdoMessages = [];
+const alarms = [
+  { id:1, sev:'crit', msg:'Drive 3 – Achse Z: Überhitzung (78°C)', time:'08:17:33', acked:false },
+  { id:2, sev:'crit', msg:'Drive 3 – Achse Z: CyclicError > 100', time:'08:17:35', acked:false },
+  { id:3, sev:'warn', msg:'HAG Auth: Unbekannter Login-Versuch', time:'08:12:01', acked:false },
+];
+
+// ─── Clock ──────────────────────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('de-DE');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── Role toggle ─────────────────────────────────────────────────────────────
+function toggleRole() {
+  isEngineer = !isEngineer;
+  const badge = document.getElementById('roleBadge');
+  badge.textContent = isEngineer ? 'ENGINEER' : 'OPERATOR';
+  badge.className = 'role-badge ' + (isEngineer ? 'role-engineer' : 'role-operator');
+  document.querySelectorAll('.engineer-only').forEach(el => {
+    el.style.display = isEngineer ? '' : 'none';
+  });
+  addHcpLog('tx', `{"type":"AUTH_UPDATE","role":"${isEngineer?'ENGINEER':'OPERATOR'}","token":"eyJ..."}`);
+  addHcpLog('rx', `{"type":"AUTH_ACK","role":"${isEngineer?'ENGINEER':'OPERATOR'}","capabilities":${isEngineer?'["READ","WRITE","SDO","FOE"]':'["READ","WRITE_LIMITED"]'}}`);
+}
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+function switchView(el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('view-' + el.dataset.view).classList.add('active');
+  if (el.dataset.view === 'costs') renderCostCharts();
+}
+
+// ─── Process variable simulation ─────────────────────────────────────────────
+const pvIds = ['v0','v1','v2','v3','v4','v5'];
+const pvBase = [124.5, 88.2, 0, 1450, 42.3, 3.7];
+const pvAmp  = [5, 3, 0, 80, 1.5, 0.4];
+function updatePVars() {
+  const t = Date.now() / 1000;
+  pvBase.forEach((b, i) => {
+    const el = document.getElementById(pvIds[i]);
+    if (el) {
+      const v = i === 2 ? '—' : (b + pvAmp[i] * Math.sin(t * (0.3 + i*0.07))).toFixed(2);
+      el.textContent = v;
+    }
+  });
+}
+setInterval(updatePVars, 500);
+
+// ─── Oscilloscope ────────────────────────────────────────────────────────────
+function renderOsc() {
+  const canvas = document.getElementById('oscCanvas');
+  if (!canvas) return;
+  const W = canvas.offsetWidth; const H = canvas.offsetHeight;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#060a10';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(30,45,69,.6)'; ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += W/10) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y < H; y += H/6)  { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  const t = Date.now() / 1000;
+  if (oscRunning) {
+    oscData[0].push(Math.sin(t*2.1)*0.6 + Math.sin(t*0.7)*0.25);
+    oscData[1].push(Math.sin(t*1.5 + 1)*0.5 + Math.cos(t*3)*0.15);
+    oscData[2].push(Math.sin(t*0.4)*0.3 + 0.1*Math.random());
+    if (oscData[0].length > W) oscData.forEach(d => d.shift());
+  }
+
+  oscColors.forEach((c, ci) => {
+    const data = oscData[ci];
+    if (!data.length) return;
+    ctx.beginPath(); ctx.strokeStyle = c; ctx.lineWidth = 1.5;
+    data.forEach((v, i) => {
+      const x = i;
+      const y = H/2 - v * (H/2 - 10);
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  });
+  requestAnimationFrame(renderOsc);
+}
+requestAnimationFrame(renderOsc);
+
+// ─── Topology SVG ─────────────────────────────────────────────────────────────
+function drawTopo(svgId, vb) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  const W = vb[0]; const H = vb[1];
+
+  const nodes = [
+    { id:'master', x:60,  y:H/2-10, w:100, h:40, label:'EtherCAT\nMaster', color:'#005aaa', textColor:'#00b4d8', status:'op' },
+    { id:'d1',     x:220, y:H/2-60, w:90,  h:36, label:'Drive 1\nAchse X', color:'#1e2d45', textColor:'#c9d6e3', status:'op' },
+    { id:'d2',     x:220, y:H/2+20, w:90,  h:36, label:'Drive 2\nAchse Y', color:'#1e2d45', textColor:'#c9d6e3', status:'op' },
+    { id:'d3',     x:380, y:H/2-60, w:90,  h:36, label:'Drive 3\nAchse Z', color:'#1e2d45', textColor:'#c9d6e3', status:'err' },
+    { id:'io1',    x:380, y:H/2+20, w:90,  h:36, label:'I/O EK1100', color:'#1e2d45', textColor:'#c9d6e3', status:'op' },
+    { id:'io2',    x:540, y:H/2+20, w:90,  h:36, label:'EL2008', color:'#1e2d45', textColor:'#c9d6e3', status:'op' },
+    { id:'enc',    x:540, y:H/2-60, w:90,  h:36, label:'EL5151\nEncoder', color:'#1e2d45', textColor:'#c9d6e3', status:'op' },
+  ];
+  const edges = [
+    ['master','d1'],['master','d2'],['d1','d3'],['d2','io1'],['io1','io2'],['d3','enc']
+  ];
+
+  const cx = n => n.x + n.w/2;
+  const cy = n => n.y + n.h/2;
+  const byId = id => nodes.find(n => n.id === id);
+
+  let html = `<defs>
+    <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L6,3z" fill="#005aaa"/>
+    </marker>
+    <filter id="glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>`;
+
+  // Edges
+  edges.forEach(([a,b]) => {
+    const na = byId(a); const nb = byId(b);
+    html += `<line x1="${cx(na)}" y1="${cy(na)}" x2="${cx(nb)}" y2="${cy(nb)}" stroke="#005aaa" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)" opacity=".7"/>`;
+  });
+
+  // App clients (right side)
+  if (W > 700) {
+    html += `<rect x="${W-120}" y="10" width="90" height="28" rx="3" fill="rgba(0,90,170,.15)" stroke="#005aaa" stroke-width="1"/>`;
+    html += `<text x="${W-75}" y="24" text-anchor="middle" font-size="10" fill="#00b4d8" font-family="'Share Tech Mono',monospace">Operator App</text>`;
+    html += `<rect x="${W-120}" y="46" width="90" height="28" rx="3" fill="rgba(0,200,83,.1)" stroke="#00c853" stroke-width="1"/>`;
+    html += `<text x="${W-75}" y="60" text-anchor="middle" font-size="10" fill="#00c853" font-family="'Share Tech Mono',monospace">Engineer App</text>`;
+    const masterNode = byId('master');
+    html += `<line x1="${cx(masterNode)+masterNode.w/2}" y1="${cy(masterNode)-8}" x2="${W-120}" y2="24" stroke="#005aaa" stroke-width="1" stroke-dasharray="5,3" opacity=".5"/>`;
+    html += `<line x1="${cx(masterNode)+masterNode.w/2}" y1="${cy(masterNode)+8}" x2="${W-120}" y2="60" stroke="#00c853" stroke-width="1" stroke-dasharray="5,3" opacity=".5"/>`;
+    html += `<text x="${W-75}" y="94" text-anchor="middle" font-size="9" fill="#5a7a9a" font-family="'Share Tech Mono',monospace">HCP/WS</text>`;
+  }
+
+  // Nodes
+  nodes.forEach(n => {
+    const isErr = n.status === 'err';
+    const isMaster = n.id === 'master';
+    html += `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="4" fill="${n.color}" stroke="${isMaster?'#005aaa':isErr?'#e53935':'#1e2d45'}" stroke-width="${isMaster?2:1}"/>`;
+    const lines = n.label.split('\n');
+    lines.forEach((l,i) => {
+      const ty = n.y + n.h/2 + (i - (lines.length-1)/2) * 13;
+      html += `<text x="${n.x+n.w/2}" y="${ty+4}" text-anchor="middle" font-size="${isMaster?12:10}" fill="${n.textColor}" font-family="'Rajdhani',sans-serif" font-weight="600">${l}</text>`;
+    });
+    // Status dot
+    const dotColor = isErr ? '#e53935' : '#00c853';
+    html += `<circle cx="${n.x+n.w-8}" cy="${n.y+8}" r="4" fill="${dotColor}" filter="url(#glow)"/>`;
+  });
+
+  // Network stats bar
+  html += `<rect x="0" y="${H-24}" width="${W}" height="24" fill="rgba(0,0,0,.4)"/>`;
+  html += `<text x="10" y="${H-9}" font-size="10" fill="#5a7a9a" font-family="'Share Tech Mono',monospace">Zykluszeit: 250µs  |  Working Counter: 12/12  |  Frame Loss: 0  |  EtherCAT v1.0 / IEC 61158</text>`;
+
+  svg.innerHTML = html;
+}
+drawTopo('topoMini', [800, 240]);
+drawTopo('topoFull', [800, 320]);
+
+// ─── Alarm rendering ─────────────────────────────────────────────────────────
+function renderAlarms() {
+  const list = document.getElementById('alarmList');
+  const dash = document.getElementById('dashAlarms');
+  const badge = document.getElementById('alarmBadge');
+  const unacked = alarms.filter(a => !a.acked);
+  badge.textContent = unacked.length;
+  badge.style.display = unacked.length ? '' : 'none';
+
+  const html = alarms.map(a => `
+    <div class="alarm-item" id="alarm-${a.id}" style="opacity:${a.acked?.8:1}">
+      <span class="alarm-sev ${a.sev}">${a.sev.toUpperCase()}</span>
+      <div class="alarm-msg">${a.msg}</div>
+      <div class="alarm-time">${a.time}</div>
+      ${!a.acked ? `<button class="ack-btn" onclick="ackAlarm(${a.id})">ACK</button>` : '<span style="color:var(--green);font-family:var(--mono);font-size:10px">✓ ACK</span>'}
+    </div>`).join('');
+  if (list) list.innerHTML = html;
+  if (dash) dash.innerHTML = alarms.slice(0,3).map(a => `
+    <div class="alarm-item">
+      <span class="alarm-sev ${a.sev}">${a.sev.toUpperCase()}</span>
+      <div class="alarm-msg" style="font-size:11px">${a.msg}</div>
+    </div>`).join('');
+}
+function ackAlarm(id) {
+  const a = alarms.find(x => x.id === id);
+  if (a) { a.acked = true; renderAlarms(); addHcpLog('tx', `{"type":"ALARM_ACK","alarm_id":${id}}`); }
+}
+function ackAll() { alarms.forEach(a => a.acked = true); renderAlarms(); }
+renderAlarms();
+
+// ─── Machine control ─────────────────────────────────────────────────────────
+function machineCmd(cmd) {
+  const colors = { START:'var(--green)', STOP:'var(--red)', RESET:'var(--orange)' };
+  const labels = { START:'● RUNNING', STOP:'■ STOPPED', RESET:'⟳ RESETTING...' };
+  document.getElementById('machineStatus').style.color = colors[cmd];
+  document.getElementById('machineStatus').textContent = labels[cmd];
+  document.getElementById('lastCmd').textContent = `Letzter Befehl: ${cmd} @ ${new Date().toLocaleTimeString('de-DE')}`;
+  addHcpLog('tx', `{"type":"MACHINE_CMD","cmd":"${cmd}","role":"${isEngineer?'ENGINEER':'OPERATOR'}"}`);
+  addHcpLog('rx', `{"type":"CMD_ACK","cmd":"${cmd}","result":"OK"}`);
+}
+function loadRecipe(btn, name) {
+  document.getElementById('activeRecipe').textContent = 'Aktiv: ' + name;
+  addHcpLog('tx', `{"type":"RECIPE_LOAD","recipe":"${name}"}`);
+}
+
+// ─── Parameter sliders ────────────────────────────────────────────────────────
+const params = [
+  { name:'Vorschubgeschwindigkeit', min:0, max:500, val:200, unit:'mm/s' },
+  { name:'Beschleunigungsrampe',   min:0, max:10,  val:3.5, unit:'m/s²' },
+  { name:'Positionstoleranz',      min:0, max:5,   val:0.5, unit:'mm' },
+  { name:'Strom-Limit',            min:0, max:20,  val:8,   unit:'A' },
+];
+function buildSliders() {
+  const el = document.getElementById('paramSliders');
+  if (!el) return;
+  el.innerHTML = params.map((p,i) => `
+    <div class="param-row">
+      <div class="param-name">${p.name}</div>
+      <input type="range" min="${p.min}" max="${p.max}" step="${(p.max-p.min)/100}" value="${p.val}"
+        oninput="document.getElementById('pv${i}').textContent=parseFloat(this.value).toFixed(1)+' ${p.unit}'" />
+      <div class="param-val" id="pv${i}">${p.val} ${p.unit}</div>
+    </div>`).join('');
+}
+buildSliders();
+
+// ─── HCP log ─────────────────────────────────────────────────────────────────
+function addHcpLog(dir, msg) {
+  const log = document.getElementById('hcpLog');
+  if (!log) return;
+  const ts = new Date().toLocaleTimeString('de-DE', { hour12:false }) + '.' + String(Date.now()%1000).padStart(3,'0');
+  const cls = dir === 'tx' ? 'log-tx' : dir === 'rx' ? 'log-rx' : 'log-err';
+  const arrow = dir === 'tx' ? '→' : '←';
+  const line = `<div><span class="log-ts">[${ts}]</span> <span class="${cls}">${arrow} ${msg}</span></div>`;
+  log.innerHTML += line;
+  log.scrollTop = log.scrollHeight;
+}
+function sendHcp() {
+  const val = document.getElementById('hcpInput').value;
+  addHcpLog('tx', val);
+  setTimeout(() => addHcpLog('rx', '{"type":"VAR_READ_RESP","var":"Achse_X_Pos","value":124.87,"quality":"GOOD"}'), 80);
+}
+// Auto HCP messages
+setInterval(() => {
+  const t = Date.now()/1000;
+  addHcpLog('rx', `{"type":"VAR_UPDATE","var":"Achse_X_Pos","value":${(124+5*Math.sin(t)).toFixed(3)},"ts":${Date.now()}}`);
+}, 2000);
+addHcpLog('rx', '{"type":"CONNECT_ACK","version":"HCP/1.2","server":"HAG-Core 2.4.1"}');
+
+// ─── SDO ─────────────────────────────────────────────────────────────────────
+function addSdoLog(msg, cls='log-rx') {
+  const log = document.getElementById('sdoLog');
+  if (!log) return;
+  const ts = new Date().toLocaleTimeString('de-DE');
+  log.innerHTML += `<div><span class="log-ts">[${ts}]</span> <span class="${cls}">${msg}</span></div>`;
+  log.scrollTop = log.scrollHeight;
+}
+function sdoRead() {
+  const idx = document.getElementById('sdoIdx').value;
+  const sub = document.getElementById('sdoSub').value;
+  addSdoLog(`SDO Read ${idx}:${sub} → Slave 0x0001`, 'log-tx');
+  setTimeout(() => {
+    const val = (Math.random()*100).toFixed(1);
+    document.getElementById('sdoVal').value = val;
+    addSdoLog(`SDO Read ACK  ${idx}:${sub} = ${val} [UINT32]`);
+    addHcpLog('tx', `{"type":"SDO_READ","index":"${idx}","subindex":"${sub}"}`);
+    addHcpLog('rx', `{"type":"SDO_READ_RESP","value":${val},"datatype":"UINT32"}`);
+  }, 150);
+}
+function sdoWrite() {
+  const val = document.getElementById('sdoWriteVal').value;
+  addSdoLog(`SDO Write 0x6060:0x00 = ${val} → Slave 0x0001`, 'log-tx');
+  setTimeout(() => addSdoLog(`SDO Write ACK  0x6060:0x00 OK`), 150);
+}
+
+// ─── FoE simulation ───────────────────────────────────────────────────────────
+function startFoE() {
+  if (!isEngineer) { alert('Engineer-Rolle erforderlich!'); return; }
+  document.getElementById('foeBar').style.display = 'block';
+  document.getElementById('foeStatus').textContent = 'Upload: firmware_v2.4.1.bin';
+  let p = 0;
+  const iv = setInterval(() => {
+    p += Math.random() * 8;
+    if (p >= 100) { p = 100; clearInterval(iv); document.getElementById('foeStatus').textContent = 'Upload abgeschlossen ✓'; }
+    document.getElementById('foeProgress').style.width = p + '%';
+  }, 200);
+}
+
+// ─── Cost charts (Canvas) ─────────────────────────────────────────────────────
+function renderCostCharts() {
+  // Line chart
+  const lc = document.getElementById('costCanvas');
+  if (!lc) return;
+  const lw = lc.offsetWidth; const lh = lc.height;
+  lc.width = lw;
+  const ctx = lc.getContext('2d');
+  ctx.fillStyle = '#0d1120'; ctx.fillRect(0,0,lw,lh);
+
+  const pad = {l:50,r:20,t:20,b:30};
+  const W = lw - pad.l - pad.r; const H = lh - pad.t - pad.b;
+
+  // Grid
+  ctx.strokeStyle = '#1e2d45'; ctx.lineWidth = 1;
+  for (let i=0;i<=5;i++) {
+    const y = pad.t + H - (i/5)*H;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+W,y); ctx.stroke();
+    ctx.fillStyle = '#5a7a9a'; ctx.font = '10px Share Tech Mono';
+    ctx.fillText((i*40)+'k', pad.l-36, y+4);
+  }
+  for (let i=0;i<=5;i++) {
+    const x = pad.l + (i/5)*W;
+    ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+H); ctx.stroke();
+    ctx.fillStyle = '#5a7a9a'; ctx.font = '10px Share Tech Mono';
+    ctx.fillText('J'+i, x-6, pad.t+H+16);
+  }
+
+  const series = [
+    { data:[0,70,110,148,178,214], color:'#005aaa', label:'Traditionelles HMI' },
+    { data:[0,16,22,28,34,40],     color:'#00c853', label:'EHAE App-Based' },
+  ];
+  series.forEach(s => {
+    ctx.beginPath(); ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+    s.data.forEach((v,i) => {
+      const x = pad.l + (i/5)*W;
+      const y = pad.t + H - (v/200)*H;
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    // Dots
+    s.data.forEach((v,i) => {
+      const x = pad.l + (i/5)*W;
+      const y = pad.t + H - (v/200)*H;
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
+      ctx.fillStyle = s.color; ctx.fill();
+    });
+  });
+
+  // Legend
+  ctx.fillStyle='#005aaa'; ctx.fillRect(pad.l,pad.t+6,16,3);
+  ctx.fillStyle='#5a7a9a'; ctx.font='11px Exo 2'; ctx.fillText('Traditionelles HMI (20 Stationen)',pad.l+22,pad.t+12);
+  ctx.fillStyle='#00c853'; ctx.fillRect(pad.l,pad.t+22,16,3);
+  ctx.fillStyle='#5a7a9a'; ctx.fillText('EHAE App-Based (20 Stationen)',pad.l+22,pad.t+28);
+
+  // Bar chart
+  const bc = document.getElementById('barCanvas');
+  const bw = bc.offsetWidth; const bh = bc.height;
+  bc.width = bw;
+  const bctx = bc.getContext('2d');
+  bctx.fillStyle = '#0d1120'; bctx.fillRect(0,0,bw,bh);
+
+  const cats = ['Hardware','Lizenz','Wartung','Ersatz','Gesamt'];
+  const trad = [3500,2200,3000,2000,10700];
+  const ehae = [600,200,300,200,1300];
+  const bpad = {l:50,r:20,t:20,b:40};
+  const bW = bw - bpad.l - bpad.r; const bH = bh - bpad.t - bpad.b;
+  const maxV = 12000;
+  const bw2 = bW/(cats.length*2.5);
+
+  cats.forEach((c,i) => {
+    const baseX = bpad.l + (i/cats.length)*bW + bW/(cats.length*2)-bw2;
+    const ty = (v) => bpad.t + bH - (v/maxV)*bH;
+
+    bctx.fillStyle = '#005aaa';
+    bctx.fillRect(baseX, ty(trad[i]), bw2, (trad[i]/maxV)*bH);
+    bctx.fillStyle = '#00c853';
+    bctx.fillRect(baseX+bw2+4, ty(ehae[i]), bw2, (ehae[i]/maxV)*bH);
+
+    bctx.fillStyle='#5a7a9a'; bctx.font='10px Share Tech Mono'; bctx.textAlign='center';
+    bctx.fillText(c, baseX+bw2, bpad.t+bH+16);
+  });
+  // y axis
+  for (let i=0;i<=4;i++) {
+    const y = bpad.t + bH - (i/4)*bH;
+    bctx.strokeStyle='#1e2d45'; bctx.lineWidth=1;
+    bctx.beginPath(); bctx.moveTo(bpad.l,y); bctx.lineTo(bpad.l+bW,y); bctx.stroke();
+    bctx.fillStyle='#5a7a9a'; bctx.font='10px Share Tech Mono'; bctx.textAlign='right';
+    bctx.fillText((i*3000)+'€', bpad.l-6, y+4);
+  }
+}
+
+// ─── Migration progress ────────────────────────────────────────────────────────
+function buildMigProgress() {
+  const el = document.getElementById('migProgress');
+  if (!el) return;
+  const items = [
+    ['HAG Installation', 100],
+    ['Netzwerk-Segmentierung', 100],
+    ['App Deployment', 85],
+    ['Operator Schulung', 80],
+    ['Panel-Abbau', 20],
+  ];
+  el.innerHTML = items.map(([l,p]) => `
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:4px">
+        <span>${l}</span><span style="color:${p===100?'var(--green)':'var(--accent2)'}">${p}%</span>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${p}%;background:${p===100?'var(--green)':'var(--accent2)'}"></div>
+      </div>
+    </div>`).join('');
+}
+buildMigProgress();
+
+// ─── Engineer-only items initially hidden ─────────────────────────────────────
+document.querySelectorAll('.engineer-only').forEach(el => el.style.display = 'none');
+
+// ─── Connection count simulation ──────────────────────────────────────────────
+setInterval(() => {
+  const n = 2 + Math.floor(Math.random()*3);
+  const el = document.getElementById('connCount');
+  if (el) el.textContent = n;
+}, 7000);
+</script>
+</body>
+</html>

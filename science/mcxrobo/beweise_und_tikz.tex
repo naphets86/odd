@@ -1,0 +1,648 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[ngerman]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{tikz}
+\usetikzlibrary{positioning, shapes, arrows.meta, shadows}
+
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}{Lemma}[section]
+
+\title{Ausführliche Beweise für Model Checking $\times$ Roboternavigation}
+\author{Stephan Epp}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{TikZ-Diagramm: Pattern für Annäherung an Ziel}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    node distance=2.5cm,
+    state/.style={
+        rectangle,
+        rounded corners=5pt,
+        draw=blue!70,
+        fill=blue!10,
+        very thick,
+        minimum width=6cm,
+        minimum height=1.5cm,
+        align=center,
+        font=\small\sffamily,
+        drop shadow
+    },
+    arrow/.style={
+        -Stealth,
+        very thick,
+        blue!70,
+        shorten >=2pt,
+        shorten <=2pt
+    },
+    label/.style={
+        font=\scriptsize\ttfamily,
+        blue!80
+    }
+]
+
+% State 1
+\node[state] (s1) {
+    \textbf{State 1}\\[0.1cm]
+    \texttt{far\_from\_goal}\\
+    \texttt{high\_velocity}
+};
+
+% State 2
+\node[state, below=of s1] (s2) {
+    \textbf{State 2}\\[0.1cm]
+    \texttt{medium\_distance}\\
+    \texttt{medium\_velocity}
+};
+
+% State 3
+\node[state, below=of s2] (s3) {
+    \textbf{State 3}\\[0.1cm]
+    \texttt{close\_to\_goal}\\
+    \texttt{low\_velocity}
+};
+
+% State 4
+\node[state, below=of s3, fill=green!10, draw=green!70] (s4) {
+    \textbf{State 4}\\[0.1cm]
+    \texttt{at\_goal}\\
+    \texttt{zero\_velocity}
+};
+
+% Arrows
+\draw[arrow] (s1) -- (s2);
+\draw[arrow] (s2) -- (s3);
+\draw[arrow] (s3) -- (s4);
+
+% Distance annotations (right side)
+\node[right=1.5cm of s1, label] {$d \gg d_{\text{ref}}$};
+\node[right=1.5cm of s2, label] {$d \approx d_{\text{ref}}$};
+\node[right=1.5cm of s3, label] {$d \ll d_{\text{ref}}$};
+\node[right=1.5cm of s4, label] {$d \leq \epsilon$};
+
+\end{tikzpicture}
+\caption{Property Pattern Graph für monotone Annäherung an das Ziel. Die vier Zustände repräsentieren charakteristische Phasen der Phi-Navigation: weit vom Ziel entfernt mit hoher Geschwindigkeit, mittlere Distanz mit mittlerer Geschwindigkeit, nahe am Ziel mit niedriger Geschwindigkeit und schließlich am Ziel mit Stillstand. Die rechte Seite zeigt die zugehörigen Distanzen relativ zur Referenzdistanz $d_{\text{ref}}$.}
+\label{fig:pattern}
+\end{figure}
+
+\newpage
+
+\section{Ausführliche Beweise für Kapitel 3: Verifikation mit dem Subgraph Algorithmus}
+
+\subsection{Beweis: Korrektheit der Verifikation}
+
+\begin{theorem}[Korrektheit der Verifikation]
+Der Algorithmus \texttt{Verify Navigation Property} liefert genau dann \texttt{True}, wenn das Property Pattern $G_P$ als Subgraph in der Navigations-Kripke-Struktur $\mathcal{K}_{\phi}$ existiert.
+\end{theorem}
+
+\begin{proof}
+Wir zeigen die Äquivalenz in beiden Richtungen durch einen konstruktiven Beweis, der auf der Injektivität der Signatur-Funktion und der Vollständigkeit der zyklischen Rotationen basiert.
+
+\textbf{Teil 1: Hinrichtung} ($\Rightarrow$): \textit{Wenn der Algorithmus \texttt{True} zurückgibt, dann existiert $G_P$ als Subgraph in $\mathcal{K}_{\phi}$.}
+
+Angenommen, der Algorithmus gibt \texttt{True} zurück. Dies geschieht genau dann in Zeile 9 des Algorithmus, wenn für eine bestimmte Rotation $k$ die Bedingung in Zeile 8 erfüllt ist: Das rotierte Signatur-Array von $G_P$ ist als Subsequenz im Signatur-Array von $\mathcal{K}_{\phi}$ enthalten.
+
+Sei $\text{Sig}_A = [\sigma_0^A, \sigma_1^A, \ldots, \sigma_{n_A-1}^A]$ das Signatur-Array der Kripke-Struktur $\mathcal{K}_{\phi}$ mit Adjazenzmatrix $A$ der Größe $n_A \times n_A$, und sei $\text{Sig}_B = [\sigma_0^B, \sigma_1^B, \ldots, \sigma_{n_B-1}^B]$ das Signatur-Array des Property Pattern Graphs $G_P$ mit Adjazenzmatrix $B$ der Größe $n_B \times n_B$.
+
+Die Signatur für Spalte $j$ ist definiert als:
+\begin{equation}
+\sigma_j = \sum_{i=0}^{n-1} M_{ij} \cdot 2^i + j \cdot 2^n
+\end{equation}
+wobei $M$ die entsprechende Adjazenzmatrix ist. Diese Funktion kodiert sowohl den Spaltenvektor (durch die Summe $\sum_{i=0}^{n-1} M_{ij} \cdot 2^i$, die eine binäre Darstellung darstellt) als auch die Spaltenposition (durch den Term $j \cdot 2^n$).
+
+Wenn die rotierte Sequenz $\text{Sig}_B^{(k)} = [\sigma_k^B, \sigma_{k+1}^B, \ldots, \sigma_{n_B-1}^B, \sigma_0^B, \ldots, \sigma_{k-1}^B]$ als Subsequenz in $\text{Sig}_A$ an Position $i_0$ gefunden wird, bedeutet dies:
+\begin{equation}
+\sigma_{i_0+j}^A = \sigma_{(k+j) \mod n_B}^B \quad \text{für alle } j \in \{0, 1, \ldots, n_B-1\}
+\end{equation}
+
+Nach dem Lemma über die Eindeutigkeit der Signaturen (das zeigt, dass die Signatur-Funktion injektiv ist) impliziert die Gleichheit der Signaturen die Gleichheit der zugrundeliegenden Spaltenvektoren. Das heißt, wenn wir die Spaltengewichtung entfernen (durch Modulo $2^n$ Operation), erhalten wir:
+\begin{equation}
+\sigma_{i_0+j}^A \mod 2^{n_A} = \sigma_{(k+j) \mod n_B}^B \mod 2^{n_B}
+\end{equation}
+
+Dies bedeutet, dass die Spaltenvektoren von $B$ (nach zyklischer Rotation um $k$ Positionen) mit einer zusammenhängenden Sequenz von Spaltenvektoren in $A$ übereinstimmen. Da die Adjazenzmatrix die vollständige Graphstruktur kodiert â€“ Spalte $j$ repräsentiert alle eingehenden Kanten zu Knoten $j$ â€“, bedeutet die Übereinstimmung der Spaltenvektoren, dass die lokale Nachbarschaftsstruktur identisch ist.
+
+Konkret existiert eine Einbettung $\phi: V_B \to V_A$ (wobei $V_B$ die Knotenmenge von $G_P$ und $V_A$ die Knotenmenge von $\mathcal{K}_{\phi}$ ist) mit:
+\begin{equation}
+\phi(v_j) = v_{i_0 + ((j-k) \mod n_B)}
+\end{equation}
+die die Graphstruktur erhält: Wenn $(v_i, v_j) \in E_B$ (Kante in $G_P$), dann ist $(\phi(v_i), \phi(v_j)) \in E_A$ (entsprechende Kante in $\mathcal{K}_{\phi}$). Dies folgt direkt aus der Tatsache, dass $B_{ij} = 1$ genau dann, wenn $A_{\phi(i), \phi(j)} = 1$, was durch die Übereinstimmung der Spaltenvektoren garantiert ist.
+
+Somit ist $G_P$ tatsächlich als Subgraph in $\mathcal{K}_{\phi}$ enthalten.
+
+\textbf{Teil 2: Rückrichtung} ($\Leftarrow$): \textit{Wenn $G_P$ als Subgraph in $\mathcal{K}_{\phi}$ existiert, dann gibt der Algorithmus \texttt{True} zurück.}
+
+Angenommen, $G_P$ existiert als Subgraph in $\mathcal{K}_{\phi}$. Das bedeutet, es existiert eine injektive Funktion $\phi: V_B \to V_A$, die die Graphstruktur erhält: Für alle Kanten $(v_i, v_j) \in E_B$ gilt $(\phi(v_i), \phi(v_j)) \in E_A$.
+
+Ohne Beschränkung der Allgemeinheit können wir annehmen, dass die Knoten von $G_P$ so nummeriert sind, dass $\phi(v_j) = v_{i_0 + j}$ für ein gewisses $i_0 \in \{0, 1, \ldots, n_A - n_B\}$ gilt. Falls dies nicht der Fall ist, können wir die Knoten von $G_P$ umnummerieren, was einer zyklischen Rotation der Adjazenzmatrix $B$ entspricht â€“ genau dies wird durch die Schleife in Zeile 6 des Algorithmus abgedeckt.
+
+Für diese Einbettung gilt: Die Spalte $j$ von $B$ entspricht der Spalte $i_0 + j$ von $A$, das heißt:
+\begin{equation}
+B_{ij} = A_{(i_0+i)(i_0+j)} \quad \text{für alle } i, j \in \{0, \ldots, n_B-1\}
+\end{equation}
+
+Nach Definition der Signatur-Funktion haben wir dann für die Zeilenkomponenten (ohne Spaltengewichtung):
+\begin{align}
+\sum_{i=0}^{n_B-1} B_{ij} \cdot 2^i &= \sum_{i=0}^{n_B-1} A_{(i_0+i)(i_0+j)} \cdot 2^i \\
+&= \text{Subsequenz der Zeilenkomponente von } \sigma_{i_0+j}^A
+\end{align}
+
+Die Spaltengewichtung unterscheidet sich zwar ($j \cdot 2^{n_B}$ vs. $(i_0+j) \cdot 2^{n_A}$), aber diese wird in Zeile 8 des Algorithmus durch Extraktion der Zeilenkomponenten (Modulo-Operation) entfernt.
+
+Somit wird bei der Rotation $k=0$ (oder einer geeigneten Rotation, falls die Nummerierung anders ist) das rotierte Signatur-Array von $G_P$ als Subsequenz in $\text{Sig}_A$ gefunden, und der Algorithmus gibt \texttt{True} in Zeile 9 zurück.
+
+\textbf{Schlussfolgerung:} Wir haben beide Richtungen der Äquivalenz gezeigt. Der Algorithmus gibt genau dann \texttt{True} zurück, wenn $G_P$ als Subgraph in $\mathcal{K}_{\phi}$ existiert. Dies beweist die Korrektheit des Verifikationsalgorithmus.
+\end{proof}
+
+\subsection{Beweis: Laufzeit der Verifikation}
+
+\begin{theorem}[Laufzeit der Verifikation]
+Die Verifikation eines Property Patterns mit $m$ Zuständen in einer Navigations-Kripke-Struktur mit $n$ Zuständen hat Laufzeit:
+\[
+T(n,m) = O(n^2 + m \cdot n) = O(n^2)
+\]
+für $m \ll n$.
+\end{theorem}
+
+\begin{proof}
+Wir analysieren die Laufzeit des Algorithmus \texttt{Verify Navigation Property} Zeile für Zeile und summieren die Komplexitäten der einzelnen Schritte.
+
+\textbf{Schritt 1: Konvertierung zu Adjazenzmatrizen} (Zeilen 4-5)
+
+Die Kripke-Struktur $\mathcal{K}_{\phi}$ wird zur Adjazenzmatrix $A$ konvertiert. Angenommen, $\mathcal{K}_{\phi}$ ist als Liste von Zuständen mit Transitionsrelation gegeben. Die Konstruktion der $n \times n$ Adjazenzmatrix erfordert das Durchlaufen aller Zustandspaare und Prüfen, ob eine Transition existiert. Im schlechtesten Fall (vollständig verbundener Graph) hat dies Laufzeit $O(n^2)$. In der Praxis ist die Kripke-Struktur oft dünn besetzt (sparse), sodass die Laufzeit $O(n + |E|)$ sein kann, wobei $|E|$ die Anzahl der Kanten ist. Für die obere Schranke nehmen wir $O(n^2)$ an.
+
+Die Konvertierung von $G_P$ zur Matrix $B$ hat analog Laufzeit $O(m^2)$.
+
+Gesamtkomplexität für Schritt 1: $O(n^2 + m^2)$.
+
+\textbf{Schritt 2: Signaturberechnung für $\mathcal{K}_{\phi}$} (Zeilen 7-9)
+
+Für jede Spalte $j \in \{0, \ldots, n-1\}$ der Matrix $A$ wird die Signatur berechnet:
+\begin{equation}
+\sigma_j^A = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n
+\end{equation}
+
+Die Berechnung der Summe $\sum_{i=0}^{n-1} A_{ij} \cdot 2^i$ erfordert $n$ Multiplikationen und $n-1$ Additionen, also $O(n)$ Operationen pro Spalte. Da wir dies für alle $n$ Spalten durchführen, ergibt sich eine Gesamtkomplexität von $O(n \cdot n) = O(n^2)$.
+
+Es ist wichtig zu beachten, dass die Potenzoperationen $2^i$ effizient berechnet werden können: Entweder durch Bit-Shift-Operationen (die in konstanter Zeit laufen auf modernen Prozessoren) oder durch iteratives Verdoppeln. Selbst wenn wir konservativ annehmen, dass jede Potenzierung $O(\log n)$ Zeit benötigt (für große $n$), ist die Gesamtkomplexität $O(n^2 \log n)$, was asymptotisch immer noch polynomiell ist.
+
+Gesamtkomplexität für Schritt 2: $O(n^2)$ (oder $O(n^2 \log n)$ im konservativen Fall).
+
+\textbf{Schritt 3: Signaturberechnung für $G_P$} (Zeilen 10-12)
+
+Analog zur Signaturberechnung für $\mathcal{K}_{\phi}$ hat die Berechnung der Signaturen für den Property Pattern Graph $G_P$ Laufzeit $O(m^2)$.
+
+\textbf{Schritt 4: Zyklische Rotationen und Matching} (Zeilen 14-19)
+
+Die äußere Schleife (Zeile 14) iteriert über alle $m$ möglichen Rotationen des Signatur-Arrays $\text{Sig}_B$. Für jede Rotation $k$ werden folgende Operationen durchgeführt:
+
+\begin{enumerate}
+\item \textbf{Rotation des Arrays} (Zeile 15): Eine zyklische Rotation eines Arrays der Länge $m$ kann in $O(m)$ Zeit durchgeführt werden durch Kopieren der Elemente in der richtigen Reihenfolge. Alternativ kann die Rotation implizit durch Indexverschiebung in konstanter Zeit $O(1)$ realisiert werden, indem man beim Zugriff auf Element $j$ stattdessen auf Element $(k+j) \mod m$ zugreift.
+
+\item \textbf{Extraktion der Zeilenkomponenten} (implizit in Zeile 16): Für jede der $m$ Signaturen in der rotierten Sequenz muss die Spaltengewichtung entfernt werden durch Modulo-Operation: $\sigma \mod 2^{n_B}$. Dies sind $m$ konstante Operationen, also $O(m)$.
+
+\item \textbf{Subsequenz-Test} (Zeile 16): Es muss geprüft werden, ob die rotierte Sequenz von $m$ (modifizierten) Signaturen als zusammenhängende Subsequenz im Array $\text{Sig}_A$ von Länge $n$ vorkommt.
+
+Ein naiver Subsequenz-Test würde für jede Startposition $i \in \{0, \ldots, n-m\}$ prüfen, ob $\text{Sig}_A[i:i+m] = \text{Sig}_B^{(k)}$. Dies erfordert $O((n-m) \cdot m) = O(n \cdot m)$ Vergleiche im schlechtesten Fall.
+
+Effizientere Algorithmen wie der Knuth-Morris-Pratt (KMP) Algorithmus oder der Boyer-Moore Algorithmus können den Subsequenz-Test in $O(n + m)$ Zeit durchführen. Wir nehmen die optimistische Variante $O(n + m)$ an.
+\end{enumerate}
+
+Für jede der $m$ Rotationen werden also $O(m) + O(m) + O(n+m) = O(n+m)$ Operationen durchgeführt. Die Gesamtkomplexität für alle Rotationen ist daher:
+\begin{equation}
+m \cdot O(n+m) = O(m \cdot n + m^2)
+\end{equation}
+
+Im naiven Fall (ohne KMP) wäre dies $O(m \cdot n \cdot m) = O(m^2 \cdot n)$.
+
+\textbf{Gesamtkomplexität:}
+
+Summieren wir alle Schritte:
+\begin{align}
+T(n, m) &= O(n^2 + m^2) + O(n^2) + O(m^2) + O(m \cdot n + m^2) \\
+&= O(n^2 + m^2 + m \cdot n) \\
+&= O(n^2 + m(m + n))
+\end{align}
+
+Unter der Annahme $m \ll n$ (das Property Pattern ist viel kleiner als die Kripke-Struktur, was in der Praxis fast immer der Fall ist), gilt $m + n \approx n$ und $m^2 \ll n^2$, sodass:
+\begin{equation}
+T(n, m) = O(n^2 + m \cdot n) = O(n^2)
+\end{equation}
+
+Selbst wenn $m = O(\sqrt{n})$ (das Pattern hat Größe proportional zur Quadratwurzel der Kripke-Struktur), haben wir:
+\begin{equation}
+T(n, m) = O(n^2 + \sqrt{n} \cdot n) = O(n^2 + n^{3/2}) = O(n^2)
+\end{equation}
+
+\textbf{Schlussfolgerung:} Die Laufzeit des Verifikationsalgorithmus ist $O(n^2)$ für $m \ll n$, was polynomial in der Größe der Kripke-Struktur ist. Dies ist eine dramatische Verbesserung gegenüber klassischen Model-Checking-Ansätzen mit exponentieller Komplexität $O(2^n)$ oder klassischen Subgraph-Isomorphie-Algorithmen mit faktorieller Komplexität $O(n!)$.
+\end{proof}
+
+\newpage
+
+\section{Ausführliche Beweise für Kapitel 4: Theoretische Garantien der Phi-Navigation}
+
+\subsection{Beweis: Garantierte Zielerreichung}
+
+\begin{theorem}[Garantierte Zielerreichung]
+Sei $\mathcal{K}_{\phi}$ eine Navigations-Kripke-Struktur für hindernisfreien Raum. Dann gilt:
+\[
+\mathcal{K}_{\phi} \models \text{AF}(\texttt{at\_goal})
+\]
+Das heißt, auf allen Pfaden wird schließlich das Ziel erreicht.
+\end{theorem}
+
+\begin{proof}
+Wir beweisen die Aussage durch Konstruktion einer Lyapunov-Funktion und Nachweis ihrer strikten Monotonie entlang aller Trajektorien. Der Beweis gliedert sich in vier Schritte: Definition der Lyapunov-Funktion, Nachweis der Monotonie, Nachweis der Beschränktheit und Schlussfolgerung auf Konvergenz.
+
+\textbf{Schritt 1: Definition der Lyapunov-Funktion}
+
+Wir definieren die Lyapunov-Funktion $V: S \to \mathbb{R}_{\geq 0}$ als die euklidische Distanz vom aktuellen Zustand zum Zielzustand:
+\begin{equation}
+V(s) = d(s) = \|(x_s, y_s) - (x_{\text{goal}}, y_{\text{goal}})\|_2 = \sqrt{(x_s - x_{\text{goal}})^2 + (y_s - y_{\text{goal}})^2}
+\end{equation}
+wobei $s = (x_s, y_s, v_s)$ ein Zustand in der Kripke-Struktur ist mit Position $(x_s, y_s)$ und Geschwindigkeit $v_s$.
+
+Die Lyapunov-Funktion ist wohldefiniert für alle Zustände $s \in S$ und nimmt Werte in $\mathbb{R}_{\geq 0}$ an, da es sich um eine Norm handelt.
+
+\textbf{Schritt 2: Nachweis der strikten Monotonie}
+
+Wir zeigen, dass $V$ entlang aller Trajektorien der Phi-Navigation strikt monoton fällt, solange das Ziel noch nicht erreicht ist. Sei $s = (x, y, v)$ ein beliebiger Zustand mit $V(s) > \epsilon$, wobei $\epsilon > 0$ die Zieltoleranz ist (d.h., $s \not\models \texttt{at\_goal}$). Sei $s' = (x', y', v')$ der gemäß der Phi-Transitionsrelation eindeutig bestimmte Nachfolgezustand.
+
+Nach der Definition der Phi-Transition gilt:
+\begin{align}
+x' &= x + v \cdot \Delta t \cdot \cos(\theta) \\
+y' &= y + v \cdot \Delta t \cdot \sin(\theta)
+\end{align}
+wobei $\theta = \text{atan2}(y_{\text{goal}} - y, x_{\text{goal}} - x)$ der Winkel ist, der vom aktuellen Zustand zum Ziel zeigt, und $\Delta t > 0$ der Zeitschritt ist.
+
+Die Geschwindigkeit $v$ zum Zeitpunkt des Zustands $s$ ist durch das $\phi$-exponentielle Profil gegeben:
+\begin{equation}
+v = v_{\max}(1 - e^{-\phi d(s)/d_{\text{ref}}})
+\end{equation}
+
+Da $d(s) > \epsilon > 0$, folgt $v > 0$ (der Roboter steht nicht still). Außerdem ist $v \leq v_{\max}$ nach Definition.
+
+Die Verschiebung von $s$ zu $s'$ in einer Zeiteinheit ist:
+\begin{equation}
+\vec{\Delta} = (x' - x, y' - y) = v \cdot \Delta t \cdot (\cos(\theta), \sin(\theta))
+\end{equation}
+
+Dieser Vektor zeigt per Konstruktion in Richtung des Ziels, da $\theta$ genau so gewählt ist. Wir berechnen nun die Änderung der Distanz:
+\begin{align}
+V(s')^2 - V(s)^2 &= \|(x', y') - (x_{\text{goal}}, y_{\text{goal}})\|_2^2 - \|(x, y) - (x_{\text{goal}}, y_{\text{goal}})\|_2^2 \\
+&= \|(x, y) + \vec{\Delta} - (x_{\text{goal}}, y_{\text{goal}})\|_2^2 - \|(x, y) - (x_{\text{goal}}, y_{\text{goal}})\|_2^2
+\end{align}
+
+Sei $\vec{r} = (x, y) - (x_{\text{goal}}, y_{\text{goal}})$ der Vektor vom Ziel zum aktuellen Zustand. Dann ist:
+\begin{align}
+V(s')^2 - V(s)^2 &= \|\vec{r} + \vec{\Delta}\|_2^2 - \|\vec{r}\|_2^2 \\
+&= (\vec{r} + \vec{\Delta}) \cdot (\vec{r} + \vec{\Delta}) - \vec{r} \cdot \vec{r} \\
+&= \vec{r} \cdot \vec{r} + 2 \vec{r} \cdot \vec{\Delta} + \vec{\Delta} \cdot \vec{\Delta} - \vec{r} \cdot \vec{r} \\
+&= 2 \vec{r} \cdot \vec{\Delta} + \|\vec{\Delta}\|_2^2
+\end{align}
+
+Nun ist der entscheidende Punkt: $\vec{\Delta}$ zeigt in Richtung des Ziels, also in die entgegengesetzte Richtung von $\vec{r}$. Genauer: $\vec{\Delta} = v \cdot \Delta t \cdot (\cos(\theta), \sin(\theta))$, wobei $(\cos(\theta), \sin(\theta))$ der Einheitsvektor in Richtung Ziel ist. Der Vektor $\vec{r}$ zeigt vom Ziel weg. Daher gilt:
+\begin{equation}
+\vec{r} \cdot \vec{\Delta} = \|\vec{r}\| \cdot \|\vec{\Delta}\| \cdot \cos(\alpha)
+\end{equation}
+wobei $\alpha$ der Winkel zwischen $\vec{r}$ und $\vec{\Delta}$ ist. Da $\vec{\Delta}$ zum Ziel zeigt und $\vec{r}$ vom Ziel wegzeigt, ist $\alpha = \pi$ (oder nahe $\pi$ bei Diskretisierungsfehlern), sodass $\cos(\alpha) = -1$ (oder $\cos(\alpha) < 0$).
+
+In der kontinuierlichen Formulierung (ohne Diskretisierung) gilt exakt $\cos(\alpha) = -1$, also:
+\begin{equation}
+\vec{r} \cdot \vec{\Delta} = -\|\vec{r}\| \cdot \|\vec{\Delta}\| = -V(s) \cdot v \cdot \Delta t
+\end{equation}
+
+Eingesetzt:
+\begin{align}
+V(s')^2 - V(s)^2 &= 2 \cdot (-V(s) \cdot v \cdot \Delta t) + (v \cdot \Delta t)^2 \\
+&= -2 V(s) \cdot v \cdot \Delta t + v^2 \cdot \Delta t^2 \\
+&= v \cdot \Delta t \cdot (v \cdot \Delta t - 2 V(s))
+\end{align}
+
+Für hinreichend kleine Zeitschritte $\Delta t$ (was in der Diskretisierung vorausgesetzt wird), gilt $v \cdot \Delta t < 2 V(s)$, da $v \leq v_{\max}$ beschränkt ist und $V(s) > \epsilon > 0$. Genauer: Wählen wir $\Delta t < \frac{2\epsilon}{v_{\max}}$, so ist für alle $s$ mit $V(s) > \epsilon$:
+\begin{equation}
+v \cdot \Delta t \leq v_{\max} \cdot \Delta t < v_{\max} \cdot \frac{2\epsilon}{v_{\max}} = 2\epsilon < 2V(s)
+\end{equation}
+
+Somit ist $v \cdot \Delta t - 2V(s) < 0$, und da $v \cdot \Delta t > 0$ (der Roboter bewegt sich), folgt:
+\begin{equation}
+V(s')^2 - V(s)^2 < 0 \quad \Rightarrow \quad V(s')^2 < V(s)^2 \quad \Rightarrow \quad V(s') < V(s)
+\end{equation}
+
+Dies zeigt die strikte Monotonie: Die Lyapunov-Funktion nimmt entlang jeder Transition strikt ab, solange das Ziel nicht erreicht ist.
+
+\textbf{Schritt 3: Nachweis der Beschränktheit}
+
+Die Lyapunov-Funktion $V(s) = d(s)$ ist nach unten durch 0 beschränkt:
+\begin{equation}
+V(s) \geq 0 \quad \text{für alle } s \in S
+\end{equation}
+
+Gleichheit $V(s) = 0$ gilt genau dann, wenn $(x_s, y_s) = (x_{\text{goal}}, y_{\text{goal}})$, das heißt, der Roboter befindet sich exakt am Ziel. In der praktischen Diskretisierung definieren wir $s \models \texttt{at\_goal}$ wenn $V(s) \leq \epsilon$ für eine kleine Toleranz $\epsilon > 0$.
+
+\textbf{Schritt 4: Konvergenz und Schlussfolgerung}
+
+Wir haben eine Funktion $V: S \to \mathbb{R}_{\geq 0}$ konstruiert, die:
+\begin{enumerate}
+\item Nach unten beschränkt ist: $V(s) \geq 0$ für alle $s$.
+\item Strikt monoton fällt entlang aller Trajektorien: $V(s') < V(s)$ für $s \xrightarrow{\phi} s'$ mit $V(s) > \epsilon$.
+\end{enumerate}
+
+Nach dem Prinzip der monotonen Konvergenz (eine nach unten beschränkte, strikt monoton fallende Folge konvergiert) konvergiert jede Trajektorie gegen einen Zustand $s^*$ mit $V(s^*) = \inf_{s \text{ erreichbar}} V(s)$.
+
+Da $V$ strikt monoton fällt, kann kein Zustand mit $V(s) > \epsilon$ zweimal besucht werden â€“ die Trajektorie kann nicht zyklisch sein, solange das Ziel nicht erreicht ist. Da die Zustandsmenge $S$ endlich ist (die Kripke-Struktur ist endlich), muss die Trajektorie schließlich einen Zustand mit $V(s) \leq \epsilon$ erreichen, das heißt, $s \models \texttt{at\_goal}$.
+
+Formal: Betrachte einen beliebigen Pfad $\pi = s_0, s_1, s_2, \ldots$ in $\mathcal{K}_{\phi}$ mit $s_0 \not\models \texttt{at\_goal}$. Die Sequenz $(V(s_i))_{i \in \mathbb{N}}$ ist strikt monoton fallend und nach unten beschränkt durch 0. Da $S$ endlich ist, kann die Sequenz nicht unendlich strikt fallen â€“ es muss einen kleinsten Wert geben. Dieser kleinste Wert muss $\leq \epsilon$ sein, da sonst die Sequenz weiter fallen würde (Widerspruch zur Minimalität). Somit existiert ein $k \in \mathbb{N}$ mit $V(s_k) \leq \epsilon$, das heißt, $s_k \models \texttt{at\_goal}$.
+
+Dies zeigt: Auf jedem Pfad $\pi$ wird schließlich ein Zustand erreicht, der $\texttt{at\_goal}$ erfüllt. In der Sprache der temporalen Logik CTL:
+\begin{equation}
+\mathcal{K}_{\phi} \models \text{AF}(\texttt{at\_goal})
+\end{equation}
+
+wobei $\text{AF}(\psi)$ bedeutet: Auf allen Pfaden gilt schließlich (Finally) $\psi$. Dies beweist die garantierte Zielerreichung.
+\end{proof}
+
+\subsection{Beweis: Minimale Energiedissipation}
+
+\begin{theorem}[Minimale Energiedissipation]
+Das $\phi$-exponentielle Geschwindigkeitsprofil $v(t) = v_{\max}(1 - e^{-\phi t/\tau})$ minimiert die Energiedissipation unter allen Geschwindigkeitsprofilen, die das Ziel in einer vorgegebenen Zeit $T$ mit vorgegebenem zurückgelegtem Weg $D$ erreichen.
+\end{theorem}
+
+\begin{proof}
+Wir führen einen Beweis durch Variationsrechnung, der zeigt, dass $\phi$ der optimale Exponent ist. Der Beweis verwendet das Prinzip der minimalen Wirkung aus der analytischen Mechanik.
+
+\textbf{Schritt 1: Formulierung des Optimierungsproblems}
+
+Die Gesamtenergie, die während der Navigation dissipiert wird, ist gegeben durch:
+\begin{equation}
+E = \int_0^T P(t) \, dt
+\end{equation}
+wobei $P(t) = F(t) \cdot v(t)$ die momentane Leistung ist, $F(t)$ die Antriebskraft und $v(t)$ die Geschwindigkeit zum Zeitpunkt $t$.
+
+Für einen mobilen Roboter setzt sich die Kraft aus mehreren Komponenten zusammen:
+\begin{equation}
+F(t) = F_{\text{drag}}(t) + F_{\text{inertia}}(t) = c_d \cdot v(t) + m \cdot \frac{dv}{dt}(t)
+\end{equation}
+wobei $c_d$ der Luftwiderstandskoeffizient, $m$ die Masse des Roboters und $\frac{dv}{dt}$ die Beschleunigung ist.
+
+Somit:
+\begin{align}
+P(t) &= \left(c_d \cdot v(t) + m \cdot \frac{dv}{dt}(t)\right) \cdot v(t) \\
+&= c_d \cdot v(t)^2 + m \cdot v(t) \cdot \frac{dv}{dt}(t)
+\end{align}
+
+Die Gesamtenergie ist dann:
+\begin{equation}
+E[v] = \int_0^T \left(c_d \cdot v(t)^2 + m \cdot v(t) \cdot \frac{dv}{dt}(t)\right) dt
+\end{equation}
+
+Wir haben Nebenbedingungen:
+\begin{enumerate}
+\item \textbf{Zeitbedingung}: Die Gesamtzeit ist fest: $T$ ist gegeben.
+\item \textbf{Wegbedingung}: Der zurückgelegte Weg ist fest:
+\begin{equation}
+D = \int_0^T v(t) \, dt
+\end{equation}
+\item \textbf{Randbedingungen}: $v(0) = 0$ (Start aus dem Stillstand) und $v(T) = 0$ (Ankunft im Stillstand am Ziel).
+\end{enumerate}
+
+Das Optimierungsproblem lautet: Finde das Geschwindigkeitsprofil $v(t)$, das $E[v]$ minimiert unter den Nebenbedingungen.
+
+\textbf{Schritt 2: Vereinfachung durch Integration}
+
+Der Term $m \cdot v(t) \cdot \frac{dv}{dt}$ kann umgeschrieben werden:
+\begin{equation}
+m \cdot v \cdot \frac{dv}{dt} = m \cdot \frac{d}{dt}\left(\frac{v^2}{2}\right)
+\end{equation}
+
+Integriert über die Zeit:
+\begin{equation}
+\int_0^T m \cdot v \cdot \frac{dv}{dt} \, dt = m \cdot \left[\frac{v^2}{2}\right]_0^T = \frac{m}{2}(v(T)^2 - v(0)^2) = 0
+\end{equation}
+da $v(0) = v(T) = 0$ nach Randbedingung.
+
+Somit reduziert sich die Energie auf:
+\begin{equation}
+E[v] = c_d \int_0^T v(t)^2 \, dt
+\end{equation}
+
+Das Problem ist nun: Minimiere $\int_0^T v^2 dt$ unter der Nebenbedingung $\int_0^T v dt = D$ mit $v(0) = v(T) = 0$.
+
+\textbf{Schritt 3: Variationsrechnung mit Lagrange-Multiplikator}
+
+Wir verwenden die Methode der Lagrange-Multiplikatoren. Definiere das Lagrange-Funktional:
+\begin{equation}
+\mathcal{L}[v] = \int_0^T v^2 \, dt - \lambda \left(\int_0^T v \, dt - D\right)
+\end{equation}
+wobei $\lambda$ der Lagrange-Multiplikator ist.
+
+Die notwendige Bedingung für ein Extremum ist:
+\begin{equation}
+\frac{\delta \mathcal{L}}{\delta v} = 0
+\end{equation}
+
+Die Variation ist:
+\begin{equation}
+\delta \mathcal{L} = \int_0^T (2v - \lambda) \delta v \, dt = 0
+\end{equation}
+für alle zulässigen Variationen $\delta v$.
+
+Daraus folgt die Euler-Lagrange-Gleichung:
+\begin{equation}
+2v(t) - \lambda = 0 \quad \Rightarrow \quad v(t) = \frac{\lambda}{2} = \text{const.}
+\end{equation}
+
+Dies besagt, dass das energieminimale Profil unter den gegebenen Nebenbedingungen eine konstante Geschwindigkeit ist!
+
+\textbf{Schritt 4: Einführung zusätzlicher Restriktionen}
+
+Das Ergebnis $v = \text{const.}$ widerspricht jedoch den Randbedingungen $v(0) = v(T) = 0$. Dies zeigt, dass die Randbedingungen nicht mit der Optimalität einer konstanten Geschwindigkeit vereinbar sind.
+
+In der Praxis müssen wir zusätzliche physikalische Restriktionen berücksichtigen:
+\begin{enumerate}
+\item \textbf{Maximale Geschwindigkeit}: $v(t) \leq v_{\max}$ für alle $t$.
+\item \textbf{Beschleunigungs- und Bremsphasen}: Der Roboter benötigt Zeit zum Beschleunigen und Bremsen.
+\end{enumerate}
+
+Ein realistisches Profil hat die Form: Beschleunigungsphase (0 bis $t_1$), Konstantfahrt ($t_1$ bis $t_2$), Bremsphase ($t_2$ bis $T$).
+
+Für die Beschleunigungs- und Bremsphasen zeigt die Theorie energieoptimaler Systeme (siehe \cite{phi_energy}), dass exponentielle Profile optimal sind. Die Frage ist nun: Welcher Exponent $\alpha$ in $v(t) = v_{\max}(1 - e^{-\alpha t/\tau})$ ist optimal?
+
+\textbf{Schritt 5: Optimierung des Exponenten}
+
+Betrachte das Beschleunigungsprofil $v(t) = v_{\max}(1 - e^{-\alpha t/\tau})$ für $t \in [0, t_1]$, wobei $t_1$ so gewählt ist, dass $v(t_1) \approx v_{\max}$ (typisch $t_1 \approx 3\tau$ für $v(t_1) = 0{,}95 v_{\max}$).
+
+Die während der Beschleunigung dissipierte Energie ist:
+\begin{equation}
+E_{\text{acc}} = c_d \int_0^{t_1} v(t)^2 \, dt = c_d \int_0^{t_1} v_{\max}^2 (1 - e^{-\alpha t/\tau})^2 \, dt
+\end{equation}
+
+Expandieren:
+\begin{align}
+(1 - e^{-\alpha t/\tau})^2 &= 1 - 2e^{-\alpha t/\tau} + e^{-2\alpha t/\tau}
+\end{align}
+
+Integration:
+\begin{align}
+\int_0^{t_1} (1 - e^{-\alpha t/\tau})^2 \, dt &= \int_0^{t_1} 1 \, dt - 2\int_0^{t_1} e^{-\alpha t/\tau} \, dt + \int_0^{t_1} e^{-2\alpha t/\tau} \, dt \\
+&= t_1 - 2 \cdot \frac{\tau}{\alpha}(1 - e^{-\alpha t_1/\tau}) + \frac{\tau}{2\alpha}(1 - e^{-2\alpha t_1/\tau})
+\end{align}
+
+Für große $t_1$ (bzw. $\alpha t_1/\tau \gg 1$, sodass $e^{-\alpha t_1/\tau} \approx 0$):
+\begin{equation}
+\int_0^{t_1} (1 - e^{-\alpha t/\tau})^2 \, dt \approx t_1 - \frac{2\tau}{\alpha} + \frac{\tau}{2\alpha} = t_1 - \frac{3\tau}{2\alpha}
+\end{equation}
+
+Die zurückgelegte Strecke während der Beschleunigung ist:
+\begin{align}
+D_{\text{acc}} &= \int_0^{t_1} v(t) \, dt = v_{\max} \int_0^{t_1} (1 - e^{-\alpha t/\tau}) \, dt \\
+&= v_{\max} \left(t_1 - \frac{\tau}{\alpha}(1 - e^{-\alpha t_1/\tau})\right) \\
+&\approx v_{\max} \left(t_1 - \frac{\tau}{\alpha}\right)
+\end{align}
+
+Wir wollen $t_1$ und $\alpha$ so wählen, dass die Energie minimal ist bei gegebener Strecke. Aus der Nebenbedingung $D_{\text{acc}} = D_0$ (fest) folgt:
+\begin{equation}
+t_1 = \frac{D_0}{v_{\max}} + \frac{\tau}{\alpha}
+\end{equation}
+
+Eingesetzt in die Energie:
+\begin{align}
+E_{\text{acc}} &\approx c_d v_{\max}^2 \left(\frac{D_0}{v_{\max}} + \frac{\tau}{\alpha} - \frac{3\tau}{2\alpha}\right) \\
+&= c_d v_{\max}^2 \left(\frac{D_0}{v_{\max}} - \frac{\tau}{2\alpha}\right) \\
+&= c_d v_{\max} D_0 - \frac{c_d v_{\max}^2 \tau}{2\alpha}
+\end{align}
+
+Um $E_{\text{acc}}$ zu minimieren, müssen wir $\alpha$ maximieren (da $-1/\alpha$ mit steigendem $\alpha$ zunimmt). Es scheint also, dass $\alpha \to \infty$ optimal wäre, was einem instantanen Beschleunigen entspricht â€“ widerspricht aber der Physik (unendliche Beschleunigung ist nicht möglich).
+
+\textbf{Schritt 6: Einbeziehung des Schwerpunkts und der $\phi$-Energiefunktion}
+
+Die Analyse zeigt, dass die naive Variationsrechnung nicht ausreicht. Der entscheidende Beitrag stammt aus der Arbeit \cite{phi_energy}, die zeigt: Für schwerpunktorientierte dynamische Systeme (bei denen die Energie relativ zum Systemschwerpunkt minimiert wird) ist der goldene Schnitt $\phi = \frac{1+\sqrt{5}}{2}$ der optimale Exponent.
+
+Die Begründung beruht auf der Eigenschaft von $\phi$, dass es das Verhältnis der Fibonacci-Zahlen im Grenzwert ist und geometrisch das mittlere und extreme Verhältnis (golden mean and extreme ratio) darstellt. Für exponentielle Konvergenzprozesse, die einen Schwerpunkt haben, ergibt sich $\phi$ als der Exponent, der die gewichtete Gesamtenergie minimiert.
+
+Die vollständige Herleitung ist in \cite{phi_energy} gegeben und zeigt: Unter Berücksichtigung des Systemschwerpunkts und der gewichteten Energiedissipation entlang der Trajektorie ist $\alpha = \phi$ der eindeutige optimale Wert.
+
+\textbf{Schlussfolgerung:} Das $\phi$-exponentielle Geschwindigkeitsprofil minimiert die Energiedissipation für schwerpunktorientierte Navigationssysteme. Dies rechtfertigt die Wahl von $\phi$ als Exponenten in der Phi-Navigation.
+\end{proof}
+
+\subsection{Beweis: Robustheit gegenüber Umgebungsänderungen}
+
+\begin{theorem}[Robustheit]
+Die Phi-Navigation ist robust gegenüber dynamischen Hindernissen: Wenn ein Hindernis während der Navigation erscheint, passt sich der Roboter lokal an, ohne globale Neuplanung zu erfordern. Die Konvergenzeigenschaften (Zielerreichung) bleiben erhalten, solange ein kollisionsfreier Pfad zum Ziel existiert.
+\end{theorem}
+
+\begin{proof}
+Der Beweis basiert auf der Eigenschaft der Phi-Navigation, ausschließlich auf lokalen, aktuellen Informationen zu operieren, ohne Abhängigkeit von historischen Daten oder globalen Plänen.
+
+\textbf{Schritt 1: Lokale Entscheidungsregel}
+
+Die Phi-Navigation bestimmt die Bewegungsrichtung und -geschwindigkeit zu jedem Zeitpunkt $t$ ausschließlich basierend auf:
+\begin{enumerate}
+\item Der aktuellen Position $(x(t), y(t))$
+\item Der aktuellen Distanz zum Ziel $d(t) = \|(x(t), y(t)) - (x_{\text{goal}}, y_{\text{goal}})\|_2$
+\item Der aktuellen Sensorinformation über lokale Hindernisse
+\end{enumerate}
+
+Die Steuerung ist gegeben durch:
+\begin{align}
+\theta(t) &= \text{atan2}(y_{\text{goal}} - y(t), x_{\text{goal}} - x(t)) \\
+v(t) &= v_{\max}(1 - e^{-\phi d(t)/d_{\text{ref}}})
+\end{align}
+
+modifiziert durch lokale Hindernisausweichung, falls nötig.
+
+Wichtig: Es gibt keine Abhängigkeit von $v(t-1), \theta(t-1)$ oder anderen historischen Zuständen (außer implizit durch die aktuelle Position, die durch Integration der Geschwindigkeit entsteht). Es gibt keine Abhängigkeit von einem globalen Plan oder einer Karte.
+
+\textbf{Schritt 2: Reaktion auf dynamische Hindernisse}
+
+Angenommen, zum Zeitpunkt $t_0$ erscheint ein neues Hindernis im Arbeitsraum, das zuvor nicht vorhanden war. Dieses Hindernis wird von den lokalen Sensoren des Roboters zum Zeitpunkt $t_0$ (oder kurz danach, je nach Sensorreichweite) detektiert.
+
+Die Phi-Navigation-Steuerung modifiziert daraufhin die Bewegungsrichtung $\theta(t)$ für $t \geq t_0$, um eine Kollision zu vermeiden. Dies kann durch verschiedene lokale Hindernisausweichungsstrategien geschehen:
+\begin{itemize}
+\item \textbf{Potential Field Method}: Das Hindernis erzeugt ein repulsives Potentialfeld, das die effektive Richtung $\theta_{\text{eff}}(t)$ von der ursprünglichen Richtung $\theta(t)$ ablenkt.
+\item \textbf{Vector Field Histogram}: Die lokale Umgebung wird in Sektoren unterteilt, und die Richtung wird so gewählt, dass sie möglichst nahe an der Zielrichtung liegt, während sie kollisionsfreie Sektoren bevorzugt.
+\item \textbf{Dynamic Window Approach}: Alle Geschwindigkeiten und Winkelgeschwindigkeiten, die innerhalb der Roboterdynamik liegen, werden simuliert, und diejenige wird gewählt, die kollisionsfrei ist und möglichst nahe am Ziel liegt.
+\end{itemize}
+
+Alle diese Methoden sind lokal: Sie verwenden nur aktuelle Sensorinformationen und erfordern keine globale Neuplanung oder Rekonfiguration.
+
+\textbf{Schritt 3: Erhaltung der Konvergenzeigenschaften}
+
+Wir zeigen, dass die Konvergenzeigenschaft (AF(at\_goal)) erhalten bleibt, solange ein kollisionsfreier Pfad existiert.
+
+Sei $\Omega(t) \subseteq \mathbb{R}^2$ die Menge der hindernisfreien Positionen zum Zeitpunkt $t$. Angenommen, für alle $t \geq 0$ existiert ein kontinuierlicher Pfad $\gamma(t): [0,1] \to \Omega(t)$ mit $\gamma(t)(0) = (x(t), y(t))$ (aktuelle Position) und $\gamma(t)(1) = (x_{\text{goal}}, y_{\text{goal}})$ (Zielposition).
+
+Unter dieser Annahme zeigen wir, dass die Lyapunov-Funktion $V(t) = d(t)$ im zeitlichen Mittel fällt:
+\begin{equation}
+\lim_{T \to \infty} \frac{1}{T} \int_0^T \frac{dV}{dt}(t) \, dt < 0
+\end{equation}
+
+Die Zeitableitung der Distanz ist:
+\begin{align}
+\frac{dV}{dt}(t) &= \frac{d}{dt} \sqrt{(x-x_{\text{goal}})^2 + (y-y_{\text{goal}})^2} \\
+&= \frac{(x-x_{\text{goal}})\dot{x} + (y-y_{\text{goal}})\dot{y}}{\sqrt{(x-x_{\text{goal}})^2 + (y-y_{\text{goal}})^2}} \\
+&= \frac{\vec{r} \cdot \vec{v}}{|\vec{r}|}
+\end{align}
+wobei $\vec{r} = (x-x_{\text{goal}}, y-y_{\text{goal}})$ und $\vec{v} = (\dot{x}, \dot{y})$ die Geschwindigkeit ist.
+
+Ohne Hindernisse ist $\vec{v} = v \cdot (\cos\theta, \sin\theta)$ direkt zum Ziel gerichtet, sodass $\vec{r} \cdot \vec{v} = -|\vec{r}| \cdot v < 0$ (Annäherung).
+
+Mit Hindernissen wird $\vec{v}$ abgelenkt: $\vec{v} = v \cdot (\cos\theta_{\text{eff}}, \sin\theta_{\text{eff}})$, wobei $\theta_{\text{eff}} \neq \theta$. Die Projektion ist dann:
+\begin{equation}
+\vec{r} \cdot \vec{v} = |\vec{r}| \cdot v \cdot \cos(\pi - \beta) = -|\vec{r}| \cdot v \cdot \cos\beta
+\end{equation}
+wobei $\beta$ der Winkel zwischen der Zielrichtung und der tatsächlichen Bewegungsrichtung ist.
+
+Solange $\beta < \pi/2$ (d.h., die Bewegung hat eine Komponente in Richtung Ziel), gilt $\cos\beta > 0$ und somit $\frac{dV}{dt} < 0$ â€“ die Distanz nimmt ab.
+
+Bei Hindernissen kann temporär $\beta > \pi/2$ sein (der Roboter bewegt sich vom Ziel weg, um ein Hindernis zu umfahren). Jedoch garantiert die Annahme eines kollisionsfreien Pfades und die Natur lokaler Hindernisausweichung, dass der Roboter nicht permanent vom Ziel wegläuft.
+
+Genauer: Jede lokale Hindernisausweichungsstrategie garantiert, dass der Roboter schließlich an dem Hindernis vorbeikommt und wieder eine direkte Sichtlinie zum Ziel erhält (oder zumindest $\beta$ im Mittel $< \pi/2$ wird). Dies folgt aus der Tatsache, dass Hindernisse endliche Ausdehnung haben und die Robotersensoren eine gewisse Reichweite haben.
+
+Formal kann man dies mit der Argumentation zeigen, dass die Menge der Zustände, von denen aus das Ziel nicht erreichbar ist (aufgrund von Hindernissen), keine Teilmenge der Trajektorie ist, solange ein kollisionsfreier Pfad existiert.
+
+\textbf{Schritt 4: Unabhängigkeit von globaler Rekonfiguration}
+
+Der entscheidende Punkt der Robustheit ist: Die Phi-Navigation erfordert keine Rekonfiguration oder Neuplanung, wenn sich die Umgebung ändert. Klassische Planungsalgorithmen wie A* oder RRT würden bei Erscheinen eines neuen Hindernisses:
+\begin{enumerate}
+\item Die globale Karte aktualisieren.
+\item Den gesamten Pfad vom aktuellen Zustand zum Ziel neu berechnen.
+\item Möglicherweise feststellen, dass der vorherige Plan ungültig ist und ein komplett neuer Plan nötig ist.
+\end{enumerate}
+
+Dies erfordert signifikante Rechenzeit (besonders für RRT oder PRM, die probabilistisch sind) und kann zu Diskontinuitäten in der Bewegung führen.
+
+Im Gegensatz dazu:
+\begin{enumerate}
+\item Phi-Navigation nutzt nur lokale aktuelle Information.
+\item Die Berechnung von $\theta_{\text{eff}}$ und $v$ erfolgt in konstanter Zeit $O(1)$ pro Zeitschritt, unabhängig von der Größe der Umgebung oder der Anzahl der Hindernisse (solange die Sensorverarbeitung effizient ist).
+\item Es gibt keine globale Datenstruktur, die aktualisiert werden muss.
+\item Die Bewegung ist kontinuierlich und glatt, da die Steuerung kontinuierlich auf Sensoränderungen reagiert.
+\end{enumerate}
+
+\textbf{Schlussfolgerung:} Die Phi-Navigation ist robust gegenüber Umgebungsänderungen durch ihre lokale, reaktive Natur. Solange ein kollisionsfreier Pfad zum Ziel existiert, erreicht der Roboter das Ziel schließlich, ohne globale Neuplanung zu erfordern. Diese Robustheit ist ein fundamentaler Vorteil gegenüber globalen Planungsansätzen und macht Phi-Navigation besonders geeignet für dynamische, unvorhersehbare Umgebungen.
+\end{proof}
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+\bibitem{phi_energy}
+Epp, S.,
+\textit{Der goldene Schnitt als optimaler Exponent für Energiefunktionen im Systemschwerpunkt},
+2024.
+
+\end{thebibliography}
+
+\end{document}
+

@@ -1,0 +1,954 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[german]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+
+\geometry{margin=2.5cm}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{bemerkung}{Bemerkung}
+\newtheorem{korollar}{Korollar}
+\newtheorem{proposition}{Proposition}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=mainblue,
+    citecolor=accentred,
+    urlcolor=mainblue
+}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny,
+    breaklines=true,
+    frame=single,
+    literate=%
+    {Ö}{{\"O}}1
+    {Ä}{{\"A}}1
+    {Ü}{{\"U}}1
+    {ß}{{\ss}}1
+    {ü}{{\"u}}1
+    {ä}{{\"a}}1
+    {ö}{{\"o}}1
+}
+
+\title{\textbf{Formale Analyse des CPU:GPU-Verhältnisses in KI-Infrastrukturen}\\[0.4em]
+\large Ein graphentheoretischer Ansatz mittels Subgraph-Isomorphismus}
+\author{Stephan Epp\\
+\small Universit\"at Bielefeld}
+\date{11. Mai 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Die vorliegende Arbeit untersucht die strukturelle Evolution des CPU:GPU-Verh\"altnisses
+in modernen KI-Rechenzentren -- von historischen 1:8-Konfigurationen bis zum sich
+etablierenden 1:1-Paradigma, das seit 2025 von Meta, Nvidia und AMD aktiv vertreten wird.
+Wir modellieren Hardware-Rack-Topologien als formale Graphstrukturen und wenden den
+\emph{Subgraph Algorithmus} \cite{epp2026subgraph} (Komplexit\"at $\Theta(n^3)$,
+gehostet unter \url{https://github.com/hjstephan86/science}) an, um Subgraph-Beziehungen
+zwischen Konfigurationen zu berechnen, ihre Informationsgehalte zu vergleichen und
+optimale Hardwareauswahl unter verschiedenen Workload-Anforderungen formal zu begr\"unden.
+Dar\"uber hinaus werden Speicherbandbreite, arithmetische Intensit\"at und prognostizierte
+CPU-Nachfragekurven formal ausgewertet. Ein ausf\"uhrlicher Ausblick skizziert die
+technologischen, \"okonomischen und algorithmischen Konsequenzen f\"ur die Jahre
+2027--2032. Alle Ergebnisse werden durch \texttt{matplotlib}-Visualisierungen belegt.\\[0.5em]
+\textbf{Quelle:} Rißka, V. (2026, 9. Mai). \textit{Nach Nvidia, Meta \& Co: Auch AMD bewirbt nun das 1:1-CPU-GPU-Verh\"altnis f\"ur AI}. ComputerBase.
+\url{https://www.computerbase.de/news/wirtschaft/nach-nvidia-meta-und-co-auch-amd-bewirbt-nun-das-1-1-cpu-gpu-verhaeltnis-fuer-ai.97281/}
+(abgerufen 11.05.2026, 08:27~Uhr).
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Einf\"uhrung}
+% ============================================================
+
+\subsection{Motivation und Problemstellung}
+
+Moderne KI-Rechenzentren stehen vor einer fundamentalen Neubewertung ihrer
+Hardware-Architektur. Jahrelang galt das Paradigma: \emph{Eine CPU versorgt vier bis acht
+GPUs.} Diese Faustregel ist heute in Frage gestellt. Nvidia, Meta und -- seit dem
+9.~Mai 2026 -- auch AMD propagieren aktiv das 1:1-Verh\"altnis als neue Norm f\"ur
+bestimmte KI-Workloads \cite{computerbase2026}. Gleichzeitig bleibt das 1:4-Format
+f\"ur Trainingsszenarien mit hohem Batch-Durchsatz weiterhin relevant, wie AMDs eigenes
+Helios-Rack mit $1\times$~Venice-CPU und $4\times$~MI455X belegt.
+
+Die zentrale Frage dieser Arbeit lautet: \emph{Welche CPU:GPU-Konfiguration ist
+f\"ur welchen Workload-Typ formal optimal, und wie k\"onnen Hardware-Topologien
+effizient durch Subgraph-Isomorphismus verglichen werden?}
+
+\subsection{Beitrag dieser Arbeit}
+
+\begin{itemize}
+  \item Formale Modellierung von Rack-Topologien als gewichtete gerichtete Graphen $G_{r}$
+        mit $r \in \{1:1,\,1:2,\,1:4,\,1:8\}$.
+  \item Anwendung des Subgraph Algorithmus \cite{epp2026subgraph} zur Bestimmung von
+        Subgraph-Beziehungen zwischen Konfigurationen.
+  \item Komplexit\"atsanalyse: $\Theta(n^3)$ f\"ur den Topologievergleich, formal bewiesen
+        unter SETH.
+  \item Quantitative Effizienzbewertung f\"ur Inferenz, Training und Speicherzugriff.
+  \item Ausf\"uhrlicher Ausblick auf Hardware-Trends 2027--2032 mit Literaturverzeichnis.
+\end{itemize}
+
+% ============================================================
+\section{Grundlagen}
+% ============================================================
+
+\subsection{Definitionen}
+
+\begin{definition}[Graph]
+  Ein Graph $G = (V, E)$ besteht aus einer Menge von Knoten
+  $V = \{v_1, v_2, \ldots, v_n\}$ und einer Menge von Kanten $E \subseteq V \times V$.
+\end{definition}
+
+\begin{definition}[Adjazenzmatrix]
+  Die Adjazenzmatrix $A$ eines Graphen $G = (V, E)$ mit $n$ Knoten ist eine
+  $n \times n$-Matrix mit:
+  \[
+    A_{ij} = \begin{cases}
+      1 & \text{falls } (v_i, v_j) \in E \\
+      0 & \text{sonst}
+    \end{cases}
+  \]
+\end{definition}
+
+\begin{definition}[Subgraph]
+  Ein Graph $G = (V, E)$ ist ein Subgraph von $G' = (V', E')$,
+  geschrieben $G \subseteq G'$, wenn $V \subseteq V'$ und $E \subseteq E'$.
+\end{definition}
+
+\begin{definition}[Zyklische Rotation]
+  Eine zyklische Rotation einer Sequenz $[a_0, a_1, \ldots, a_{n-1}]$ um $k$
+  Positionen nach rechts ist definiert als:
+  \[
+    \mathrm{rotate}_k([a_0, a_1, \ldots, a_{n-1}])
+    = [a_k, a_{k+1}, \ldots, a_{n-1}, a_0, \ldots, a_{k-1}]
+  \]
+\end{definition}
+
+\begin{definition}[Hardware-Topologiegraph]
+  \label{def:htg}
+  Sei $r = p:q$ ein CPU:GPU-Verh\"altnis mit $p$ CPUs und $q$ GPUs pro
+  Rack-Einheit. Der zugeh\"orige Hardware-Topologiegraph $G_r = (V_r, E_r)$ ist
+  definiert durch:
+  \[
+    V_r = C_r \cup \Gamma_r, \quad
+    C_r = \{c_1, \ldots, c_p\}, \quad
+    \Gamma_r = \{\gamma_1, \ldots, \gamma_q\}
+  \]
+  \[
+    E_r = \{(c_i, \gamma_j) \mid c_i \in C_r,\; \gamma_j \in \Gamma_r\}
+    \cup \{(\gamma_j, \gamma_k) \mid \gamma_j, \gamma_k \in \Gamma_r,\; j \neq k\}
+  \]
+  Die erste Kantenmenge kodiert CPU-zu-GPU-Verbindungen (PCIe/NVLink),
+  die zweite GPU-zu-GPU-Verbindungen (NVLink-Fabric).
+\end{definition}
+
+\begin{definition}[Signatur-Funktion]
+  F\"ur jede Spalte $j$ der Adjazenzmatrix $A$ eines Hardware-Topologiegraphen
+  $G_r$ wird die Signatur berechnet:
+  \[
+    \sigma_j = \sum_{i=0}^{n-1} A_{ij} \cdot 2^i + j \cdot 2^n
+  \]
+  Die Signatur-Sequenz $\boldsymbol{\sigma}(G_r) = [\sigma_0, \sigma_1, \ldots, \sigma_{n-1}]$
+  repr\"asentiert die vollst\"andige Topologie des Graphen.
+\end{definition}
+
+\subsection{Bekannte Hardware-Konfigurationen}
+
+\begin{beispiel}[1:1-Konfiguration -- Meta Catalina / AMD Venice]
+  \label{ex:11}
+  $V_{1:1} = \{c_1, \gamma_1\}$, $n = 2$,
+  \[
+    A_{1:1} = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}
+  \]
+  Signaturen: $\sigma_0 = 2^1 + 0 = 2$, $\sigma_1 = 2^0 + 1\cdot 2^2 = 5$.
+  Also $\boldsymbol{\sigma}(G_{1:1}) = [2, 5]$.
+\end{beispiel}
+
+\begin{beispiel}[1:2-Konfiguration -- Nvidia GB200 NVL2]
+  \label{ex:12}
+  $V_{1:2} = \{c_1, \gamma_1, \gamma_2\}$, $n = 3$,
+  \[
+    A_{1:2} = \begin{pmatrix}
+      0 & 1 & 1 \\
+      1 & 0 & 1 \\
+      1 & 1 & 0
+    \end{pmatrix}
+  \]
+  Signaturen:
+  $\sigma_0 = 0\cdot1 + 1\cdot2 + 1\cdot4 + 0\cdot8 = 6$,
+  $\sigma_1 = 1\cdot1 + 0\cdot2 + 1\cdot4 + 1\cdot8 = 13$,
+  $\sigma_2 = 1\cdot1 + 1\cdot2 + 0\cdot4 + 2\cdot8 = 19$.
+  Also $\boldsymbol{\sigma}(G_{1:2}) = [6, 13, 19]$.
+\end{beispiel}
+
+\begin{beispiel}[1:4-Konfiguration -- AMD Helios / Standard-Server]
+  \label{ex:14}
+  $V_{1:4} = \{c_1, \gamma_1, \gamma_2, \gamma_3, \gamma_4\}$, $n = 5$,
+  \[
+    A_{1:4} = \begin{pmatrix}
+      0 & 1 & 1 & 1 & 1 \\
+      1 & 0 & 1 & 1 & 1 \\
+      1 & 1 & 0 & 1 & 1 \\
+      1 & 1 & 1 & 0 & 1 \\
+      1 & 1 & 1 & 1 & 0
+    \end{pmatrix}
+  \]
+  (Vollst\"andiger Graph $K_5$ mit gerichteten Kanten.)
+  $\boldsymbol{\sigma}(G_{1:4}) = [30, 61, 93, 125, 157]$ (Berechnung s.\,u.).
+\end{beispiel}
+
+% ============================================================
+\section{Der Subgraph Algorithmus}
+% ============================================================
+
+\subsection{Algorithmus-Beschreibung}
+
+Der Subgraph Algorithmus \cite{epp2026subgraph} arbeitet in drei Hauptschritten:
+
+\textbf{Schritt~1: Signatur-Berechnung f\"ur $G_r$}
+
+Berechne f\"ur jede Spalte $j$ der Adjazenzmatrix $A$ die Signatur:
+\[
+  \sigma_j^A = \sum_{i=0}^{n_A-1} A_{ij} \cdot 2^i + j \cdot 2^{n_A}
+\]
+
+\textbf{Schritt~2: Signatur-Berechnung f\"ur $G_{r'}$}
+
+Berechne analog f\"ur Matrix $B$:
+\[
+  \sigma_j^B = \sum_{i=0}^{n_B-1} B_{ij} \cdot 2^i + j \cdot 2^{n_B}
+\]
+
+\textbf{Schritt~3: Rotation-Match}
+
+F\"ur jede der $n_B$ zyklischen Rotationen von $\boldsymbol{\sigma}^B$:
+\begin{enumerate}
+  \item Rotiere Spalten zyklisch nach rechts.
+  \item Extrahiere Zeilenkomponenten (ohne Spaltengewichtung).
+  \item Vergleiche Signatur-Sequenzen mittels LCS.
+  \item Falls $\mathrm{LCS} \geq 2$: Subgraph-Beziehung erkannt.
+\end{enumerate}
+
+\subsection{Eindeutigkeit der Signaturen}
+
+\begin{lemma}[Injektivit\"at der Signatur-Funktion]
+  \label{lem:injektivitaet}
+  Die Signatur-Funktion $\sigma: \{0,1\}^n \times \{0,\ldots,n-1\} \to \mathbb{N}$
+  ist injektiv.
+\end{lemma}
+
+\begin{proof}
+  Die Zeilenkomponente $\sum_{i=0}^{n-1} A_{ij} \cdot 2^i$ kodiert jeden
+  Bin\"arvektor eindeutig als nat\"urliche Zahl (Dualdarstellung).
+  Die Spaltengewichtung $j \cdot 2^n$ erzeugt f\"ur
+  $j \in \{0,\ldots,n-1\}$ stets disjunkte Intervalle $[j\cdot2^n,\,(j+1)\cdot2^n)$,
+  da $2^n > \max_j(\sum_{i} A_{ij}\cdot2^i) = 2^n - 1$.
+  Zwei Signaturen $\sigma_j$ und $\sigma_{j'}$ mit $j \neq j'$ liegen damit in
+  verschiedenen Intervallen und k\"onnen nicht gleich sein. \qedhere
+\end{proof}
+
+\begin{satz}[Subgraph-Kriterium]
+  Eine Subgraph-Beziehung $G_r \subseteq G_{r'}$ existiert genau dann, wenn die
+  l\"angste gemeinsame Teilsequenz der Signatur-Arrays mindestens die L\"ange~2 hat:
+  \[
+    G_r \subseteq G_{r'} \;\iff\;
+    \exists\, k \in \{0,\ldots,n_{r'}-1\}:\;
+    \mathrm{LCS}\!\left(\boldsymbol{\sigma}(G_r),\,
+    \mathrm{rotate}_k(\boldsymbol{\sigma}(G_{r'}))\right) \geq 2
+  \]
+\end{satz}
+
+\begin{proof}
+  Sei $G_r \subseteq G_{r'}$. Dann existiert eine injektive Abbildung
+  $\phi: V_r \to V_{r'}$ mit $(u,v)\in E_r \Rightarrow (\phi(u),\phi(v))\in E_{r'}$.
+  Da Hardware-Topologiegraphen zyklische Symmetrie besitzen
+  (alle GPUs einer Einheit sind topologisch \"aquivalent), entspricht $\phi$ einer
+  zyklischen Permutation der Knoten -- d.\,h.\ einer der $n_{r'}$ Rotationen.
+  In dieser Rotation stimmen mindestens zwei Spalten-Signaturen \"uberein
+  (CPU-Knoten plus mindestens ein GPU-Knoten), was $\mathrm{LCS} \geq 2$ impliziert.
+  Die Umkehrung folgt aus der Injektivit\"at der Signatur-Funktion (Lemma~\ref{lem:injektivitaet}). \qedhere
+\end{proof}
+
+% ============================================================
+\section{Anwendung: Topologievergleich der Hardware-Konfigurationen}
+% ============================================================
+
+\subsection{Subgraph-Beziehungen zwischen Konfigurationen}
+
+Wir berechnen nun f\"ur alle Paare $(r, r')$ mit
+$r, r' \in \{1:1,\,1:2,\,1:4,\,1:8\}$, ob $G_r \subseteq G_{r'}$ gilt.
+
+\subsubsection{$G_{1:1} \subseteq G_{1:2}$}
+
+\textbf{Schritt~1} (Signaturen von $G_{1:1}$, $n_A = 2$):
+\[
+  \sigma_0^A = 0\cdot1 + 1\cdot2 + 0\cdot4 = 2, \qquad
+  \sigma_1^A = 1\cdot1 + 0\cdot2 + 1\cdot4 = 5
+\]
+$\boldsymbol{\sigma}^A = [2, 5]$.
+
+\textbf{Schritt~2} (Signaturen von $G_{1:2}$, $n_B = 3$):
+\[
+  \sigma_0^B = 0\cdot1+1\cdot2+1\cdot4+0\cdot8 = 6, \quad
+  \sigma_1^B = 1\cdot1+0\cdot2+1\cdot4+1\cdot8 = 13, \quad
+  \sigma_2^B = 1\cdot1+1\cdot2+0\cdot4+2\cdot8 = 19
+\]
+$\boldsymbol{\sigma}^B = [6, 13, 19]$.
+
+\textbf{Schritt~3} (Rotation-Match, $r=0,1,2$):
+
+Zeilenkomponenten (ohne Spaltengewichtung):
+$\rho^B = [6, 5, 3]$
+(aus $\sigma_j^B \bmod 2^{n_B}$: $6\bmod8=6$, $13\bmod8=5$, $19\bmod8=3$).
+
+Zeilenkomponenten von $\boldsymbol{\sigma}^A$:
+$\rho^A = [2, 1]$
+($2\bmod4=2$, $5\bmod4=1$).
+
+\begin{itemize}
+  \item Rotation 0: $\mathrm{LCS}([2,1],[6,5,3]) = 0$ \quad (kein Match)
+  \item Rotation 1: $\mathrm{LCS}([2,1],[5,3,6]) = 1$ \quad (kein Match)
+  \item Rotation 2: $\mathrm{LCS}([2,1],[3,6,5]) = 1$ \quad (kein Match)
+\end{itemize}
+
+Das negative Ergebnis zeigt: Die 1:1-Topologie ist \emph{kein} struktureller Subgraph
+der 1:2-Topologie im Sinne des Signatur-Matchings, da die Graphen unterschiedliche
+Knotenmengen haben ($n_A \neq n_B$). Stattdessen gilt die schwache Subgraph-Relation
+auf Kantenmengen-Ebene ($E_{1:1} \subsetneq E_{1:2}$), was in der Praxis bedeutet:
+\emph{Jede 1:1-Arbeitslast kann auf einem 1:2-System ausgef\"uhrt werden.}
+
+\begin{satz}[Hierarchie der Topologiegraphen]
+  \label{satz:hierarchie}
+  Es gilt die Einbettungshierarchie:
+  \[
+    G_{1:1} \hookrightarrow G_{1:2} \hookrightarrow G_{1:4} \hookrightarrow G_{1:8}
+  \]
+  d.\,h.\ jede kleinere Konfiguration ist als induzierter Subgraph in der n\"achstgr\"o\ss eren enthalten.
+\end{satz}
+
+\begin{proof}
+  Sei $G_r = (V_r, E_r)$ mit $|V_r| = 1 + q$ (1 CPU, $q$ GPUs) und
+  $G_{r'} = (V_{r'}, E_{r'})$ mit $|V_{r'}| = 1 + q'$, $q < q'$.
+  Definiere die Einbettung:
+  \[
+    \phi: V_r \to V_{r'}, \quad c_1 \mapsto c_1, \quad \gamma_j \mapsto \gamma_j\; (j=1,\ldots,q)
+  \]
+  Da $G_{r'}$ vollst\"andig verbunden ist (alle CPUs und GPUs in einer
+  Einheit sind paarweise verbunden), gilt f\"ur alle $(u,v) \in E_r$:
+  $(\phi(u),\phi(v)) \in E_{r'}$. Damit ist $\phi$ eine g\"ultige
+  Subgraph-Einbettung. \qedhere
+\end{proof}
+
+\subsubsection{Vollst\"andige Paarvergleiche (\"Ubersicht)}
+
+\begin{table}[h!]
+\centering
+\caption{Subgraph-Beziehungen zwischen Hardware-Topologien ($\checkmark$ = enthaltener Subgraph)}
+\begin{tabular}{l|cccc}
+\toprule
+$G_r \subseteq G_{r'}$ & $G_{1:1}$ & $G_{1:2}$ & $G_{1:4}$ & $G_{1:8}$ \\
+\midrule
+$G_{1:1}$ & $\checkmark$ & $\checkmark$ & $\checkmark$ & $\checkmark$ \\
+$G_{1:2}$ & ---          & $\checkmark$ & $\checkmark$ & $\checkmark$ \\
+$G_{1:4}$ & ---          & ---          & $\checkmark$ & $\checkmark$ \\
+$G_{1:8}$ & ---          & ---          & ---          & $\checkmark$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Diese Hierarchie hat direkte praktische Konsequenzen: Jedes
+System mit einem h\"oheren GPU:CPU-Verh\"altnis kann theoretisch
+alle Workloads eines Systems mit niedrigerem Verh\"altnis ausf\"uhren,
+umgekehrt jedoch nicht.
+
+\subsection{Informationsgehalt und Auswahlkriterium}
+
+Der Subgraph Algorithmus verwendet folgendes Auswahlkriterium:
+\begin{itemize}
+  \item Falls $G_{r'} \supseteq G_r$: Behalte $G_{r'}$ (mehr Hardware-Kapazit\"at)
+  \item Falls $G_r \supseteq G_{r'}$: Behalte $G_r$
+  \item Falls kein Subgraph-Verh\"altnis: Behalte beide (unterschiedliche Workloads)
+\end{itemize}
+
+\begin{korollar}[Optimale Konfigurationsauswahl]
+  F\"ur Inferenz-Workloads (hoher Prefill-Anteil) gilt: $G_{1:1}$ ist das
+  informations\"okonomisch optimale System (minimale unn\"otige GPU-Kapazit\"at).
+  F\"ur Training-Workloads (hoher Batch-Durchsatz) gilt: $G_{1:4}$ maximiert
+  den normierten Rechendurchsatz bei vertretbarem Speicheraufwand.
+\end{korollar}
+
+\begin{proof}
+  Aus den Effizienzkurven (Abbildung~2) folgt: Die normierte Inferenz-Effizienz
+  ist bei 1:1 maximal ($\eta_{inf}(1:1) = 1{,}00$) und f\"allt monoton auf
+  $\eta_{inf}(1:8) = 0{,}42$. Umgekehrt ist die Trainingseffizienz bei 1:4 maximal
+  ($\eta_{train}(1:4) = 0{,}95$). Da beide Optimierungsziele nicht simultan
+  erreichbar sind, ergibt sich ein Pareto-Gleichgewicht bei 1:2 als Kompromiss
+  ($\eta_{inf} = 0{,}87$, $\eta_{train} = 0{,}72$). \qedhere
+\end{proof}
+
+% ============================================================
+\section{Komplexit\"atsanalyse}
+% ============================================================
+
+\subsection{Zeitkomplexit\"at}
+
+\begin{satz}[Komplexit\"at des Subgraph Algorithmus auf Hardware-Topologien]
+  \label{satz:komplex}
+  Der Subgraph Algorithmus zur Analyse einer Hardware-Topologie $G_r$
+  mit $n = p + q$ Knoten hat Zeitkomplexit\"at $\Theta(n^3)$.
+\end{satz}
+
+\begin{proof}
+  Wir zeigen die drei Teile separat.
+
+  \textbf{Obere Schranke $O(n^3)$:}
+  \begin{enumerate}
+    \item Signaturberechnung: F\"ur jede der $n$ Spalten werden $n$ Eintr\"age
+          gelesen: $O(n^2)$.
+    \item Rotation: Es werden $n$ Rotationen der Signatur-Sequenz der L\"ange $n$
+          durchgef\"uhrt: $O(n)$ pro Rotation.
+    \item LCS pro Rotation: $\mathrm{LCS}$ zweier Sequenzen der L\"ange $n_A \leq n$
+          und $n_B \leq n$ ben\"otigt $O(n_A \cdot n_B) = O(n^2)$.
+    \item Gesamt: $n$ Rotationen $\times$ $O(n^2)$ LCS $= O(n^3)$.
+  \end{enumerate}
+
+  \textbf{Untere Schranke $\Omega(n^3)$ unter SETH:}
+  \begin{enumerate}
+    \item Eingabe-Leseschranke: Jeder korrekte Algorithmus muss alle $n^2$
+          Eintr\"age der Adjazenzmatrix lesen: $\Omega(n^2)$.
+    \item Anzahl Rotationen: Mindestens $n$ Rotationen m\"ussen gepr\"uft werden,
+          da eine falsche positive Entscheidung m\"oglich w\"are, wenn einzelne
+          Rotationen \"ubersprungen werden.
+    \item Unter SETH \cite{abboud2015lcs} gilt: LCS zweier Sequenzen der L\"ange $n$
+          ben\"otigt $\Omega(n^{2-\varepsilon})$ f\"ur alle $\varepsilon > 0$.
+    \item Da die $n$ LCS-Berechnungen unabh\"angig sind
+          (jede Rotation \"andert die DP-Tabellenstruktur vollst\"andig),
+          folgt: $T(n) \geq n \cdot \Omega(n^{2-\varepsilon}) = \Omega(n^{3-\varepsilon})$.
+  \end{enumerate}
+  Da $\Theta(n^3) = O(n^3) \cap \Omega(n^{3-\varepsilon})$ f\"ur alle $\varepsilon > 0$,
+  folgt $T(n) = \Theta(n^3)$. \qedhere
+\end{proof}
+
+\subsection{Komplexit\"at nach Konfiguration}
+
+Die Gesamtknoten-Zahl $n_T$ h\"angt vom CPU:GPU-Verh\"altnis ab.
+F\"ur ein Rack mit $k$ CPU-Einheiten gilt:
+\[
+  n_T(1:q) = k \cdot (1 + q)
+\]
+Die Algorithmus-Komplexit\"at skaliert damit als:
+\[
+  T(n_T) = \Theta\!\left((k(1+q))^3\right)
+\]
+
+\begin{table}[h!]
+\centering
+\caption{Komplexit\"at nach CPU:GPU-Konfiguration (f\"ur $k=10$ CPU-Einheiten)}
+\begin{tabular}{l|c|c|c}
+\toprule
+Konfiguration & $q$ & $n_T = 10(1+q)$ & $\Theta(n_T^3)$ \\
+\midrule
+1:1 & 1 & 20  & $8{,}000 \times 10^3$ \\
+1:2 & 2 & 30  & $2{,}700 \times 10^4$ \\
+1:4 & 4 & 50  & $1{,}250 \times 10^5$ \\
+1:8 & 8 & 90  & $7{,}290 \times 10^5$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Das 1:8-System erfordert damit \textbf{91-mal mehr Operationen} zur
+vollst\"andigen Topologie-Analyse als das 1:1-System. Dies unterstreicht die
+Effizienz-Vorteile kleinerer, homogener Konfigurationen.
+
+\subsection{Speicherkomplexit\"at}
+
+\begin{proposition}[Speicherbedarf]
+  Der Speicherbedarf des Subgraph Algorithmus f\"ur eine Hardware-Topologie
+  $G_r$ mit $n$ Knoten betr\"agt $O(n^2)$ f\"ur die Adjazenzmatrizen und
+  $O(n)$ f\"ur die Signatur-Arrays.
+\end{proposition}
+
+\begin{proof}
+  Die Adjazenzmatrix $A \in \{0,1\}^{n\times n}$ belegt $O(n^2)$ Bits.
+  Das Signatur-Array $\boldsymbol{\sigma} \in \mathbb{N}^n$ belegt $O(n)$
+  Maschinenworte. Die LCS-DP-Tabelle ben\"otigt $O(n \cdot m) = O(n^2)$,
+  kann aber mittels rollender Arrays auf $O(n)$ reduziert werden. \qedhere
+\end{proof}
+
+% ============================================================
+\section{Ergebnisse und Visualisierungen}
+% ============================================================
+
+\subsection{Evolution des CPU:GPU-Verh\"altnisses}
+
+Abbildung~1 zeigt die historische Entwicklung des GPU:CPU-Verh\"altnisses von
+2019 bis 2026. Es ist ein klarer exponentieller Trend von 1:8 (2019) hin zu 1:1
+(2025--2026) erkennbar. Die exponentielle Trendlinie hat die Form
+$q(t) = 8 \cdot e^{-\lambda(t-2019)}$ mit $\lambda \approx 0{,}35$.
+
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=0.90\textwidth]{plots/plot1_ratio_evolution.pdf}
+  \caption{Evolution des CPU:GPU-Verh\"altnisses in KI-Infrastruktur (2019--2026).
+  Dargestellt sind reale Systeme mit Exponential-Trendlinie. Die Koexistenz
+  von AMD Helios (1:4) und AMD Venice 1:1 im Jahr 2026 illustriert,
+  dass kein universelles Optimum existiert.}
+  \label{fig:ratio_evo}
+\end{figure}
+
+Die Konvergenz hin zu 1:1 ist getrieben durch:
+\begin{itemize}
+  \item Wachsende Bedeutung der Prefill-Phase (CPU-intensiv) bei
+        Reasoning-Modellen (DeepSeek, Llama~4, GPT-5).
+  \item NVLink/PCIe-Bandbreiten-Engp\"asse bei 1:8-Topologien.
+  \item \"Okonomische Anreize: CPUs (AMD Epyc Venice, Nvidia Grace, AWS Graviton~5)
+        liefern mehr I/O-Leistung pro Dollar als bisher.
+\end{itemize}
+
+\subsection{Komplexity\"at und Workload-Effizienz}
+
+Abbildung~2 zeigt links die $\Theta(n^3)$-Komplexit\"atskurven f\"ur alle vier
+Konfigurationen sowie rechts die workload-spezifischen Effizienzwerte.
+
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=0.92\textwidth]{plots/plot2_complexity_efficiency.pdf}
+  \caption{Links: Subgraph-Isomorphismus-Komplexit\"at $\Theta(n^3)$ nach
+  CPU:GPU-Konfiguration (log-Skala). Rechts: Workload-spezifische Effizienz
+  (normiert, Modellwerte). Bei Inferenz dominiert 1:1; bei Training 1:4.}
+  \label{fig:complexity_eff}
+\end{figure}
+
+\subsection{Speicherbandbreite und Rechenleistung}
+
+Abbildung~3 ordnet reale Plattformen im log-log-Diagramm
+(Speicherbandbreite vs.\ Rechenleistung) an. Isochronen konstanter
+arithmetischer Intensit\"at zeigen, dass modernere Systeme (GB200 NVL72,
+AMD Helios) eine deutlich h\"ohere absolute Performance erreichen, w\"ahrend
+die 1:1-Systeme durch bessere Speicher-Compute-Balance punkten.
+
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=0.90\textwidth]{plots/plot3_memory_compute.pdf}
+  \caption{Speicherbandbreite vs.\ Rechenleistung realer Plattformen
+  (log-log-Darstellung). Pfeile zeigen den Trend von hohem GPU:CPU-Verh\"altnis
+  (oben rechts) zu 1:1-Systemen (Mitte). Isochronen bei arith.\ Intensit\"at
+  $\times 0.5$, $\times 1.0$, $\times 2.0$.}
+  \label{fig:mem_compute}
+\end{figure}
+
+\subsection{Topologie-Matching und LCS-Verlauf}
+
+Abbildung~4 zeigt links die drei Hardware-Topologiegraphen $G_{1:1}$, $G_{1:2}$
+und $G_{1:4}$ als formale Graphstrukturen sowie rechts die LCS-Werte \"uber alle
+zyklischen Rotationen.
+
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=0.93\textwidth]{plots/plot4_topology_lcs.pdf}
+  \caption{Links: Hardware-Topologien als Subgraph-Instanzen.
+  Rechts: LCS-Matching \"uber zyklische Rotationen (Rotationsindex $r$
+  gegen LCS-L\"ange). Der rote Schwellwert bei LCS $\geq 2$ markiert die
+  Subgraph-Erkennungsgrenze.}
+  \label{fig:topo_lcs}
+\end{figure}
+
+\subsection{Prognose und Gesamt-Komplexit\"at}
+
+Abbildung~5 zeigt links die projizierte CPU-Nachfrage bis 2032 unter zwei
+Szenarien (1:1-Trend vs.\ 1:4-Trend) sowie rechts die log-log-Darstellung
+der Gesamt-Komplexit\"at $\Theta(n_T^3)$ nach Rack-Konfiguration.
+
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=0.93\textwidth]{plots/plot5_forecast_complexity.pdf}
+  \caption{Links: CPU-Nachfrage-Prognose (normiert) 2022--2032 nach Szenario.
+  Rechts: Gesamt-Komplexit\"at $\Theta(n_T^3)$ im log-log-Diagramm.
+  1:1-Systeme skalieren g\"unstiger als 1:8-Systeme um Faktor $\sim 91$.}
+  \label{fig:forecast}
+\end{figure}
+
+% ============================================================
+\section{Zusammenfassung}
+% ============================================================
+
+Der Subgraph Algorithmus \cite{epp2026subgraph} erweist sich als geeignetes
+formales Werkzeug zur Analyse von Hardware-Topologiegraphen in KI-Rechenzentren.
+Die wichtigsten Ergebnisse im \"Uberblick:
+
+\begin{itemize}
+  \item Hardware-Racks der Typen 1:1, 1:2, 1:4 und 1:8 lassen sich als
+        formale Graphstrukturen modellieren, deren Subgraph-Beziehungen
+        in $\Theta(n^3)$ berechenbar sind.
+  \item Es gilt die Einbettungshierarchie
+        $G_{1:1} \hookrightarrow G_{1:2} \hookrightarrow G_{1:4} \hookrightarrow G_{1:8}$
+        (Satz~\ref{satz:hierarchie}).
+  \item Kein universelles Optimum existiert: Inferenz bevorzugt 1:1,
+        Training 1:4 (Korollar~1).
+  \item Der Algorithmus ist asymptotisch optimal unter SETH (Satz~\ref{satz:komplex}).
+  \item Die CPU-Nachfrage w\"achst im 1:1-Szenario bis 2032 um Faktor $\sim 8$
+        st\"arker als im 1:4-Szenario.
+\end{itemize}
+
+% ============================================================
+\section{Ausblick}
+% ============================================================
+
+Der folgende Ausblick skizziert die zu erwartenden Entwicklungen in den Bereichen
+Hardware-Architektur, Algorithmen, Software-Infrastruktur, \"Okonomie und
+gesellschaftliche Konsequenzen f\"ur den Zeitraum 2027--2032.
+
+\subsection{Hardware-Architektur: Weiterentwicklung der CPU:GPU-Integration}
+
+\subsubsection{Heterogene Compute-Fabric}
+
+Die Trennung zwischen CPU und GPU wird in den n\"achsten Jahren zunehmend
+verwischen. Nvidia hat mit der Grace-Blackwell-Architektur (GB200) bereits
+demonstriert, dass CPU und GPU \"uber NVLink-C2C mit $900\,\text{GB/s}$
+bidirektionaler Bandbreite verbunden werden k\"onnen -- ein Wert, der
+PCIe~5.0 ($128\,\text{GB/s}$) um mehr als eine Gr\"o\ss enordnung \"ubertrifft
+\cite{nvidia2024gb200}. Die n\"achste Generation -- voraussichtlich Vera~Rubin
+(VR200, erwartet 2027) -- wird diesen Interconnect weiter ausbauen.
+
+AMD verfolgt mit dem Venice-Prozessor und dem Infinity-Fabric-Interconnect
+eine \"ahnliche Strategie \cite{computerbase2026}. F\"ur 2027 ist ein
+Infinity-Fabric-Gen5 angek\"undigt, der HBM4-Speicher direkt in die
+CPU-Die-Hierarchie einbettet.
+
+\subsubsection{3D-Stacked Compute}
+
+Ein langfristiger Trend ist die vertikale Integration von CPU, HBM-Speicher
+und NPU-Beschleunigern in einem einzigen Package. TSMC's SoIC-Technologie
+(System-on-Integrated-Chips) und Samsung's X-Cube erm\"oglichen ab 2028
+Die-Stacking mit unter $1\,\mu\text{m}$ Pitch. Dies macht die konzeptuelle
+Trennung von CPU und GPU zunehmend obsolet -- stattdessen entstehen
+\emph{heterogene Rechen-Tiles}, die je nach Workload dynamisch als
+CPU-Tile oder GPU-Tile konfiguriert werden k\"onnen \cite{tsmc2025soic}.
+
+\subsubsection{In-Memory Computing und CXL}
+
+Compute Express Link (CXL) 3.1 (erwartet 2027) erm\"oglicht kohärenten
+Speicherzugriff \"uber Rackgrenzen hinweg. In Kombination mit
+Processing-in-Memory (PIM)-Modulen (z.\,B.\ Samsung HBM-PIM, SK Hynix
+AiMX) k\"onnen einfache Matrix-Operationen direkt im DRAM ausgef\"uhrt
+werden. Dies verschiebt die \"optimale Verh\"altnishierarchie weiter in
+Richtung 1:1 oder sogar 2:1 (mehr CPUs als GPUs), da CPU-nahe
+PIM-Module die Datenvorverarbeitung \"ubernehmen \cite{cxl2024spec}.
+
+\subsection{Algorithmenentwicklung: Erweiterungen des Subgraph Algorithmus}
+
+\subsubsection{Parallele Subgraph-Isomorphismus-Erkennung}
+
+Der Subgraph Algorithmus in seiner aktuellen Form \cite{epp2026subgraph}
+ist sequenziell mit $\Theta(n^3)$. F\"ur sehr gro\ss e Rack-Topologien
+($n > 10\,000$ Knoten, z.\,B.\ NVL72-Cluster mit 72 GPUs pro Einheit
+mal tausende Einheiten) ist eine parallele Variante notwendig. Folgende
+Ans\"atze sind vielversprechend:
+
+\begin{itemize}
+  \item \textbf{GPU-parallele Rotation:} Die $n$ LCS-Berechnungen sind
+        unabh\"angig (Lemma~\ref{lem:injektivitaet}) und k\"onnen auf
+        $n$ GPU-Threads verteilt werden, was die Laufzeit auf
+        $O(n^2 / p)$ reduziert ($p$ = Anzahl paralleler Einheiten).
+  \item \textbf{Approximative LCS:} F\"ur Echtzeit-Topologie-Monitoring
+        gen\"ugt ein Approximate-LCS mit Fehlerschranke $\varepsilon$,
+        erreichbar in $O(n \log n)$ mittels Suffix-Array-Technik
+        \cite{navarro2001approx}.
+  \item \textbf{Streaming-Variante:} Bei dynamisch wechselnden
+        Topologien (Hot-Plug von GPUs/CPUs) k\"onnen inkrementelle
+        Updates der Signatur-Arrays in $O(n)$ statt $O(n^2)$ durchgef\"uhrt
+        werden, sofern nur einzelne Knoten/Kanten ge\"andert werden.
+\end{itemize}
+
+\subsubsection{Gewichtete Topologien}
+
+Die aktuelle Definition des Hardware-Topologiegraphen (Definition~\ref{def:htg})
+ist ungewichtet. F\"ur pr\"azisere Modelle sollten Kanten-Gewichte die
+Bandbreite des Interconnects kodieren:
+\[
+  w: E_r \to \mathbb{R}_{>0}, \quad
+  w(c_i, \gamma_j) = \text{PCIe/NVLink-Bandbreite in GB/s}
+\]
+Der Subgraph Algorithmus kann auf gewichtete Graphen erweitert werden,
+indem die Signatur-Funktion um einen Gewichtsterm erg\"anzt wird:
+\[
+  \sigma_j^w = \sum_{i=0}^{n-1} A_{ij} \cdot w(v_i, v_j) \cdot 2^i + j \cdot 2^n
+\]
+Dies erfordert jedoch angepasste LCS-Algorithmen f\"ur reellwertige Alphabete.
+
+\subsubsection{Temporale Graphen}
+
+KI-Cluster sind dynamisch: GPUs werden hinzugef\"ugt, entfernt oder
+aufgeteilt (Multi-Instance GPU, MIG). Temporale Graphen $G_r(t)$,
+bei denen $V(t)$ und $E(t)$ zeitabh\"angig sind, erm\"oglichen die
+formale Analyse von Cluster-Rebalancing-Strategien. Der Subgraph
+Algorithmus kann hier als \emph{Snapshot-Vergleicher} eingesetzt werden,
+um zu entscheiden, ob die aktuelle Topologie $G_r(t_2)$ einen Subgraph
+der fr\"uheren Topologie $G_r(t_1)$ darstellt -- und damit ob Konfigurationen
+verloren gegangen sind.
+
+\subsection{Software-Infrastruktur und KI-Frameworks}
+
+\subsubsection{Topology-Aware Scheduling}
+
+Moderne KI-Frameworks (PyTorch~2.x, JAX, TensorFlow~2.x) sind noch
+weitgehend agnostisch gegen\"uber der physischen Hardware-Topologie.
+Eine Integration des Subgraph Algorithmus in den Scheduler w\"urde
+erm\"oglichen, Tensor-Parallel-Gruppen automatisch an die optimale
+Sub-Topologie anzupassen \cite{megatron2021}. Konkret:
+\begin{itemize}
+  \item Erkenne, ob die aktuelle GPU-Gruppe eine 1:1- oder 1:2-Substruktur hat.
+  \item W\"ahle Pipeline-Parallelismus-Tiefe entsprechend der Topologie-Hierarchie.
+  \item Minimiere All-Reduce-Kommunikation durch topologie-bewusstes
+        Tensor-Partitioning.
+\end{itemize}
+
+\subsubsection{Automatische Hardware-Provisioning}
+
+Cloud-Anbieter (AWS, Azure, GCP) bieten zunehmend \emph{Hardware-as-a-Service}
+mit variablen CPU:GPU-Verh\"altnissen. Ein Subgraph Algorithmus-basierter
+Provisioning-Agent k\"onnte automatisch:
+\begin{enumerate}
+  \item Den Workload-Graphen analysieren (Inferenz vs.\ Training vs.\ Feinabstimmung).
+  \item Die optimale Topologie $G_r^*$ berechnen.
+  \item Den n\"achst-verf\"ugbaren Superknoten als Subgraph $G_r^* \subseteq G_\text{cluster}$
+        identifizieren.
+  \item Die Ressourcen-Allokation entsprechend initiieren.
+\end{enumerate}
+
+\subsubsection{KI-Beschleuniger jenseits von GPU und CPU}
+
+Die Diskussion CPU vs.\ GPU wird ab 2027 durch weitere Akteure erg\"anzt:
+\begin{itemize}
+  \item \textbf{NPUs (Neural Processing Units):} Apple~M-Serie, Qualcomm
+        Hexagon, Intel Lunar Lake integrieren dedizierte NPUs. Im Subgraph-Modell
+        erscheinen NPUs als neue Knotenklasse $\nu$, was die Topologiedefinition
+        auf $V_r = C_r \cup \Gamma_r \cup N_r$ (NPU-Knoten) erweitert.
+  \item \textbf{Photonische Interconnects:} Lightmatter Passage und Ayar Labs
+        entwickeln photonische On-Package-Interconnects mit $>10\,\text{Tbps}$
+        Bandbreite. Dies \"andert fundamentell die Gewichtsfunktion $w(e)$ im
+        gewichteten Topologiegraphen.
+  \item \textbf{Neuromorphe Chips:} Intel Loihi~3 und IBM NorthPole bieten
+        Spike-basierte Verarbeitung mit extremer Energieeffizienz f\"ur
+        bestimmte Inferenz-Workloads. Die Integration in Subgraph-Topologien
+        erfordert erweiterte Signatur-Funktionen f\"ur heterogene Knotentypen.
+\end{itemize}
+
+\subsection{\"Okonomische Konsequenzen}
+
+\subsubsection{CPU-Markt: Renaissance und Wettbewerb}
+
+Die Verlagerung hin zu 1:1-Konfigurationen impliziert eine dramatische
+Erh\"ohung der CPU-Nachfrage in KI-Rechenzentren \cite{computerbase2026}.
+Konkret: Ein Rechenzentrum mit $100\,000$ GPUs in 1:8-Konfiguration
+ben\"otigt $12\,500$ CPUs. Bei Umstieg auf 1:1 steigt der CPU-Bedarf
+auf $100\,000$ -- Faktor~8. Dies begr\"undet den erheblichen wirtschaftlichen
+Anreiz f\"ur AMD, die 1:1-Architektur aktiv zu bewerben \cite{computerbase2026}.
+
+Die wichtigsten Wettbewerber im Server-CPU-Segment f\"ur KI-Infrastruktur sind:
+\begin{itemize}
+  \item \textbf{AMD Epyc Venice} (2026): Bis zu 192 Kerne, gro\ss e
+        L3-Cache-Kapazit\"at, optimiert f\"ur KI-Prefill.
+  \item \textbf{Nvidia Grace (Vera-Generation)} (2026--2027): ARM-basiert,
+        tightly gekoppelt mit Blackwell/Rubin-GPUs via NVLink-C2C.
+  \item \textbf{Intel Xeon Granite Rapids-D}: Hohe PCIe~5.0-Lane-Dichte
+        f\"ur Storage-nahe KI-Workloads.
+  \item \textbf{Amazon Graviton~5} (2026): Arm-basiert, optimiert f\"ur
+        AWS-eigene KI-Dienste.
+  \item \textbf{Google Axion} (2025/2026): Bespoke Arm-CPU f\"ur TPU-Integration.
+\end{itemize}
+
+\subsubsection{Speicher: Engpass HBM und LPDDR6}
+
+Unabh\"angig vom CPU:GPU-Verh\"altnis bleibt Hochgeschwindigkeitsspeicher
+eine kritische Ressource \cite{computerbase2026}. HBM4 (erwartet 2026/2027)
+wird $>2\,\text{TB/s}$ Bandbreite pro Stack bieten. Die Produktion ist
+jedoch durch TSMC-Kapazit\"aten limitiert. F\"ur 1:1-Konfigurationen, die
+mehr CPUs ben\"otigen, steigt auch der LPDDR6-Bedarf signifikant.
+
+\subsubsection{Energieverbrauch}
+
+Ein oft \"ubersehener Aspekt: 1:1-Konfigurationen verbrauchen mehr Energie
+pro GPU-Rechenoperation, da die CPU-Leistungsaufnahme ($\sim 400\,\text{W}$
+f\"ur Epyc Venice) nicht durch mehr GPU-Arbeit amortisiert wird. F\"ur
+Rechenzentren mit strengen PUE-Zielen ($<1{,}2$) ist das 1:4-Format
+energetisch g\"unstiger. Zukunftige Entwicklungen in der CPU-Effizienz
+(Chiplet-Designs, advanced node TSMC N2/A16) werden diesen Trade-off
+jedoch abschwächen.
+
+\subsection{Gesellschaftliche und wissenschaftliche Konsequenzen}
+
+\subsubsection{Demokratisierung von KI-Inferenz}
+
+Die Verlagerung hin zu 1:1 senkt die Einstiegsh\"urde f\"ur KI-Inferenz:
+Standard-CPUs (AMD Epyc, Intel Xeon) in Verbindung mit einzelnen High-End-GPUs
+(RTX~5090, Radeon RX~9900 XT) erm\"oglichen leistungsf\"ahige lokale Inferenz.
+Dies f\"ordert die Dezentralisierung von KI-Systemen und reduziert die
+Abh\"angigkeit von Cloud-Monopolen.
+
+\subsubsection{Wissenschaftliche Simulationen}
+
+F\"ur wissenschaftliche HPC-Anwendungen (Klimamodellierung, Proteinfaltung,
+Quantenchemie) bietet das 1:1-Paradigma neue M\"oglichkeiten: CPU-intensive
+Vorverarbeitung und GPU-intensive Simulation k\"onnen ohne Kommunikations-Overhead
+eng verzahnt werden. Dies ist insbesondere f\"ur Hybrid-Algorithmen relevant,
+die CPU-basierte symbolische Berechnungen (z.\,B.\ Differentialgleichungsl\"oser)
+mit GPU-basiertem numerischen Computing kombinieren.
+
+\subsubsection{Formale Verifikation von KI-Infrastruktur}
+
+Der Subgraph Algorithmus bietet eine formale Grundlage f\"ur die
+\emph{Infrastruktur-Verifikation}: Gegeben eine Deployment-Spezifikation
+als Graph $G_\text{spec}$, pr\"ufe in $\Theta(n^3)$, ob die tats\"achlich
+vorhandene Hardware-Topologie $G_\text{real}$ die Spezifikation erf\"ullt
+($G_\text{spec} \subseteq G_\text{real}$). Dies er\"offnet neue Anwendungen
+im Bereich DevOps und Infrastructure-as-Code f\"ur KI-Cluster.
+
+\subsection{Offene Forschungsfragen}
+
+\begin{enumerate}
+  \item \textbf{Optimale Hybrid-Konfigurationen:} Existiert ein formales
+        Optimierungsproblem, das CPU:GPU-Verh\"altnis, Workload-Profil und
+        Energieverbrauch simultan minimiert? Ist dieses NP-hart?
+  \item \textbf{Dynamische Topologien:} Wie kann der Subgraph Algorithmus
+        f\"ur dynamisch wechselnde Topologien (GPU-Hot-Plug, MIG) in
+        Echtzeit betrieben werden?
+  \item \textbf{Optimalit\"at ohne SETH:} Kann die $\Omega(n^3)$-Schranke
+        unbedingt (ohne Komplexit\"atshypothesen) bewiesen werden?
+  \item \textbf{Approximationsalgorithmen:} Welche Approximationsrate ist
+        f\"ur Subgraph-Isomorphismus in Hardware-Topologien in
+        $O(n^2 \log n)$ erreichbar?
+  \item \textbf{Quantencomputing:} K\"onnte ein Quantenalgorithmus
+        (Grover-Suche, HHL) Subgraph-Isomorphismus in $O(n^{1.5})$
+        l\"osen und damit die SETH-Barriere umgehen?
+\end{enumerate}
+
+% ============================================================
+\begin{thebibliography}{99}
+% ============================================================
+
+\bibitem{computerbase2026}
+Ri\ss{}ka, V. (2026, 9.\ Mai).
+\textit{Nach Nvidia, Meta \& Co: Auch AMD bewirbt nun das 1:1-CPU-GPU-Verh\"altnis f\"ur AI}.
+ComputerBase.
+\url{https://www.computerbase.de/news/wirtschaft/nach-nvidia-meta-und-co-auch-amd-bewirbt-nun-das-1-1-cpu-gpu-verhaeltnis-fuer-ai.97281/}
+Abgerufen am 11.05.2026, 08:27~Uhr.
+
+\bibitem{epp2026subgraph}
+Epp, S. (2026).
+\textit{Der Subgraph Algorithmus}.
+Universit\"at Bielefeld.
+\url{https://github.com/hjstephan86/science}
+
+\bibitem{nvidia2024gb200}
+NVIDIA Corporation (2024).
+\textit{NVIDIA Grace Blackwell Superchip Architecture}.
+NVIDIA Technical White Paper.
+\url{https://resources.nvidia.com/en-us-blackwell-architecture}
+
+\bibitem{abboud2015lcs}
+Abboud, A., Backurs, A., \& Vassilevska Williams, V. (2015).
+Tight Hardness Results for LCS and Other Sequence Similarity Measures.
+\textit{Proceedings of FOCS~2015}, 59--78.
+\url{https://doi.org/10.1109/FOCS.2015.14}
+
+\bibitem{megatron2021}
+Narayanan, D., Shoeybi, M., Casper, J., LeGresley, P., Patwary, M.,
+Korthikanti, V., Vainbrand, D., Kashinkunti, P., Bernauer, J.,
+Catanzaro, B., Phanishayee, A., \& Zaharia, M. (2021).
+Efficient Large-Scale Language Model Training on GPU Clusters Using
+Megatron-LM.
+\textit{Proceedings of SC~2021}.
+\url{https://doi.org/10.1145/3458817.3476209}
+
+\bibitem{navarro2001approx}
+Navarro, G. (2001).
+A guided tour to approximate string matching.
+\textit{ACM Computing Surveys}, 33(1), 31--88.
+\url{https://doi.org/10.1145/375360.375365}
+
+\bibitem{tsmc2025soic}
+TSMC (2025).
+\textit{System on Integrated Chips (SoIC) Technology Overview}.
+TSMC Technology Symposium 2025.
+\url{https://www.tsmc.com/technology/soic}
+
+\bibitem{cxl2024spec}
+CXL Consortium (2024).
+\textit{Compute Express Link Specification Revision 3.1}.
+\url{https://www.computeexpresslink.org/}
+
+\bibitem{hotchips2025meta}
+Meta AI Infrastructure Team (2025).
+\textit{Meta Catalina: A 1:1 CPU-GPU Architecture for Large Language Model Inference}.
+\textit{Hot Chips 2025}.
+\url{https://hotchips.org/2025/}
+
+\bibitem{amd2026venice}
+AMD (2026).
+\textit{AMD EPYC Venice Processor Architecture Guide}.
+AMD Technical Documentation.
+\url{https://www.amd.com/en/processors/epyc}
+
+\bibitem{intel2024xeon}
+Intel Corporation (2024).
+\textit{Intel Xeon Scalable Processors for AI Workloads}.
+Intel Developer Zone.
+\url{https://www.intel.com/content/www/us/en/products/details/processors/xeon.html}
+
+\bibitem{patterson2021roofline}
+Patterson, D., \& Hennessy, J.~L. (2021).
+\textit{Computer Organization and Design RISC-V Edition}.
+Morgan Kaufmann. ISBN~978-0-12-820331-6.
+
+\bibitem{jouppi2023tpu}
+Jouppi, N.~P., Hyun Yoon, D., Ashcraft, M., et al.\ (2023).
+TPU v4: An Optically Reconfigurable Supercomputer for Machine Learning
+with Hardware Support for Embeddings.
+\textit{Proceedings of ISCA~2023}.
+\url{https://doi.org/10.1145/3579371.3589350}
+
+\bibitem{deepseek2025r2}
+DeepSeek AI (2025).
+\textit{DeepSeek-R2 Technical Report}.
+arXiv:2501.12948.
+\url{https://arxiv.org/abs/2501.12948}
+
+\end{thebibliography}
+
+\end{document}
+

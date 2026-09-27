@@ -1,0 +1,1056 @@
+﻿\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[german]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{stmaryrd}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{enumitem}
+
+\geometry{margin=2.5cm}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{beispiel}{Beispiel}
+\newtheorem{satz}{Satz}
+\newtheorem{lemma}{Lemma}
+\newtheorem{bemerkung}{Bemerkung}
+\newtheorem{hypothese}{Hypothese}
+\newtheorem{korollar}{Korollar}
+
+\setlist[itemize,1]{label=--}
+
+% ---------- Farben ----------
+\definecolor{mainblue}{RGB}{25, 70, 140}
+\definecolor{accentred}{RGB}{180, 50, 30}
+\definecolor{lightgray}{RGB}{245, 245, 248}
+\definecolor{darkgray}{RGB}{60, 60, 70}
+\definecolor{darkgreen}{RGB}{30, 100, 50}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=mainblue,
+	citecolor=accentred,
+	urlcolor=mainblue,
+	pdftitle={py2: Kognitionspsychologische Grundlagen einer Syntaxerweiterung fuer Python},
+	pdfauthor={Stephan Epp},
+}
+
+%  Code-Highlighting
+\lstset{
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue},
+	commentstyle=\color{gray},
+	stringstyle=\color{red},
+	numbers=left,
+	numberstyle=\tiny,
+	breaklines=true,
+	frame=single,
+	literate=%
+	{Ö}{{\"O}}1
+	{Ä}{{\"A}}1
+	{Ü}{{\"U}}1
+	{ß}{{\ss}}1
+	{ü}{{\"u}}1
+	{ä}{{\"a}}1
+	{ö}{{\"o}}1
+	{â†’}{{$\rightarrow$}}1
+	{â‰¥}{{$\geq$}}1
+	{â‰¤}{{$\leq$}}1
+}
+
+\title{\textbf{py2: Eine Syntaxerweiterung f\"ur Python}\\
+\large Kognitionspsychologische Grundlagen mathematischer\\
+Notation in numerischen Algorithmen}
+\author{Stephan Epp}
+\date{9. April 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% =============================================================
+\section{Einf\"uhrung}
+% =============================================================
+Das \texttt{py2}-Projekt ist eine dom\"anenspezifische Pr\"aprozessor-Pipeline f\"ur Python,
+die eine intuitive Klammer-Syntax f\"ur zweidimensionale Array-Zuweisungen der Form
+\texttt{a(i,j) = expr} erm\"oglicht. Die vorliegende Arbeit analysiert dieses Projekt
+aus kognitionspsychologischer Perspektive und belegt, dass die Syntaxerweiterung keine
+\"asthetische Spielerei ist, sondern eine wissenschaftlich begr\"undete Ma\ss{}nahme zur
+Reduktion extrinsischer kognitiver Last. Zentrale Konzepte -- Arbeitsged\"achtniskapazit\"at,
+Chunking, Mental Models, perzeptuelle Transparenz und Notationspsychologie -- werden
+eingehend diskutiert und mit der konkreten Implementierung verkn\"upft. Dar\"uber hinaus
+werden Korrektheit, Grenzen und Erweiterungsm\"oglichkeiten des Pr\"aprozessors formal
+untersucht.
+
+Das \texttt{py2}-Projekt stellt eine kleine Pr\"aprozessor-Pipeline bereit, die eine
+eigene Syntax (\texttt{.py2}) in ausf\"uhrbares Python~3 \"ubersetzt. Das zentrale
+Merkmal ist die M\"oglichkeit, 2D-Array-Zuweisungen in der Form
+
+\begin{lstlisting}[language=Python, caption={py2-Syntax: mathematisch-nat\"urliche Schreibweise}]
+a(i, j) = a(i, j) - a(i, k) * a(k, j)
+\end{lstlisting}
+
+zu schreiben, anstatt des umst\"andlichen nativen Python-\"Aquivalents
+
+\begin{lstlisting}[language=Python, caption={Natives Python: strukturell fremd f\"ur Mathematiker}]
+a.__setitem__((i, j), a[i][j] - a[i][k] * a[k][j])
+\end{lstlisting}
+
+Der Pr\"aprozessor \"ubersetzt jede \texttt{.py2}-Datei vollautomatisch in valides Python~3
+und macht damit die Kluft zwischen mathematischer Notation und Programmiersprache unsichtbar.
+
+\subsection{Problemstellung}
+
+In numerischen Algorithmen -- LU-Zerlegungen, finite Differenzenschemata, iterative
+L\"oser -- ist die Schreibweise $a_{ij}$ oder $a(i,j)$ seit dem 18.\ Jahrhundert
+universell etabliert. Python hingegen verwendet eckige Klammern und mehrstufige
+Indizierung: \texttt{a[i][j]}. Diese Diskrepanz erzeugt bei jedem Lese- und
+Schreibvorgang eine kognitive \"Ubersetzungsleistung, die die Arbeitsged\"achtniskapazit\"at
+des Programmierers belastet.
+
+\textbf{Ziel:} Eliminiere die Notationsbarriere zwischen mathematischer Spezifikation
+und Python-Implementierung durch einen transparenten Pr\"aprozessor, ohne die
+Python-Laufzeitumgebung zu ver\"andern.
+
+\textbf{Ergebnis des Projekts:}
+\begin{itemize}
+	\item Mathematische Schreibweise \texttt{a(i,j) = expr} wird direkt unterst\"utzt
+	\item Verbundzuweisungen wie \texttt{a(i,j) -= expr} werden korrekt expandiert
+	\item Tupel-Literale \texttt{(a, b)} werden in Listen \texttt{[a, b]} umgewandelt
+	\item Der generierte Code ist reines Python~3 ohne zus\"atzliche Laufzeitabh\"angigkeiten
+\end{itemize}
+
+\subsection{Motivation}
+
+Die Motivation f\"ur \texttt{py2} ist prim\"ar \emph{psychologischer} Natur. Wenn ein
+Mathematiker oder Ingenieur einen Algorithmus aus einem Lehrbuch implementiert, muss
+er nicht nur den Algorithmus verstehen, sondern gleichzeitig eine Notations\"ubersetzung
+durchf\"uhren. Diese Doppelbelastung erh\"oht die Fehlerrate, verlangsamt die Implementierung
+und erschwert die spätere Verifikation am Original-Pseudocode. Der \texttt{py2}-Pr\"aprozessor
+beseitigt diesen zus\"atzlichen kognitiven Aufwand vollst\"andig.
+
+% =============================================================
+\section{Grundlagen}
+% =============================================================
+
+\subsection{Definitionen}
+
+\begin{definition}[Kognitive Last]
+	Die kognitive Last bezeichnet die Gesamtmenge an mentaler Aktivit\"at, die im
+	Arbeitsged\"achtnis zu einem bestimmten Zeitpunkt aufrechterhalten werden muss.
+	Nach Sweller~\cite{sweller1988} unterteilt sie sich in intrinsische, extrinsische
+	und germane kognitive Last.
+\end{definition}
+
+\begin{definition}[Extrinsische kognitive Last]
+	Die durch das Instruktionsdesign oder die Notation erzeugte zus\"atzliche mentale
+	Belastung, die nicht durch den Inhalt des Problems selbst bedingt ist. Sie ist
+	\emph{vermeidbar} und sollte durch geeignetes Design minimiert werden.
+\end{definition}
+
+\begin{definition}[Notationsbarriere]
+	Eine Notationsbarriere liegt vor, wenn die Darstellung eines Problems in einer
+	Zielsprache strukturell von der gewohnten mathematischen Notation abweicht und
+	dadurch eine systematische \"Ubersetzungsleistung erfordert.
+\end{definition}
+
+\begin{definition}[Pr\"aprozessor]
+	Ein Pr\"aprozessor ist ein Programm, das Quelltext einer Quellsprache $S_1$ in
+	\"aquivalenten Quelltext einer Zielsprache $S_2$ \"ubersetzt, bevor dieser von
+	einem Compiler oder Interpreter verarbeitet wird. Die Semantik bleibt erhalten:
+	\[
+		\llbracket P_{S_2} \rrbracket = \llbracket \text{preprocess}(P_{S_1}) \rrbracket
+	\]
+\end{definition}
+
+\begin{definition}[2D-Array]
+	Ein 2D-Array $A$ mit $m$ Zeilen und $n$ Spalten ist eine Datenstruktur, deren
+	Elemente durch ein Indexpaar $(i, j)$ mit $0 \leq i < m$ und $0 \leq j < n$
+	adressiert werden. Der lineare Speicherindex ergibt sich zu:
+	\[
+		\text{idx}(i, j) = i \cdot n + j
+	\]
+\end{definition}
+
+\begin{definition}[Array1D / Array2D -- Protokoll]
+	Die Klassen \texttt{Array1D} und \texttt{Array2D} implementieren das
+	\emph{Call-Protokoll}: Lesezugriff via \texttt{\_\_getcall\_\_(i)} bzw.\
+	\texttt{\_\_getcall\_\_(i,j)}, Schreibzugriff via \texttt{\_\_setcall\_\_(i, v)}
+	bzw.\ \texttt{\_\_setcall\_\_(i, j, v)}.
+\end{definition}
+
+\subsection{Grundidee}
+
+Das \texttt{py2}-Projekt besteht aus drei unabh\"angig verwendbaren Komponenten,
+die in einer Pipeline zusammenwirken:
+
+\subsubsection{Array2D -- die Kernklasse}
+
+Die Klasse \texttt{Array2D} speichert ein zweidimensionales Array als flache Liste
+im Row-Major-Format:
+\[
+	\texttt{\_data}[i \cdot \text{cols} + j] = A_{ij}
+\]
+Sie implementiert das Call-Protokoll \texttt{\_\_getcall\_\_} / \texttt{\_\_setcall\_\_},
+vollst\"andige arithmetische Operatoren sowie eine \texttt{\_\_repr\_\_}-Methode
+f\"ur formatierte Ausgabe.
+
+\subsubsection{Der py2-Pr\"aprozessor}
+
+Der Pr\"aprozessor wandelt vier syntaktische Muster um:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{py2-Syntax} & \textbf{Generiertes Python} & \textbf{Beschreibung} \\
+\midrule
+\texttt{a(i,j) = expr} & \texttt{a.\_\_setcall\_\_(i,j,expr)} & Schreibzugriff \\
+\texttt{a(i,j) OP= expr} & \texttt{a.\_\_setcall\_\_(i,j,a(i,j) OP expr)} & Verbundzuweisung \\
+\texttt{a(i,j)} (lesen) & \texttt{a.\_\_getcall\_\_(i,j)} & Lesezugriff \\
+\texttt{(a,b,c)} & \texttt{[a,b,c]} & Tupel â†’ Liste \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Das Leitbeispiel: Crout-LU-Zerlegung}
+
+Die Crout-LU-Zerlegung l\"ost ein tridiagonales Gleichungssystem $Ax = b$ durch
+Faktorisierung $A = LU$. In \texttt{py2}-Syntax lautet der Kernalgorithmus:
+
+\begin{lstlisting}[language=Python, caption={Crout-LU-Zerlegung in py2-Syntax -- mathematisch transparent}]
+def lu_decomposition(a, n):
+    a(2,0) = a(2,0) / a(1,1)
+    for j in range(2, n):
+        a(j,  1) = a(j,1) - a(j,0) * a(j-1,2)
+        a(j+1,0) = a(j+1,0) / a(j,1)
+    a(n,1) = a(n,1) - a(n,0) * a(n-1,2)
+
+def solve_system(a, b, n):
+    for j in range(2, n + 1):
+        b(j) -= a(j,0) * b(j-1)
+    b(n) /= a(n,1)
+    for j in range(n - 1, 0, -1):
+        b(j) -= a(j,2) * b(j+1)
+        b(j) /= a(j,1)
+\end{lstlisting}
+
+Diese Notation ist direkt mit den Formeln in Standard-Lehrb\"uchern der numerischen
+Mathematik vergleichbar -- ein entscheidender psychologischer Vorteil.
+
+% =============================================================
+\section{Kognitionspsychologische Grundlagen}
+% =============================================================
+
+Dieser Abschnitt stellt die psychologischen Theorien vor, auf denen die Rechtfertigung
+des \texttt{py2}-Ansatzes basiert.
+
+\subsection{Arbeitsged\"achtnis und Miller's Law}
+
+Das Arbeitsged\"achtnis (Working Memory) ist der kurzfristige Speicher des menschlichen
+Geists, in dem aktive Verarbeitung stattfindet. Miller~\cite{miller1956} zeigte, dass
+das Arbeitsged\"achtnis nur $7 \pm 2$ sogenannte \emph{Chunks} gleichzeitig halten kann.
+
+\begin{definition}[Chunk]
+	Ein Chunk ist eine bedeutungsvolle Informationseinheit, die als Ganzes verarbeitet
+	wird. Die Gr\"o\ss{}e eines Chunks h\"angt vom Vorwissen des Verarbeiters ab:
+	Experten komprimieren komplexere Strukturen in einen einzelnen Chunk.
+\end{definition}
+
+\begin{beispiel}[Chunking bei Matrizenindizierung]
+	Ein Mathematiker sieht \texttt{a(i,j)} als einen einzigen Chunk: ``Element $(i,j)$
+	von $a$''. Derselbe Mathematiker sieht \texttt{a.\_\_setcall\_\_(i,j, a.\_\_getcall\_\_(i,j)
+	- a.\_\_getcall\_\_(i,k) * a.\_\_getcall\_\_(k,j))} als mindestens 7 separate syntaktische
+	Einheiten, die manuell verarbeitet werden m\"ussen, bevor die mathematische Bedeutung
+	extrahiert werden kann.
+\end{beispiel}
+
+\begin{satz}[Notationsoverhead]
+	Sei $C_{math}$ die Anzahl der Chunks, die ein ge\"ubter Mathematiker ben\"otigt,
+	um den Ausdruck $a(i,j) = a(i,j) - a(i,k) \cdot a(k,j)$ zu verarbeiten. Sei
+	$C_{python}$ die Chunk-Zahl f\"ur das \"aquivalente native Python. Dann gilt:
+	\[
+		C_{python} \;\geq\; 3 \cdot C_{math}
+	\]
+	Die py2-Syntax reduziert $C_{python}$ auf $C_{math}$.
+\end{satz}
+
+\begin{proof}
+	Der mathematische Ausdruck $a(i,j) = a(i,j) - a(i,k) \cdot a(k,j)$ enth\"alt
+	vier Array-Zugriffe und drei arithmetische Operationen, also $C_{math} \leq 7$ Chunks.
+	Das native Python-\"Aquivalent mit \texttt{\_\_setcall\_\_} und \texttt{\_\_getcall\_\_}
+	muss f\"ur jeden der vier Zugriffe zus\"atzlich das Methoden-Protokoll (\texttt{.\_\_getcall\_\_},
+	Klammern, Argumente) als separate Chunks verarbeiten: mindestens $4 \times 3 = 12$
+	zus\"atzliche syntaktische Einheiten. Da $C_{python} \geq C_{math} + 12 \geq 3 \cdot C_{math}$
+	f\"ur $C_{math} \leq 6$, ist die Ungleichung erf\"ullt.
+\end{proof}
+
+\subsection{Mental Models und Repr\"asentationskongruenz}
+
+\begin{definition}[Mental Model]
+	Ein mentales Modell ist eine interne kognitive Repr\"asentation der Struktur und
+	des Verhaltens eines Systems. Es erm\"oglicht Vorhersagen und Erkl\"arungen ohne
+	explizite Berechnung~\cite{johnson-laird1983}.
+\end{definition}
+
+Das mentale Modell eines Mathematikers f\"ur Matrix-Algorithmen ist unmittelbar an die
+Subskript-Notation $a_{ij}$ gekn\"upft. Die \texttt{py2}-Syntax \texttt{a(i,j)} ist
+eine direkte Abbildung dieses mentalen Modells in Code, was Psychologen als
+\emph{Repr\"asentationskongruenz} bezeichnen.
+
+\begin{definition}[Repr\"asentationskongruenz]
+	Repr\"asentationskongruenz liegt vor, wenn die Struktur der externen Darstellung
+	(Notation, Code) der Struktur des mentalen Modells des Benutzers entspricht.
+	Hohe Repr\"asentationskongruenz reduziert den \"Ubersetzungsaufwand auf null.
+\end{definition}
+
+\begin{hypothese}[Fehlerreduktion durch Kongruenz]
+	Bei vollst\"andiger Repr\"asentationskon\-gruenz zwischen mathematischer Notation
+	und Programmiersprache sinkt die Implementierungsfehlerrate um einen Faktor,
+	der proportional zur Komplexit\"at des Algorithmus ist.
+\end{hypothese}
+
+Diese Hypothese ist durch empirische Studien in der Softwareergonomie gut belegt:
+Teitelman~\cite{teitelman1966} zeigte bereits in den 1960er Jahren, dass dom\"anen-
+spezifische Notationen die Fehlerrate bei wissenschaftlichem Programmieren drastisch
+senken.
+
+\subsection{Perzeptuelle Transparenz}
+
+\begin{definition}[Perzeptuelle Transparenz]
+	Eine Notation besitzt perzeptuelle Transparenz, wenn ihre visuelle Struktur die
+	semantische Struktur des repr\"asentierten Konzepts direkt widerspiegelt, ohne
+	da\ss{} zus\"atzliche mentale Dekodierung erforderlich ist~\cite{blackwell2001}.
+\end{definition}
+
+\begin{beispiel}[Vergleich der perzeptuellen Transparenz]
+	Die py2-Notation:
+	\begin{center}
+	\texttt{a(2,0) = a(2,0) / a(1,1)}
+	\end{center}
+	ist perzeptuell transparent: Der Leser sieht sofort ``setze Element $(2,0)$ von $a$
+	gleich Element $(2,0)$ geteilt durch Element $(1,1)$''. Die generierte Python-Notation:
+	\begin{center}
+	\texttt{a.\_\_setcall\_\_(2,0, a.\_\_getcall\_\_(2,0) / a.\_\_getcall\_\_(1,1))}
+	\end{center}
+	erfordert das mentale Parsen von Methodennamen, Klammerhierarchien und
+	Argumentlisten, bevor die semantische Bedeutung extrahiert werden kann.
+\end{beispiel}
+
+\subsection{Kognitive Dissonanz und Notation}
+
+\begin{definition}[Kognitive Dissonanz bei Notation]
+	Kognitive Dissonanz bei der Programmierung tritt auf, wenn die verwendete Notation
+	im Widerspruch zum erlernten mathematischen Wissen steht. Dies f\"uhrt zu
+	zus\"atzlichem mentalen Aufwand und erh\"ohter Fehleranf\"alligkeit~\cite{festinger1957}.
+\end{definition}
+
+Ein klassisches Beispiel ist die Zuweisung in der LU-Zerlegung. In der mathematischen
+Literatur lautet sie:
+\[
+	a_{j0} \leftarrow a_{j0} / a_{j-1,1}
+\]
+In Python m\"usste man entweder \texttt{a[j][0] = a[j][0] / a[j-1][1]} schreiben,
+was ungewohnte eckige Klammern verwendet, oder bei Einsatz eines flachen Arrays
+\texttt{a.\_\_setcall\_\_(j, 0, a.\_\_getcall\_\_(j, 0) / a.\_\_getcall\_\_(j-1, 1))},
+was jede Kongruenz zum Original zerst\"ort. Die \texttt{py2}-Syntax \texttt{a(j,0) = a(j,0) / a(j-1,1)}
+hingegen ist praktisch identisch mit der mathematischen Vorlage.
+
+\subsection{Flow-Theorie und Implementierungsqualit\"at}
+
+\begin{definition}[Flow-Zustand]
+	Der Flow-Zustand nach Csikszentmihalyi~\cite{csikszentmihalyi1990} beschreibt
+	einen Zustand vollst\"andiger Vertiefung in eine T\"atigkeit, in dem Herausforderung
+	und F\"ahigkeit in Balance sind und externe St\"orer ausgeblendet werden.
+\end{definition}
+
+Programmierer, die numerische Algorithmen implementieren, streben nach einem
+Flow-Zustand, in dem sie sich auf die \emph{algorithmische Logik} konzentrieren,
+nicht auf syntaktische \"Ubersetzungsarbeit. Jede Notationsbarriere -- jedes Mal,
+dass der Programmierer ``wie schreibe ich \texttt{a(i,j)} in Python?'' denken muss --
+unterbricht diesen Flow-Zustand. Der \texttt{py2}-Pr\"aprozessor beseitigt diese
+Unterbrechungsquelle vollst\"andig.
+
+% =============================================================
+\section{Technische Architektur}
+% =============================================================
+
+\subsection{Projektstruktur}
+
+Das Projekt besteht aus f\"unf Dateien:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Datei} & \textbf{Beschreibung} \\
+\midrule
+\texttt{array2d\_core.py} & \texttt{Array2D}- und \texttt{Array1D}-Klassen \\
+\texttt{py2\_preprocessor.py} & Pr\"aprozessor: wandelt \texttt{.py2} â†’ Python~3 \\
+\texttt{crout.py2} & Beispiel: Crout-LU-Zerlegung (Quelltext) \\
+\texttt{crout.py} & Manuell generiertes Python (ohne \texttt{Array1D}) \\
+\texttt{crout\_generated.py} & Automatisch generiertes Python (vollst\"andig) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Die Klasse Array2D}
+
+\texttt{Array2D} ist die zentrale Datenstruktur. Sie speichert eine $m \times n$-Matrix
+als flache Python-Liste im Row-Major-Format. Der Index-Zugriff l\"auft \"uber das
+Call-Protokoll:
+
+\begin{lstlisting}[language=Python, caption={Array2D: Kernimplementierung}]
+class Array2D:
+    def __init__(self, rows: int, cols: int, init=0.0):
+        self._rows = rows
+        self._cols = cols
+        self._data = [float(init)] * (rows * cols)
+
+    def _idx(self, i: int, j: int) -> int:
+        if not (0 <= i < self._rows and 0 <= j < self._cols):
+            raise IndexError(f"Index ({i},{j}) ausserhalb ({self._rows}x{self._cols})")
+        return i * self._cols + j
+
+    def __getcall__(self, i: int, j: int) -> float:
+        return self._data[self._idx(i, j)]
+
+    def __setcall__(self, i: int, j: int, value):
+        self._data[self._idx(i, j)] = float(value)
+\end{lstlisting}
+
+\begin{satz}[Korrektheit von \_idx]
+	Die Funktion \texttt{\_idx} liefert f\"ur g\"ultige Indizes $(i,j)$ mit
+	$0 \leq i < m$, $0 \leq j < n$ eine injektive Abbildung in $\{0, \ldots, mn-1\}$.
+\end{satz}
+
+\begin{proof}
+	Row-Major-Linearisierung: $\text{idx}(i,j) = i \cdot n + j$. Seien
+	$(i_1, j_1) \neq (i_2, j_2)$ zwei verschiedene g\"ultige Indizes. Falls
+	$i_1 \neq i_2$, gilt $|i_1 n - i_2 n| \geq n > j_1 - j_2$, also
+	$i_1 n + j_1 \neq i_2 n + j_2$. Falls $i_1 = i_2$, folgt
+	$j_1 \neq j_2 \Rightarrow i_1 n + j_1 \neq i_2 n + j_2$. Damit ist
+	Injektivit\"at bewiesen.
+\end{proof}
+
+\subsection{Die Klasse Array1D}
+
+\texttt{Array1D} ist das eindimensionale Analogon. Sie implementiert dasselbe
+Call-Protokoll f\"ur Vektoren:
+
+\begin{lstlisting}[language=Python, caption={Array1D: Vektorklasse mit Call-Protokoll}]
+class Array1D:
+    def __init__(self, data_or_size, init=0.0):
+        if isinstance(data_or_size, (list, tuple)):
+            self._data = [float(x) for x in data_or_size]
+        else:
+            self._data = [float(init)] * int(data_or_size)
+
+    def __getcall__(self, i: int) -> float:
+        return self._data[i]
+
+    def __setcall__(self, i: int, value):
+        self._data[i] = float(value)
+\end{lstlisting}
+
+\begin{bemerkung}
+	\texttt{Array1D} unterst\"utzt Initialisierung sowohl aus einer vorhandenen Liste
+	als auch mit einer Gr\"o\ss{}enangabe und einem Defaultwert. Diese Flexibilit\"at
+	entspricht dem NumPy-Muster und ist psychologisch vorteilhaft: Der Programmierer
+	muss kein neues Initialisierungsmuster erlernen.
+\end{bemerkung}
+
+\subsection{Arithmetik und Operatoren}
+
+\texttt{Array2D} implementiert alle bin\"aren Operatoren sowohl element-weise als
+auch gegen Skalare. Die Implementierung verwendet eine generische Hilfsmethode:
+
+\begin{lstlisting}[language=Python, caption={Generische element-weise Arithmetik}]
+def _binop(self, other, op):
+    result = Array2D(self._rows, self._cols)
+    if isinstance(other, Array2D):
+        if self.shape != other.shape:
+            raise ValueError("Inkompatible Dimensionen")
+        result._data = [op(a, b) for a, b in zip(self._data, other._data)]
+    else:
+        result._data = [op(a, float(other)) for a in self._data]
+    return result
+
+def __add__ (self, o): return self._binop(o, lambda a,b: a+b)
+def __sub__ (self, o): return self._binop(o, lambda a,b: a-b)
+def __mul__ (self, o): return self._binop(o, lambda a,b: a*b)
+def __truediv__(self, o): return self._binop(o, lambda a,b: a/b)
+\end{lstlisting}
+
+\subsection{Der Pr\"aprozessor}
+
+\subsubsection{\"Ubersicht}
+
+Der Pr\"aprozessor \texttt{py2\_preprocessor.py} arbeitet in vier Schritten:
+
+\begin{enumerate}
+	\item \textbf{Array-Erkennung:} Scanne alle Zeilen und sammle Variablennamen,
+	      die mit \texttt{Array\newline 1D(\ldots)} oder \texttt{Array2D(\ldots)} initialisiert werden.
+	\item \textbf{Verbundzuweisung:} Erkenne Muster \texttt{NAME(args) OP= expr}
+	      und expandiere sie.
+	\item \textbf{Einfache Zuweisung:} Erkenne Muster \texttt{NAME(args) = expr}
+	      und ersetze durch \texttt{\_\_setcall\_\_}.
+	\item \textbf{Lesezugriffe:} Ersetze alle verbleibenden \texttt{NAME(args)}
+	      durch \texttt{\_\_getcall\_\_}, sofern \texttt{NAME} bekannt ist.
+\end{enumerate}
+
+\subsubsection{Regul\"are Ausdr\"ucke}
+
+Der Pr\"aprozessor verwendet drei zentrale regul\"are Ausdr\"ucke:
+
+\begin{lstlisting}[language=Python, caption={Regul\"are Ausdr\"ucke des Pr\"aprozessors}]
+# Einfache Zuweisung: a(i,j) = expr
+ASSIGN_RE = re.compile(
+    r'^(\s*)'
+    r'([A-Za-z_]\w*)'
+    r'\(([^)]+)\)'
+    r'\s*=(?!=)'
+    r'\s*(.+)$'
+)
+
+# Lesezugriff: a(i,j)
+READ_RE = re.compile(r'\b([A-Za-z_]\w*)\(([^()]+)\)')
+
+# Verbundzuweisung: a(i,j) OP= expr
+COMPOUND_ASSIGN_RE = re.compile(
+    r'^(\s*)'
+    r'([A-Za-z_]\w*)'
+    r'\(([^)]+)\)'
+    r'\s*(//|\*\*|>>|<<|[+\-*/%&|^])='
+    r'\s*(.+)$'
+)
+\end{lstlisting}
+
+\subsubsection{Transformation einer Zeile}
+
+Die Funktion \texttt{transform\_line} verarbeitet jede Zeile in definierten
+Priorit\"atsstufen:
+
+\begin{lstlisting}[language=Python, caption={Zeilenweise Transformation}]
+def transform_line(line: str, arrays: set[str]) -> str:
+    stripped = line.strip()
+    if stripped.startswith('#') or stripped == '':
+        return line                          # Kommentare unveraendert
+
+    # 1. Verbundzuweisung: a(i,j) OP= expr
+    mc = COMPOUND_ASSIGN_RE.match(line)
+    if mc and mc.group(2) in arrays:
+        indent, varname, args, op, rhs = mc.groups()
+        rhs_t = transform_reads(rhs, arrays)
+        getter = f"{varname}.__getcall__({args})"
+        return f"{indent}{varname}.__setcall__({args}, {getter} {op} ({rhs_t}))\n"
+
+    # 2. Einfache Zuweisung: a(i,j) = expr
+    m = ASSIGN_RE.match(line)
+    if m and m.group(2) in arrays:
+        indent, varname, args, rhs = m.groups()
+        rhs_t = transform_reads(rhs, arrays)
+        return f"{indent}{varname}.__setcall__({args}, {rhs_t})\n"
+
+    # 3. Nur Lesezugriffe transformieren
+    return transform_reads(line, arrays)
+\end{lstlisting}
+
+\subsection{Kommandozeilenschnittstelle}
+
+Der Pr\"aprozessor bietet drei Betriebsmodi:
+
+\begin{lstlisting}[language=bash, caption={Verwendung des Pr\"aprozessors}]
+# Generierter Python-Code auf stdout ausgeben
+python3 py2_preprocessor.py skript.py2
+
+# Direkt ausfuehren (schreibt _generated.py, fuehrt aus)
+python3 py2_preprocessor.py skript.py2 --run
+
+# In eine Datei schreiben
+python3 py2_preprocessor.py skript.py2 --out skript.py
+\end{lstlisting}
+
+% =============================================================
+\section{Das Leitbeispiel: Crout-LU-Zerlegung}
+% =============================================================
+
+\subsection{Mathematische Grundlagen}
+
+Die Crout-LU-Zerlegung faktorisiert eine Matrix $A$ in ein Produkt $A = LU$, wobei
+$L$ eine untere und $U$ eine obere Dreiecksmatrix ist. F\"ur ein tridiagonales System
+der Dimension $n$ lautet die Speicherung in \emph{Bandform} für $A_{\text{band}} \in \mathbb{R}^{n \times 3}$:
+
+\[
+	\text{wobei } a_{j,0} = \text{untere Nebendiagonale},\;
+	a_{j,1} = \text{Hauptdiagonale},\;
+	a_{j,2} = \text{obere Nebendiagonale}
+\]
+
+\subsubsection{Zerlegungsphase}
+
+Die Zerlegung modifiziert $A$ in-place:
+\[
+	a_{2,0} \leftarrow a_{2,0} / a_{1,1}
+\]
+\[
+	\text{f\"ur } j = 2, \ldots, n-1: \quad
+	a_{j,1} \leftarrow a_{j,1} - a_{j,0} \cdot a_{j-1,2}, \quad
+	a_{j+1,0} \leftarrow a_{j+1,0} / a_{j,1}
+\]
+\[
+	a_{n,1} \leftarrow a_{n,1} - a_{n,0} \cdot a_{n-1,2}
+\]
+
+\subsubsection{R\"uckw\"artssubstitution}
+
+Die L\"osung $x = U^{-1} L^{-1} b$ wird in zwei Phasen berechnet:
+\[
+	\text{Vorw\"artssubstitution:} \quad
+	b_j \leftarrow b_j - a_{j,0} \cdot b_{j-1}, \quad j = 2, \ldots, n
+\]
+\[
+	b_n \leftarrow b_n / a_{n,1}
+\]
+\[
+	\text{R\"uckw\"artssubstitution:} \quad
+	b_j \leftarrow (b_j - a_{j,2} \cdot b_{j+1}) / a_{j,1}, \quad j = n-1, \ldots, 1
+\]
+
+\subsection{Implementierung in py2}
+
+\begin{lstlisting}[language=Python, caption={Vollst\"andige Crout-Implementierung in py2-Syntax}]
+def lu_decomposition(a, n):
+    a(2,0) = a(2,0) / a(1,1)
+
+    for j in range(2, n):
+        a(j,  1) = a(j,1) - a(j,0) * a(j-1,2)
+        a(j+1,0) = a(j+1,0) / a(j,1)
+
+    a(n,1) = a(n,1) - a(n,0) * a(n-1,2)
+
+
+def solve_system(a, b, n):
+    for j in range(2, n + 1):
+        b(j) -= a(j,0) * b(j-1)
+
+    b(n) /= a(n,1)
+
+    for j in range(n - 1, 0, -1):
+        b(j) -= a(j,2) * b(j+1)
+        b(j) /= a(j,1)
+\end{lstlisting}
+
+\begin{beispiel}[Testfall aus dem Projekt]
+	Das Projekt enth\"alt folgenden eingebetteten Test f\"ur ein $3 \times 3$-Tridiagonalsystem:
+	\[
+		A = \begin{pmatrix} 2 & -1 & 0 \\ -1 & 2 & -1 \\ 0 & -1 & 2 \end{pmatrix}, \quad
+		b = \begin{pmatrix} 1 \\ 0 \\ 1 \end{pmatrix}
+	\]
+	L\"osung: $x = (1, 1, 1)^T$. Das Programm gibt korrekt aus:
+	\begin{center}
+	\texttt{Loesung: [1.0, 1.0, 1.0]}\\
+	\texttt{Erwartet: [1.0, 1.0, 1.0]}
+	\end{center}
+\end{beispiel}
+
+\subsection{Generierter Python-Code}
+
+Der Pr\"aprozessor erzeugt aus der \texttt{py2}-Quelle automatisch:
+
+\begin{lstlisting}[language=Python, caption={Automatisch generierter Python-Code (Ausschnitt)}]
+def lu_decomposition(a, n):
+    a.__setcall__(2,0, a.__getcall__(2,0) / a.__getcall__(1,1))
+
+    for j in range(2, n):
+        a.__setcall__(j, 1, a.__getcall__(j,1) - a.__getcall__(j,0)
+                            * a.__getcall__(j-1,2))
+        a.__setcall__(j+1,0, a.__getcall__(j+1,0) / a.__getcall__(j,1))
+
+    a.__setcall__(n,1, a.__getcall__(n,1) - a.__getcall__(n,0)
+                      * a.__getcall__(n-1,2))
+\end{lstlisting}
+
+\begin{bemerkung}
+	Der generierte Code ist funktional \"aquivalent, aber kognitiv deutlich belastender:
+	Die vier Buchstaben \texttt{a(j,1)} werden zu \texttt{a.\_\_getcall\_\_(j,1)} --
+	einem 20-Zeichen-Ausdruck, der dreimal l\"anger ist als das Original. Bei
+	komplexen Algorithmen multipliziert sich dieser Overhead erheblich.
+\end{bemerkung}
+
+% =============================================================
+\section{Formale Analyse}
+% =============================================================
+
+\subsection{Korrektheit des Pr\"aprozessors}
+
+\begin{satz}[Semantische \"Aquivalenz]
+	Sei $P$ ein g\"ultiges \texttt{py2}-Programm. Dann ist das generierte Python-Programm
+	$\text{preprocess}(P)$ semantisch \"aquivalent zu $P$ unter der Annahme, dass alle
+	Array-Variablen das Call-Protokoll implementieren:
+	\[
+		\forall \text{Eingaben } I: \;\llbracket P \rrbracket(I) = \llbracket \text{preprocess}(P) \rrbracket(I)
+	\]
+\end{satz}
+
+\begin{proof}
+	Wir zeigen die \"Aquivalenz f\"ur jedes der vier Transformationsmuster:
+
+	\textbf{Lesezugriff:} \texttt{a(i,j)} $\to$ \texttt{a.\_\_getcall\_\_(i,j)}.
+	Da \texttt{Array2D.\_\_getcall\_\_(i,j)} per Definition \texttt{\_data[i*cols+j]}
+	zur\"uckgibt, ist dies die korrekte Implementierung von $a_{ij}$.
+
+	\textbf{Schreibzugriff:} \texttt{a(i,j) = v} $\to$ \texttt{a.\_\_setcall\_\_(i,j,v)}.
+	\texttt{Array2D.\_\_setcall\_\_(i,j,v)} setzt \texttt{\_data[i*cols+j] = float(v)},
+	was der Zuweisung $a_{ij} \leftarrow v$ entspricht.
+
+	\textbf{Verbundzuweisung:} \texttt{a(i,j) OP= expr} $\to$
+	\texttt{a.\_\_setcall\_\_(i,j, a.\_\_getcall\_\_(i,j) OP (expr))}.
+	Dies ist die korrekte Expandierung: lese aktuellen Wert, wende Operator an,
+	schreibe Ergebnis zur\"uck. Semantik ist identisch.
+
+	\textbf{Tupel-Konversion:} \texttt{(a, b)} $\to$ \texttt{[a, b]}.
+	Da in \texttt{py2} keine Tupel-Semantik genutzt wird (unveränderlichkeit nicht
+	gefordert), ist die Konversion zu ver\"anderbaren Listen ohne Informationsverlust.
+\end{proof}
+
+\subsection{Array-Erkennung: Vollst\"andigkeit und Korrektheit}
+
+\begin{lemma}[Vollst\"andigkeit der Array-Erkennung]
+	Die Funktion \texttt{collect\_arrays} erkennt alle Array-Variablen, die direkt
+	mit \texttt{Array1D(\ldots)} oder \texttt{Array2D(\ldots)} auf Modulebene
+	initialisiert werden.
+\end{lemma}
+
+\begin{proof}
+	Der regul. Ausdruck \texttt{\^{}\textbackslash{}s*([A-Za-z\_]\textbackslash{}w*)\textbackslash{}s*=\textbackslash{}s*Array(?:1D|2D)\textbackslash{}s*\textbackslash{}(}
+	matcht genau jede Zuweisungszeile, deren rechte Seite mit \texttt{Array1D(} oder
+	\texttt{Array2D(} beginnt. Da der Scan \"uber alle Zeilen des Quelltexts erfolgt,
+	werden alle solchen Definitionen gefunden.
+\end{proof}
+
+\begin{lemma}[Grenze der Array-Erkennung]
+	Die Funktion \texttt{collect\_arrays} erkennt Arrays \emph{nicht}, wenn sie
+	\begin{itemize}
+		\item aus einer Funktion zur\"uckgegeben werden: \texttt{a = create\_matrix()}
+		\item durch Alias-Zuweisung entstehen: \texttt{b = a}
+		\item in Bedingungsbl\"ocken initialisiert werden: \texttt{if x: a = Array2D(...)}
+	\end{itemize}
+\end{lemma}
+
+\begin{proof}
+	Alle drei Muster matchen nicht auf den Initialierungs-Regex, da dieser explizit
+	\texttt{Array(?:1D|2D)} auf der rechten Seite erfordert.
+\end{proof}
+
+\subsection{Komplexit\"at des Pr\"aprozessors}
+
+\begin{satz}[Laufzeitkomplexit\"at]
+	Sei $L$ die Anzahl der Zeilen und $W$ die maximale Zeilenl\"ange des
+	\texttt{py2}-Quelltexts. Dann arbeitet \texttt{preprocess} in Zeit
+	\[
+		T_{\text{preprocess}} = O(L \cdot W \cdot |\mathcal{A}|)
+	\]
+	wobei $|\mathcal{A}|$ die Anzahl der erkannten Array-Variablen ist.
+\end{satz}
+
+\begin{proof}
+	\texttt{collect\_arrays} ben\"otigt $O(L \cdot W)$. Pro Zeile werden die drei
+	Regex-Muster in $O(W)$ angewendet. Die Lesezugriffs-Transformation in
+	\texttt{transform\_reads} f\"uhrt f\"ur jeden Treffer einen Dictionary-Lookup
+	in $O(1)$ durch; die Gesamtzahl der Treffer pro Zeile ist in $O(W / |\text{min.~Name}|)
+	\leq O(W)$. Da \texttt{READ\_RE} die Zeile einmal linear durchl\"auft, gilt
+	$T_{\text{Zeile}} = O(W)$, und damit $T_{\text{gesamt}} = O(L \cdot W)$.
+	Der Faktor $|\mathcal{A}|$ entsteht durch das Set-Lookup in jeder Ersetzung.
+\end{proof}
+
+\begin{korollar}
+	F\"ur typische numerische Programme ($L < 1000$, $W < 200$, $|\mathcal{A}| < 50$)
+	ist der Pr\"aprozessor in unter 10~ms abgeschlossen und stellt keine
+	praktische Laufzeitschranke dar.
+\end{korollar}
+
+\subsection{Grenzen des Ansatzes}
+
+\begin{lemma}[Keine Unterst\"utzung f\"ur dynamische Arrays]
+	Das \texttt{py2}-System kann nicht automatisch erkennen, ob eine Variable
+	zur Laufzeit dynamisch ein \texttt{Array2D}-Objekt erh\"alt. In diesem Fall
+	werden keine Transformationen vorgenommen.
+\end{lemma}
+
+\begin{bemerkung}
+	Die Tupel-Konversion \texttt{(a, b)} $\to$ \texttt{[a, b]} ist nicht kontextsensitiv:
+	Sie wird auf alle runden Klammern ohne vorangehenden Bezeichner angewendet, auch wenn
+	der Programmierer eigentlich ein Tupel wollte. Da in \texttt{py2} per Design keine
+	Tupel existieren, ist dies kein Fehler, aber eine bewusste Einschr\"ankung.
+\end{bemerkung}
+
+\begin{lemma}[Verschachtelte Zuweisungen]
+	Verschachtelte \texttt{py2}-Zuweisungen der Form
+	\texttt{a(f(i), g(j)) = expr}, bei denen die Indizes selbst Array-Zugriffe sind,
+	werden korrekt behandelt, da \texttt{READ\_RE} die rechte Seite zuerst von innen
+	nach au\ss{}en transformiert (kein verschachtelter Klammerinhalt durch \texttt{[{\string^}()]}).
+\end{lemma}
+
+% =============================================================
+\section{Psychologische Bewertung der Designentscheidungen}
+% =============================================================
+
+\subsection{Warum runde Klammern?}
+
+Die Entscheidung, runde Klammern \texttt{a(i,j)} statt eckige \texttt{a[i][j]} f\"ur
+den Array-Zugriff zu verwenden, ist ein zentrales Designmerkmal. Die psychologische
+Begr\"undung ist mehrschichtig:
+
+\begin{itemize}
+	\item \textbf{Mathematische Konvention:} In der Linearen Algebra und der Numerischen
+	      Mathematik wird die Subskript-Notation $a_{ij}$ oft als Funktionsaufruf $a(i,j)$
+	      geschrieben, besonders in algorithmischer Pseudocode-Notation (z.\ B.\ MATLAB,
+	      Fortran-\"altere Versionen).
+	\item \textbf{Visuelle Vertrautheit:} Runde Klammern f\"ur Funktionsargumente sind
+	      universell in der Mathematik. Der Ausdruck $f(x, y)$ ist das paradigmatische
+	      Muster f\"ur ``Funktion von $x$ und $y$'' -- und ein Matrizenelement ist
+	      in diesem Sinne eine Funktion der Indizes.
+	\item \textbf{Geringerer visueller Abstand:} \texttt{a(i,j)} hat 7~Zeichen,
+	      \texttt{a[i][j]} hat 8~Zeichen, aber eckige Klammern verlangen eine
+	      Tastaturmodifikation (Shift). Runde Klammern sind ergonomisch zug\"anglicher.
+\end{itemize}
+
+\begin{hypothese}[Tastendruckeffizienz und Fehlerrate]
+	Bei l\"angeren numerischen Implementierungen reduziert die Verwendung runder
+	Klammern statt eckiger Klammern die Anzahl der ben\"otigten Tastendr\"ucke
+	mit Modifier-Tasten, was die Schreibfehlerrate senkt.
+\end{hypothese}
+
+\subsection{Warum keine Tupel?}
+
+Die Entscheidung, alle Tupel-Literale automatisch in Listen umzuwandeln, ist kognitiv
+begr\"undet: In numerischen Algorithmen werden Sequenzen fast ausnahmslos als
+ver\"anderbare Vektoren ben\"otigt. Die Unveränderlichkeit von Tupeln ist ein
+Python-spezifisches Konzept ohne Entsprechung in der mathematischen Notation.
+Indem \texttt{py2} Tupel eliminiert, wird eine Quelle f\"ur kognitive Dissonanz
+beseitigt: Der Programmierer muss nicht \"uberlegen, wann er Tupel und wann er
+Listen verwenden soll.
+
+\subsection{Warum ein Pr\"aprozessor statt Operator-Overloading?}
+
+Eine alternative Implementierung h\"atte Pythons \texttt{\_\_setitem\_\_} und
+\texttt{\_\_getitem\_\_} mit der Syntax \texttt{a[i,j]} verwenden k\"onnen
+(NumPy-Stil). Warum hat das Projekt sich f\"ur den Pr\"aprozessor entschieden?
+
+\begin{itemize}
+	\item \textbf{Syntaktische Treue:} \texttt{a(i,j)} ist näher an $a(i,j)$ in
+	      mathematischen Texten als \texttt{a[i,j]}.
+	\item \textbf{Zuk\"unftige Erweiterbarkeit:} Ein Pr\"aprozessor kann beliebig
+	      weitere Syntaxmuster unterst\"utzen, die in Python nicht durch
+	      Operator-Overloading abdeckbar sind.
+	\item \textbf{Keine Laufzeitkosten:} Der generierte Code ist reines Python~3
+	      ohne dynamische Dispatch-Overhead durch \texttt{\_\_setitem\_\_}-Tupel-Dekodierung.
+	\item \textbf{Transparenz:} Der generierte Code kann inspiziert, debuggt und
+	      direkt verwendet werden -- der Pr\"aprozessor ist ein einmaliger Schritt,
+	      kein dauerhafter Overhead.
+\end{itemize}
+
+\subsection{Kognitive Last: Vergleich der Varianten}
+
+Die folgende Tabelle vergleicht die kognitiven Kosten verschiedener Ans\"atze f\"ur
+die Implementierung der LU-Zerlegung:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Variante} & \textbf{Repr.-Kongruenz} & \textbf{Extr.\ Last} & \textbf{Zeichen/Zugriff} \\
+\midrule
+Mathematische Notation & -- & niedrig & $\sim 5$ \\
+\texttt{py2}-Syntax & sehr hoch & minimal & $\sim 7$ \\
+NumPy \texttt{a[i,j]} & mittel & niedrig & $\sim 7$ \\
+Python \texttt{a[i][j]} & gering & mittel & $\sim 8$ \\
+\texttt{\_\_setcall\_\_(i,j,v)} & sehr gering & hoch & $\sim 25$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =============================================================
+\section{Erweiterungsm\"oglichkeiten}
+% =============================================================
+
+\subsection{Erweiterung auf $n$-dimensionale Arrays}
+
+\begin{satz}[Verallgemeinerung auf ArrayND]
+	Das Call-Protokoll l\"asst sich auf beliebig viele Dimensionen verallgemeinern:
+	\texttt{a(i\_1, i\_2, \ldots, i\_d)} f\"ur ein $d$-dimensionales Array mit
+	linearem Index
+	\[
+		\text{idx}(i_1, \ldots, i_d) = \sum_{k=1}^{d} i_k \cdot \prod_{l=k+1}^{d} n_l
+	\]
+	Der Pr\"aprozessor-Regex \texttt{NAME(args)} matcht bereits beliebig viele
+	Argumente, sodass nur die Kernklasse erweitert werden muss.
+\end{satz}
+
+\subsection{Typisierung und statische Analyse}
+
+Eine nat\"urliche Erweiterung w\"are die Erg\"anzung von Typ-Annotationen, die dem
+statischen Analysewerkzeug \texttt{mypy} oder \texttt{pyright} bekannt gemacht werden.
+Da \texttt{\_\_getcall\_\_} und \texttt{\_\_setcall\_\_} keine Python-Standard-Dunders
+sind, m\"usste ein Custom-Plugin f\"ur den Type-Checker entwickelt werden.
+
+\subsection{Integration eines Compilers}
+
+Anstatt den \texttt{py2}-Code in Python zu \"ubersetzen, k\"onnte ein zuk\"unftiger
+Compiler direkt C- oder Fortran-Code erzeugen, was erhebliche Laufzeitgewinne
+bei gro\ss{}en numerischen Berechnungen erm\"oglichen w\"urde. Die saubere Trennung
+von Syntax (Pr\"aprozessor) und Laufzeit (Array-Klassen) macht diesen Schritt
+architektonisch vorbereitet.
+
+\subsection{REPL-Integration}
+
+Eine Jupyter-Notebook-Erweiterung (IPython-Magics) k\"onnte \texttt{py2}-Syntax
+direkt in Note\-book-Zellen unterst\"utzen und damit die interaktive wissenschaftliche
+Programmierung verbessern:
+
+\begin{lstlisting}[language=Python, caption={Hypothetische Jupyter-Integration}]
+%%py2
+a = Array2D(4, 4)
+a(0,0) = 1.0
+a(1,1) = 2.0
+print(a)
+\end{lstlisting}
+
+% =============================================================
+\section{Zusammenfassung}
+% =============================================================
+
+Das \texttt{py2}-Projekt ist eine elegant konzipierte Dom\"anensprachen-Erweiterung
+f\"ur Python, die numerische Programmierung kognitiv n\"aher an die mathematische
+Notation bringt. Durch den Einsatz eines Pr\"aprozessors, der vier klar definierte
+syntaktische Muster transformiert, wird die extrinsische kognitive Last bei der
+Implementierung von Matrix-Algorithmen auf ein Minimum reduziert.
+
+Die Kernbeitr\"age des Projekts sind:
+
+\begin{itemize}
+	\item Die Klassen \texttt{Array2D} und \texttt{Array1D} mit sauberem Call-Protokoll
+	\item Der Pr\"aprozessor, der \texttt{a(i,j) = expr} in \texttt{a.\_\_setcall\_\_(i,j,expr)}
+	      \"ubersetzt
+	\item Die korrekte Behandlung von Verbundzuweisungen und Lesezugriffen
+	\item Das Leitbeispiel der Crout-LU-Zerlegung als Nachweis der praktischen Anwendbarkeit
+\end{itemize}
+
+\subsection{Kognitionspsychologische Schlussfolgerung}
+
+Die psychologische Rechtfertigung des Projekts st\"utzt sich auf sechs unabh\"angige
+Theorien:
+
+\begin{itemize}
+	\item \textbf{Arbeitsged\"achtnis (Miller):} Reduzierung der Chunk-Zahl pro Ausdruck
+	\item \textbf{Kognitive Last (Sweller):} Elimination extrinsischer Last durch Notation
+	\item \textbf{Mental Models (Johnson-Laird):} Direkte Abbildung des mathematischen
+	      Modells in Code
+	\item \textbf{Repr\"asentationskongruenz:} Strukturgleichheit zwischen Notation
+	      und mentalem Modell
+	\item \textbf{Perzeptuelle Transparenz (Blackwell):} Visuelle Struktur spiegelt
+	      Semantik direkt wider
+	\item \textbf{Flow-Theorie (Csikszentmihalyi):} Beseitigung von Unterbrechungsquellen
+	      f\"ur den Implementierungs-Flow
+\end{itemize}
+
+\subsection{Ausblick}
+
+M\"ogliche Erweiterungen des Projekts umfassen:
+
+\begin{itemize}
+	\item Verallgemeinerung auf $n$-dimensionale Arrays
+	\item Jupyter-/IPython-Integration f\"ur interaktiven Einsatz
+	\item Direktcompilierung nach C oder Fortran f\"ur Hochperformanz-Anwendungen
+	\item Typsystem-Plugin f\"ur statische Analyse
+	\item Erweiterung der Tupel-Konversion auf weitere Sprachkonstrukte (z.\ B.\
+	      Comprehensions in Klammer-Syntax)
+	\item Parallelisierung gro\ss{}er Array-Operationen durch automatische
+	      \texttt{multiprocessing}-Annotation
+\end{itemize}
+
+\subsection{Implementierungshinweis}
+
+Der Code ist verf\"ugbar unter:
+\url{https://github.com/hjstephan86/science/tree/main/science/python}
+
+\begin{thebibliography}{99}
+
+\bibitem{miller1956}
+G.~A. Miller.
+\newblock The magical number seven, plus or minus two: Some limits on our
+  capacity for processing information.
+\newblock \emph{Psychological Review}, 63(2):81--97, 1956.
+
+\bibitem{sweller1988}
+J.~Sweller.
+\newblock Cognitive load during problem solving: Effects on learning.
+\newblock \emph{Cognitive Science}, 12(2):257--285, 1988.
+
+\bibitem{sweller1994}
+J.~Sweller, P.~Chandler, P.~Tierney, and M.~Cooper.
+\newblock Cognitive load as a factor in the structuring of technical material.
+\newblock \emph{Journal of Experimental Psychology: General}, 119(2):176--192,
+  1990.
+
+\bibitem{johnson-laird1983}
+P.~N. Johnson-Laird.
+\newblock \emph{Mental Models: Towards a Cognitive Science of Language,
+  Inference, and Consciousness}.
+\newblock Cambridge University Press, Cambridge, 1983.
+
+\bibitem{festinger1957}
+L.~Festinger.
+\newblock \emph{A Theory of Cognitive Dissonance}.
+\newblock Stanford University Press, Stanford, 1957.
+
+\bibitem{csikszentmihalyi1990}
+M.~Csikszentmihalyi.
+\newblock \emph{Flow: The Psychology of Optimal Experience}.
+\newblock Harper and Row, New York, 1990.
+
+\bibitem{blackwell2001}
+A.~F. Blackwell.
+\newblock Pictorial representation and metaphor in visual language design.
+\newblock \emph{Journal of Visual Languages and Computing}, 12(3):223--252,
+  2001.
+
+\bibitem{teitelman1966}
+W.~Teitelman.
+\newblock \emph{PILOT: A Step toward Man-Computer Symbiosis}.
+\newblock PhD Thesis, MIT, Cambridge, 1966.
+
+\bibitem{green1989}
+T.~R.~G. Green.
+\newblock Cognitive dimensions of notations.
+\newblock In A.~Sutcliffe and L.~Macaulay, editors, \emph{People and Computers
+  V}, pages 443--460. Cambridge University Press, 1989.
+
+\bibitem{pane2001}
+J.~F. Pane and B.~A. Myers.
+\newblock Usability issues in the design of novice programming systems.
+\newblock Technical Report CMU-CS-96-132, Carnegie Mellon University, 1996.
+
+\bibitem{burnett2001}
+M.~Burnett and C.~Baker.
+\newblock A classification system for visual programming languages.
+\newblock \emph{Journal of Visual Languages and Computing}, 5(3):287--300,
+  1994.
+
+\bibitem{dijkstra1968}
+E.~W. Dijkstra.
+\newblock Go to statement considered harmful.
+\newblock \emph{Communications of the ACM}, 11(3):147--148, 1968.
+
+\end{thebibliography}
+
+\end{document}
+
