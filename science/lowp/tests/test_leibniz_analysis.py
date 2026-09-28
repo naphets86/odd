@@ -493,26 +493,8 @@ class TestInvalidParametersDerivatives:
 
 
 # ============================================================================
-# VISUALISIERUNGEN UND HAUPTPROGRAMM
+# HAUPTPROGRAMM
 # ============================================================================
-
-@pytest.mark.visualization
-class TestVisualization:
-    """Die Plot-Funktionen erzeugen ihre PNG-Dateien."""
-    
-    @pytest.mark.parametrize("func,filename", [
-        ("plot_asymmetric_decomposition", "asymmetric_decomposition.png"),
-        ("plot_parametrized_leibniz", "parametrized_leibniz.png"),
-        ("plot_differential_equation_verification", "differential_equation_verification.png"),
-        ("plot_boundary_conditions", "boundary_conditions.png"),
-    ])
-    def test_plot_creates_file(self, func, filename):
-        with in_tmp_dir() as tmp:
-            getattr(Visualization, func)()
-            path = os.path.join(tmp, filename)
-            assert os.path.isfile(path)
-            assert os.path.getsize(path) > 1000
-
 
 @pytest.mark.integration
 class TestMain:

@@ -247,11 +247,11 @@ class MathematicalAnalysis:
     
     def run_comprehensive_analysis(self):
         """Führe umfassende Analyse aus"""
-        print("\n" + "█"*70)
-        print("█" + " "*68 + "█")
-        print("█  UMFASSENDE MATHEMATISCHE ANALYSE" + " "*33 + "█")
-        print("█" + " "*68 + "█")
-        print("█"*70)
+        print("\n" + "="*70)
+        print("=" + " "*68 + "=")
+        print("=  UMFASSENDE MATHEMATISCHE ANALYSE" + " "*33 + " =")
+        print("=" + " "*68 + "=")
+        print("="*70)
         print("\nBasierend auf:")
         print("  1. Neue Leibniz Ergebnisse (Dirichlet Beta, Catalan-Konstante)")
         print("  2. Beschleunigungsmethoden für π/4 Konvergenz")
