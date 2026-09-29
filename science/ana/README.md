@@ -1,5 +1,10 @@
 # Die Rotationsmethode zur Kurvendiskussion
 
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/Tests-123%20passed-4c1)](tests/)
+[![Test Coverage](https://img.shields.io/badge/Test%20Coverage-100.00%25-brightgreen)](doc/coverage/index.html)
+[![scicov](https://img.shields.io/badge/scicov-10-ff69b4)](doc/coverage/index.html)
+
 **Reduktion höherer Ableitungen auf die erste Ableitung durch geometrische Transformation des Funktionsgraphen**: Die klassische Kurvendiskussion einer differenzierbaren Funktion $f$ erfordert
 die Berechnung mehrerer Ableitungen: Die \emph{erste} Ableitung $f'$ liefert
 Informationen über Monotonie und lokale Extrema, die \emph{zweite} Ableitung

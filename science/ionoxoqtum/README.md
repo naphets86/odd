@@ -1,5 +1,10 @@
 # Effiziente Nanostrukturen mit Wasser und Licht
 
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/Tests-228%20passed-4c1)](tests/)
+[![Test Coverage](https://img.shields.io/badge/Test%20Coverage-95.53%25-brightgreen)](doc/coverage/index.html)
+[![scicov](https://img.shields.io/badge/scicov-10-ff69b4)](doc/coverage/index.html)
+
 **Ionotronisches Flüssigkeits-Rechnen und photonische Oberflächen als neue Technologieplattformen adaptiver Nanomaterialien**
 
 Die vorliegende Arbeit vereint zwei scheinbar getrennte Forschungsrichtungen
