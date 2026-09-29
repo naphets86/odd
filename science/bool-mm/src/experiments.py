@@ -12,9 +12,9 @@ import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 
-from src.boolean_matrix_multiplier import BooleanMatrixMultiplier
-from src.strassen_multiplier import StrassenMultiplier, KBoundedStrassenMultiplier
-from src.k_bounded_multiplier import KBoundedMatrixMultiplier
+from boolean_matrix_multiplier import BooleanMatrixMultiplier
+from strassen_multiplier import StrassenMultiplier, KBoundedStrassenMultiplier
+from k_bounded_multiplier import KBoundedMatrixMultiplier
 
 
 def experiment_boolean_multiplication():
