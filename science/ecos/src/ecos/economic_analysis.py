@@ -9,6 +9,7 @@ Core economic concepts from the dissertation:
 - Economic uncertainty and stability analysis
 - Supply chain optimization
 - Market dynamics and filter models
+- Ship freight: cargo size vs. profitability and oversupply (see ecos.ship_freight)
 """
 
 import numpy as np
@@ -17,6 +18,8 @@ from dataclasses import dataclass
 from typing import Tuple, Optional, List, Dict
 from scipy.optimize import minimize, minimize_scalar
 from scipy.linalg import solve_continuous_are
+
+from ecos import ship_freight as ships
 
 
 # ============================================================================
@@ -680,47 +683,50 @@ def fourier_rectangle_wave(t: float, amplitude: float = 1.0, period: float = 1.0
     return (4.0 * amplitude / np.pi) * result
 
 
+# COVERAGE-SCOPE-BEGIN
 def market_adjustment_dynamics(demand_shock: float, alpha: float, eta: float,
                               T: float, t_array: np.ndarray) -> np.ndarray:
     """
     Model price adjustment under demand shocks.
-    
-    Fundamental equation from dissertation:
-    dP/dt = α(P(t) - P_0) + η·sin(2πt/T)
-    
-    This is equivalent to low-pass filter equation.
-    
+
+    Fundamental equation from dissertation (sign convention alpha < 0):
+    dP/dt = α·P(t) + η·sin(2πt/T),   P(0) = demand_shock,
+
+    where P is the deviation from the equilibrium price P_0. With a = |α| this
+    is the restoring low-pass equation dP/dt = -a·P + η·sin(ωt), ω = 2π/T.
+
+    Exact solution:
+        P(t) = (P(0) - P_p(0))·exp(-a·t) + P_p(t)
+        P_p(t) = η·(a·sin(ωt) - ω·cos(ωt)) / (a² + ω²)
+               = A·sin(ωt + φ),  A = η/√(a²+ω²),  φ = -arctan(ω/a)
+
+    (Earlier versions used +ω·cos(ωt) in P_p and did not satisfy P(0) =
+    demand_shock; both are corrected here.)
+
     Args:
-        demand_shock: Initial demand shock
-        alpha: Adjustment speed parameter
+        demand_shock: Initial deviation P(0) from equilibrium
+        alpha: Adjustment speed parameter (negative for a stable system)
         eta: Periodic shock amplitude
         T: Period of oscillation
         t_array: Time array for solution
-    
+
     Returns:
-        Array of price values over time
+        Array of price deviations over time
     """
     if alpha >= 0:
         warnings.warn("alpha should be negative for stable system")
-    
-    # Solve ODE: dP/dt + (|α|)P = (|α|)P_0 + η·sin(2πt/T)
-    P0 = demand_shock
+
+    t_array = np.asarray(t_array, dtype=float)
     omega = 2.0 * np.pi / T
-    alpha_abs = abs(alpha)
-    
-    # Homogeneous solution: P_h = C·exp(-|α|t)
-    # Particular solution for driven sine wave
-    denom = alpha_abs ** 2 + omega ** 2
-    
-    # Steady-state driven response
-    P_steady = np.zeros_like(t_array)
-    for i, t in enumerate(t_array):
-        P_homogeneous = P0 * np.exp(-alpha_abs * t)
-        P_particular = (eta * alpha_abs * np.sin(omega * t) + 
-                       eta * omega * np.cos(omega * t)) / denom
-        P_steady[i] = P_homogeneous + P_particular
-    
-    return P_steady
+    a = abs(alpha)
+    denom = a ** 2 + omega ** 2
+
+    def particular(t):
+        return eta * (a * np.sin(omega * t) - omega * np.cos(omega * t)) / denom
+
+    homogeneous = (demand_shock - particular(0.0)) * np.exp(-a * t_array)
+    return homogeneous + particular(t_array)
+# COVERAGE-SCOPE-END
 
 
 # ============================================================================
@@ -831,3 +837,61 @@ def lyapunov_stability_margin(omega: float) -> float:
         softening = 0.25 * omega / (1.0 - omega)
         return np.exp(lyap_exp + softening)
     return 0.0
+
+
+# ============================================================================
+# SHIP FREIGHT (chapter "Schiffsfracht im wirtschaftlichen Gleichgewicht")
+# ============================================================================
+
+# COVERAGE-SCOPE-BEGIN
+def ship_price_response(alpha: float, eta: float, T: float) -> float:
+    """
+    Amplitude A of the periodic price response, expressed through the economic
+    low-pass filter: A = (η/|α|)·|H(2π/T)| with time constant τ = 1/|α|.
+
+    This equals η/√(α² + (2π/T)²), the amplitude used in the ship-freight
+    price band (ecos.ship_freight.price_amplitude) and is the steady-state
+    amplitude of market_adjustment_dynamics. Accepts either sign convention
+    for alpha.
+    """
+    if alpha == 0:
+        raise ValueError("alpha must be non-zero")
+    if T <= 0 or eta <= 0:
+        raise ValueError("eta and T must be positive")
+    tau = 1.0 / abs(alpha)
+    return (eta / abs(alpha)) * calculate_filter_magnitude(1.0 / T, tau)
+
+
+def ship_market_assessment(params: Optional[ships.ShipMarketParams] = None
+                           ) -> ships.ShipFreightAnalysis:
+    """
+    Evaluate the ship-freight chapter for one parameter set (defaults: the
+    illustrative example of the chapter). Thin wrapper around
+    ecos.ship_freight.analyze so that ship results are available next to the
+    other economic analyses.
+    """
+    if params is None:
+        params = ships.ShipMarketParams()
+    return ships.analyze(params)
+
+
+def interpret_ship_freight(analysis: ships.ShipFreightAnalysis) -> str:
+    """
+    Classify the outcome of a ship-freight analysis (analogous to
+    interpret_regime for the uncertainty index):
+
+    - "not viable": no load reaches the safety margin (Satz 4.1)
+    - "blocked": profitable loads exist, but buffer, cell or tolerance limits
+      exclude all of them (Hauptsatz 4)
+    - "knife-edge": only the just-worthwhile load L⁻ is admissible
+    - "tolerance band": a range of loads is admissible
+    """
+    if analysis.viable is None:
+        return "not viable"
+    if analysis.admissible is None:
+        return "blocked"
+    lower, upper = analysis.admissible
+    if np.isclose(lower, upper):
+        return "knife-edge"
+    return "tolerance band"
+# COVERAGE-SCOPE-END
