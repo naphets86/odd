@@ -326,6 +326,8 @@ are accepted for API compatibility but **currently have no effect**.
 
 ## Ship Freight
 
+> Die Fracht mit dem Schiff über das Meer hat auf die Artikel besonderen Einfluss für den Erhalt oder die Frische der Qualität der Artikel. Der Transport über das Meer wirkt sich in der bakteriellen Entwicklung aller Artikel ganz anders aus als beim Transport über die Straße oder durch die Luft.
+
 `ecos.ship_freight` (re-exported through `ship_market_assessment`,
 `ship_price_response` and `interpret_ship_freight`) implements the chapter
 *Schiffsfracht im wirtschaftlichen Gleichgewicht*. Main building blocks:
