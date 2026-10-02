@@ -10,6 +10,9 @@ Core economic concepts from the dissertation:
 - Supply chain optimization
 - Market dynamics and filter models
 - Ship freight: cargo size vs. profitability and oversupply (see ecos.ship_freight)
+- Sea freight and bacterial development: shelf-life budget, growth work and the
+  freshness limit of a cargo (chapter "Seefracht und bakterielle Entwicklung",
+  see the sea-bacteria section of ecos.ship_freight)
 """
 
 import numpy as np
@@ -894,4 +897,75 @@ def interpret_ship_freight(analysis: ships.ShipFreightAnalysis) -> str:
     if np.isclose(lower, upper):
         return "knife-edge"
     return "tolerance band"
+# COVERAGE-SCOPE-END
+
+
+# ============================================================================
+# SEA FREIGHT AND BACTERIAL DEVELOPMENT
+# (chapter "Seefracht und bakterielle Entwicklung: Die Frische der Ladung auf
+#  dem Meer")
+# ============================================================================
+
+# COVERAGE-SCOPE-BEGIN
+def product_temperature_damping(period: float, tau_p: float) -> Tuple[float, float]:
+    """
+    Damping of a periodic air-temperature swing (defrost cycles, apron) by the
+    thermal inertia of the cargo, expressed through the economic low-pass filter
+    (Satz sb-lp): returns (amplitude factor, variance factor) with
+    amplitude factor |H| = 1/sqrt(1 + omega^2 tau_p^2) and variance factor |H|^2.
+
+    The product temperature obeys tau_p * dtheta_p/dt + theta_p = theta_a(t),
+    i.e. the same first-order low-pass as the market filter; `period` and
+    `tau_p` must share one time unit.
+    """
+    if period <= 0:
+        raise ValueError("period must be positive")
+    magnitude = float(calculate_filter_magnitude(1.0 / period, tau_p))
+    return magnitude, magnitude ** 2
+
+
+def sea_bacteria_assessment(segments: List[ships.TransportSegment],
+                            article: ships.ArticleParams,
+                            hold_temperature: float = 4.0) -> ships.ChainResult:
+    """
+    Evaluate one transport chain for one article (growth work, log increase,
+    factor N/N0, budget ratio, residual life; Beispiel sb-modi). The residual
+    life is computed at the holding temperature of the trade (default 4 degC,
+    standard atmosphere).
+    """
+    mu_hold = ships.bacterial_growth_rate(hold_temperature, 0.0, article)
+    return ships.evaluate_chain(segments, article, mu_hold)
+
+
+def interpret_freshness(result: ships.ChainResult) -> str:
+    """
+    Classify the freshness outcome of a chain (analogous to interpret_regime):
+
+    - "neutral": the chain consumes no budget (frozen/dry cargo, Korollar sb-gefroren)
+    - "spoiled": growth work exceeds the shelf-life budget (Omega > Omega_s)
+    - "fresh": the cargo arrives within its budget (Omega <= Omega_s)
+    """
+    if result.omega == 0.0:
+        return "neutral"
+    if not result.fresh:
+        return "spoiled"
+    return "fresh"
+
+
+def interpret_freshness_vs_economics(freshness_limit: float,
+                                     just_worth: Optional[float]) -> str:
+    """
+    Combine the freshness limit L_F with the just-worthwhile load L_eps^-
+    (Korollar sb-F-wirtschaft):
+
+    - "not viable": no load reaches the safety margin (no L_eps^-)
+    - "fresh and worthwhile": 0 < L_F and L_eps^- <= L_F
+    - "freshness blocks": profitable loads exist, but every one of them
+      spoils (economics wants large pulses, freshness small ones)
+    """
+    if just_worth is None:
+        return "not viable"
+    if ships.fresh_and_worthwhile(freshness_limit, just_worth):
+        return "fresh and worthwhile"
+    return "freshness blocks"
 # COVERAGE-SCOPE-END

@@ -1,8 +1,8 @@
 # Economic Analysis Module
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-297%20passed-4c1)](tests/)
-[![Test Coverage](https://img.shields.io/badge/Test%20Coverage-95.93%25-brightgreen)](doc/coverage/index.html)
+[![Tests](https://img.shields.io/badge/Tests-449%20passed-4c1)](tests/)
+[![Test Coverage](https://img.shields.io/badge/Test%20Coverage-70.03%25-brightgreen)](doc/coverage/index.html)
 [![scicov](https://img.shields.io/badge/scicov-10-ff69b4)](doc/coverage/index.html)
 
 A Python package for formal economic system analysis. It combines uncertainty,
@@ -22,6 +22,8 @@ cargo load.
 - Supply-chain routing optimization with SciPy
 - Ship-freight analysis: viable cargo loads, market equilibrium, oversupply,
   price disturbance, and buffer limits
+- Bacterial sea-freight analysis: article-specific growth work, shelf-life
+    budgets, freshness limits for pulsed cargo, and cooling-failure risk
 - Reproducible local, global, and Monte-Carlo experiments
 
 ## Installation
@@ -59,9 +61,14 @@ print(analysis.growth_rate)
 
 ## Experiments
 
-The five reproducible experiments live in `src/ecos/`. The ship-freight
-experiment writes a CSV sweep, a JSON summary, and a PDF plot to
-`src/ecos/results/`.
+The five reproducible experiments live in `src/ecos/`. Experiment 5 runs two
+linked parts: an economic cargo-load sweep and a bacterial freshness and
+cooling-risk analysis. Running it writes six files to `src/ecos/results/`:
+
+| Part | Output files |
+|---|---|
+| 5a Economic cargo-load sweep | `05_ship_freight_sweep.csv`, `05_ship_freight_summary.json`, `05_ship_freight.pdf` |
+| 5b Bacterial freshness and cooling risk | `05_sea_bacteria_chains.csv`, `05_sea_bacteria_summary.json`, `05_sea_bacteria.pdf` |
 
 ```powershell
 python src/ecos/01_simple_resonance_sweep.py
@@ -326,11 +333,11 @@ are accepted for API compatibility but **currently have no effect**.
 
 ## Ship Freight
 
-> Die Fracht mit dem Schiff über das Meer hat auf die Artikel besonderen Einfluss für den Erhalt oder die Frische der Qualität der Artikel. Der Transport über das Meer wirkt sich in der bakteriellen Entwicklung aller Artikel ganz anders aus als beim Transport über die Straße oder durch die Luft.
+> Das Kapitel *Seefracht und Bakterien: Die Frische der Ladung* erweitert das wirtschaftliche Frachtmodell um die bakterielle Haltbarkeit verderblicher Güter. Die Wirkung ist artikelspezifisch und entsteht über die lokale Temperatur- und Containeratmosphäre, die Transportdauer, das Hafenlageralter und gemeinsame Kühlausfälle. Eine Seereise kann das Frischebudget überschreiten; gefrorene oder hinreichend trockene Ware mit Wachstumsrate null verbraucht dagegen kein bakterielles Budget.
 
-`ecos.ship_freight` (re-exported through `ship_market_assessment`,
-`ship_price_response` and `interpret_ship_freight`) implements the chapter
-*Schiffsfracht im wirtschaftlichen Gleichgewicht*. Main building blocks:
+`ecos.ship_freight` implements the economic model from *Schiffsfracht im
+wirtschaftlichen Gleichgewicht* and its bacterial freshness extension. Main
+building blocks:
 
 | Block | Functions |
 |---|---|
@@ -342,6 +349,10 @@ are accepted for API compatibility but **currently have no effect**.
 | Price disturbance | `price_amplitude`, `price_phase`, `peak_disturbance`, `mean_disturbance`, `oversupply_tolerance` |
 | Cells and ports | `cell_shares`, `cell_load_limit`, `pool_load_limit` |
 | Parameters | `ShipMarketParams` (frozen dataclass), `analyze`, `price_margin`, `is_price_compatible` |
+| Bacterial growth and freshness | `ArticleParams`, `TransportSegment`, `bacterial_growth_rate`, `evaluate_chain`, `freshness_reserve`, `is_fresh`, `residual_life`, `limit_duration` |
+| Transport and atmosphere | `profile_work`, `sea_not_worse_than_air`, `sea_temperature_threshold`, `atmosphere_exposure` |
+| Pulsed cargo and freshness limit | `age_distribution`, `admissible_storage_age`, `freshness_load_limit`, `spoiled_fraction`, `fresh_and_worthwhile` |
+| Cooling failures and coupled risk | `failure_work`, `failure_tolerance`, `critical_voyage_duration`, `ship_failure_variance` |
 
 `interpret_ship_freight(analysis)` classifies the outcome as `"not viable"`,
 `"blocked"`, `"knife-edge"` (only the just-worthwhile load `L⁻` is admissible)
@@ -355,10 +366,35 @@ print(analysis.just_worth_load)              # 68.84 kt
 print(interpret_ship_freight(analysis))      # knife-edge
 ```
 
+The freshness API evaluates the accumulated growth work $\Omega$ against an
+article-specific shelf-life budget $\Omega_s$. Freshness is retained exactly
+when $\Omega\le\Omega_s$. The pulse structure of ship arrivals also creates
+a maximum fresh cargo load $L_F$; economic viability and freshness must hold at
+the same time.
+
+```python
+from ecos.economic_analysis import (
+    interpret_freshness,
+    interpret_freshness_vs_economics,
+    sea_bacteria_assessment,
+)
+from ecos.ship_freight import ARTICLE_CLASS_C, TransportSegment
+
+chain = [TransportSegment(length=19.0, theta_bar=0.0)]
+result = sea_bacteria_assessment(chain, ARTICLE_CLASS_C)
+print(result.omega, interpret_freshness(result))
+print(interpret_freshness_vs_economics(23.0, 68.84))  # freshness blocks
+```
+
+The last line represents the illustrative class-C case with controlled
+atmosphere and subcooling: its freshness limit is 23.0 kt, below the
+68.84 kt just-worthwhile economic load. These values use selected parameters,
+not empirical calibration.
+
 ## Reproduced Results
 
-The committed files in `src/ecos/results/` reproduce the values of the
-experiment chapter (fixed seeds):
+The files in `src/ecos/results/` contain the reproducible outputs for
+experiments 1–5, including both parts of Experiment 5:
 
 | Experiment | Key result |
 |---|---|
@@ -366,9 +402,24 @@ experiment chapter (fixed seeds):
 | 2 Local panel | four regions over 60 months; shock at `f = 1/12`, `τ = 2` damped to 0.691 |
 | 3 Global network | weights give Ω = 0.621 and 4.29 % growth |
 | 4 Monte Carlo | 20 000 draws around Ω = 0.707 (σ = 0.12): 54.5 % in the window, mean growth 2.41 %, 90 % interval [−0.58 %, 4.48 %], 68.1 % stable filter configurations |
-| 5 Ship freight | `G = 1500` kt/a, `L_E = 173.21` kt, just-worthwhile load `L⁻ = 68.84` kt, buffer limit 181.69 kt, price-compatible maximum 86.70 kt; admissible interval collapses to `L⁻` because the tolerated oversupply is 0 |
+| 5a Ship freight equilibrium | `G = 1500` kt/a, `L_E = 173.21` kt, just-worthwhile load `L⁻ = 68.84` kt, buffer limit 181.69 kt, price-compatible maximum 86.70 kt; the admissible interval collapses to `L⁻` because tolerated oversupply is 0 |
+| 5b Bacterial freshness and cooling risk | For a 21-day class-C chain, `Ω = 14.16` (standard sea), `8.12` (controlled atmosphere), and `5.73` (atmosphere plus subcooling), against `Ωₛ = 10.71`. The corresponding class-C fresh-load limits are 5.59 kt and 23.05 kt, both below `L⁻ = 68.84` kt. A one-day cooling failure uses 95.8% of the budget; the illustrative correlated-risk model has mean spoiled share 6.9% and variance limit 0.017689 |
 
-All experiments use synthetic inputs. They demonstrate the model and are
+Part 5b compares five class-C transport chains (standard sea, controlled
+atmosphere, subcooled controlled atmosphere, road, and air), then evaluates
+three article classes on a separate 22-day voyage. At the just-worthwhile
+economic load, arrivals are 16.75 days apart and the mean port-store age is
+8.38 days. The two class-C freshness profiles require at least 268.55 and
+65.07 departures per year, respectively, to keep every unit fresh; the
+illustrative class-L profile has a fresh-load limit of 1,141.98 kt. Its
+combined economic/freshness critical voyage duration is 262.86 days, whereas
+no feasible duration is found for the selected class-C case. The cooling
+failure tolerance is 1.025 days if the full freshness budget is available at
+failure onset. These are outputs of selected model parameters, not observed
+cold-chain performance or failure statistics.
+
+All experiments use synthetic inputs. The bacterial parameters and example
+profiles are selected, not estimated; the results demonstrate the model and are
 **not** empirical analyses.
 
 ## Mapping to the Paper
@@ -380,20 +431,22 @@ All experiments use synthetic inputs. They demonstrate the model and are
 | Filter functions | chapter *Der Tiefpassfilter und die e-Funktion* |
 | Leibniz and odd harmonics | sections *Der ungerade Anteil für Differentialgleichungen* and *Die Leibniz-Struktur in Wirtschaftsdynamiken* |
 | Historical regimes | case-study plots `Plot_06`–`Plot_08` (Switzerland, Argentina, Soviet Union) |
-| Ship freight | chapter *Schiffsfracht im wirtschaftlichen Gleichgewicht* |
+| Ship freight equilibrium | chapter *Schiffsfracht im Gleichgewicht: Die gerade lohnende Ladung* |
+| Bacterial freight freshness | chapter *Seefracht und Bakterien: Die Frische der Ladung* |
 | Experiments 1–5 | chapter *Experimentelle Auswertung der Wirtschaftsanalyse* |
+| Bacterial freshness model | chapter *Seefracht und Bakterien: Die Frische der Ladung* |
 
 ## Model Status: Derived, Calibrated, Heuristic
 
 | Status | Meaning | Items |
 |---|---|---|
-| Derived | follows analytically from the stated equations | `F`, filter magnitude and cutoff, price dynamics and amplitude, rectangle-wave series, Leibniz coefficients and error bound, ship-freight results |
-| Calibrated | functional form and constants chosen by the author | `P`, `V`, growth, Gini, window bounds, historical `Ω` values |
+| Derived | follows analytically from the stated equations | `F`, filter magnitude and cutoff, price dynamics and amplitude, rectangle-wave series, Leibniz coefficients and error bound, economic and bacterial ship-freight results within the stated models |
+| Calibrated | functional form and constants chosen by the author | `P`, `V`, growth, Gini, window bounds, historical `Ω` values; bacterial article parameters and transport profiles are illustrative, not empirically fitted |
 | Heuristic | indicator without a formal derivation | `mutual_information_market`, `lyapunov_exponent_economic_system`, `lyapunov_stability_margin`, `filter_stability_condition` as a "stability" test |
 
 ## Erwerb
 
-Der Preis für diese Arbeit und Software beträgt 1.111.000.000,00 EUR.
+Der Preis für diese Arbeit und Software beträgt 1.333.000.000,00 EUR.
 
 ### Zahlungsinformationen
 

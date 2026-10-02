@@ -13,6 +13,11 @@ Implements the results of the ship-freight chapter:
 - Market equilibrium and the "just worthwhile" load (Hauptsatz)
 - Price disturbance from periodic overflow (Satz 6)
 - Distribution over economic cells (Satz 7)
+- Sea freight and bacterial development of the cargo (chapter "Seefracht und
+  bakterielle Entwicklung", labels sb-*): growth work and shelf-life budget,
+  temperature/atmosphere as local information, vehicle comparison, pulse age
+  in the port store, freshness limit L_F and the double clamp of the voyage
+  duration, correlated failure risk (see the last section of this module)
 
 Sign convention: the price dynamics are the restoring form
 dP/dt = -alpha (P - P0) + eta sin(2 pi t / T)  (see Bemerkung 1 of the chapter).
@@ -21,10 +26,11 @@ dP/dt = -alpha (P - P0) + eta sin(2 pi t / T)  (see Bemerkung 1 of the chapter).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Optional, Sequence, Tuple
 
 import numpy as np
+from scipy.integrate import solve_ivp
 from scipy.optimize import brentq
 from scipy.stats import norm
 
@@ -745,4 +751,750 @@ def analyze(params: ShipMarketParams) -> ShipFreightAnalysis:
         tolerance_upper=tolerance_upper_bound(P),
         price_compatible_max=max_price_compatible_load(P),
         admissible=admissible_load_interval(P),
+    )
+
+
+# ============================================================================
+# SEA FREIGHT AND BACTERIAL DEVELOPMENT
+# (chapter "Seefracht und bakterielle Entwicklung: Die Frische der Ladung auf
+#  dem Meer", labels sb-*)
+# ============================================================================
+#
+# Units: time in days, temperature in degrees Celsius, CO2 in per cent.
+# (The economic part of this module measures time in years, T = 1; the
+# conversion is explicit where both meet, see critical_voyage_duration.)
+#
+# Central objects:
+#   mu      growth rate of an article in the local environment (eq. sb-mu)
+#   Omega   growth work  = integral of mu (Definition sb-omega)
+#   g_h0    log growth   y - y0 = g_h0(Omega) (Satz sb-loesung)
+#   Omega_s shelf-life budget = g_h0^{-1}(Delta_s) (Definition sb-budget)
+# The transport vehicle enters only through the local environment E(t)
+# (Satz sb-invarianz); everything below is therefore a function of E(t).
+
+
+def _check_chi(chi: float) -> None:
+    if not 0.0 < chi <= 1.0:
+        raise ValueError(f"chi must be in (0, 1], got {chi}")
+
+
+def _check_prob(name: str, value: float) -> None:
+    if not 0.0 <= value < 1.0:
+        raise ValueError(f"{name} must be in [0, 1), got {value}")
+
+
+# ----------------------------------------------------------------------------
+# Article parameters and growth rate (Definitions sb-artikel, sb-rate)
+# ----------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ArticleParams:
+    """
+    Article a with dominating spoilage flora (Definition sb-artikel):
+    Ratkowsky coefficient b (d^-1/2 degC^-1), minimum temperature theta_min
+    (degC), adaptation work h0 >= 0, admissible log increase delta_s > 0 and
+    CO2 sensitivity kappa >= 0 (1/%).
+    """
+    b: float
+    theta_min: float
+    h0: float
+    delta_s: float
+    kappa: float = 0.0
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        _positive("b", self.b)
+        _nonnegative("h0", self.h0)
+        _positive("delta_s", self.delta_s)
+        _nonnegative("kappa", self.kappa)
+
+    @property
+    def omega_s(self) -> float:
+        """Shelf-life budget Omega_s of the article (eq. sb-Os)."""
+        return shelf_life_budget(self.delta_s, self.h0)
+
+
+# Illustrative articles of Beispiele sb-modi and sb-klassen (chosen, not
+# estimated): initial count 1e3, limit count 1e7, i.e. delta_s = ln(1e4).
+ARTICLE_CLASS_C = ArticleParams(b=0.15, theta_min=-5.0, h0=1.5,
+                                delta_s=math.log(1.0e4), kappa=0.3, name="C")
+ARTICLE_CLASS_L = ArticleParams(b=0.10, theta_min=0.0, h0=3.0,
+                                delta_s=math.log(1.0e4), kappa=0.0, name="L")
+
+
+def atmosphere_factor(c: float, kappa: float) -> float:
+    """chi(c) = 1 / (1 + kappa c) in (0, 1]: inhibition by CO2 (eq. sb-mu)."""
+    _nonnegative("c", c)
+    _nonnegative("kappa", kappa)
+    return 1.0 / (1.0 + kappa * c)
+
+
+def bacterial_growth_rate(theta: float, c: float, article: ArticleParams) -> float:
+    """mu_a(theta, c) = chi_a(c) b^2 ((theta - theta_min)^+)^2 (eq. sb-mu)."""
+    chi = atmosphere_factor(c, article.kappa)
+    excess = max(theta - article.theta_min, 0.0)
+    return chi * article.b ** 2 * excess ** 2
+
+
+# ----------------------------------------------------------------------------
+# Population model with adaptation phase (Satz sb-loesung, Lemma sb-g)
+# ----------------------------------------------------------------------------
+
+def log_growth(omega: float, h0: float) -> float:
+    """
+    g_h0(Omega) = ln(1 + (e^Omega - 1) e^-h0): log increase of the count after
+    growth work Omega (eq. sb-lsg); g = Omega for h0 = 0. Evaluated in the
+    overflow-safe form of Lemma sb-g (3) for Omega >= h0.
+    """
+    _nonnegative("omega", omega)
+    _nonnegative("h0", h0)
+    if h0 == 0.0:
+        return omega
+    if omega >= h0:
+        return omega - h0 + math.log1p(math.expm1(h0) * math.exp(-omega))
+    return math.log1p(math.expm1(omega) * math.exp(-h0))
+
+
+def shelf_life_budget(delta_s: float, h0: float) -> float:
+    """
+    Omega_s = g_h0^{-1}(Delta_s) = ln(1 + (e^Delta_s - 1) e^h0) (eq. sb-Os),
+    written in an overflow-safe form.
+    """
+    _positive("delta_s", delta_s)
+    _nonnegative("h0", h0)
+    return delta_s + h0 + math.log1p(-math.exp(-delta_s) * (1.0 - math.exp(-h0)))
+
+
+def growth_bounds(omega: float, h0: float) -> Tuple[float, float]:
+    """
+    Two-regime bounds of Lemma sb-g (2):
+    max{0, Omega - h0} <= g(Omega) <= (Omega - h0)^+ + ln(2 - e^-h0).
+    """
+    _nonnegative("omega", omega)
+    _nonnegative("h0", h0)
+    lower = max(0.0, omega - h0)
+    upper = max(omega - h0, 0.0) + math.log(2.0 - math.exp(-h0))
+    return lower, upper
+
+
+def in_adaptation_regime(omega: float, h0: float) -> bool:
+    """True iff Omega <= h0: the population does not double (Satz sb-regime)."""
+    _nonnegative("omega", omega)
+    _nonnegative("h0", h0)
+    return omega <= h0
+
+
+def population_ode(mu: Callable[[float], float], t_end: float, h0: float,
+                   y0: float = 0.0, n_points: int = 201,
+                   max_step: float = 0.05) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Numerical solution of the population model (eq. sb-pop),
+    y' = mu Q/(1+Q), Q' = mu Q, Q(0) = 1/(e^h0 - 1), y(0) = y0 (h0 = 0: y' = mu).
+    Used to check Satz sb-loesung against the closed form; returns (t, y).
+    """
+    _positive("t_end", t_end)
+    _nonnegative("h0", h0)
+    if n_points < 2:
+        raise ValueError(f"n_points must be >= 2, got {n_points}")
+    t_eval = np.linspace(0.0, t_end, n_points)
+    if h0 == 0.0:
+        def rhs(t, state):
+            return [mu(t)]
+        state0 = [y0]
+    else:
+        def rhs(t, state):
+            q = state[1]
+            return [mu(t) * q / (1.0 + q), mu(t) * q]
+        state0 = [y0, 1.0 / math.expm1(h0)]
+    sol = solve_ivp(rhs, (0.0, t_end), state0, t_eval=t_eval, max_step=max_step,
+                    rtol=1e-9, atol=1e-12)
+    return sol.t, sol.y[0]
+
+
+# ----------------------------------------------------------------------------
+# Temperature as local information (Sätze sb-jensen, sb-lp, sb-exp)
+# ----------------------------------------------------------------------------
+
+def variance_surcharge(theta_bar: float, variance: float, theta_min: float) -> float:
+    """rho = 1 + v / (theta_bar - theta_min)^2 >= 1 (Satz sb-jensen 2)."""
+    _nonnegative("variance", variance)
+    excess = theta_bar - theta_min
+    _positive("theta_bar - theta_min", excess)
+    return 1.0 + variance / excess ** 2
+
+
+def segment_work(length: float, theta_bar: float, variance: float,
+                 article: ArticleParams, chi: float = 1.0,
+                 exposure: Optional[float] = None) -> float:
+    """
+    Growth work of one segment, chi b^2 l ((theta_bar - theta_min)^2 + v)
+    (eq. sb-Om). If `exposure` = integral of chi dt is given (e.g. from
+    atmosphere_exposure) it replaces chi * length. A constant segment at or
+    below theta_min (frozen cargo) costs nothing (Korollar sb-gefroren); with
+    variance below theta_min the formula does not apply.
+    """
+    _nonnegative("length", length)
+    _nonnegative("variance", variance)
+    _check_chi(chi)
+    if theta_bar < article.theta_min:
+        if variance > 0.0:
+            raise ValueError("variance formula requires theta >= theta_min")
+        return 0.0
+    x = chi * length if exposure is None else exposure
+    _nonnegative("exposure", x)
+    return article.b ** 2 * x * ((theta_bar - article.theta_min) ** 2 + variance)
+
+
+def jensen_lower_bound(length: float, theta_bar: float, article: ArticleParams,
+                       chi: float = 1.0) -> float:
+    """l chi b^2 ((theta_bar - theta_min)^+)^2: fluctuation never lowers Omega."""
+    _nonnegative("length", length)
+    _check_chi(chi)
+    excess = max(theta_bar - article.theta_min, 0.0)
+    return length * chi * article.b ** 2 * excess ** 2
+
+
+def lowpass_amplitude(A: float, omega: float, tau_p: float) -> float:
+    """Amplitude A / sqrt(1 + omega^2 tau_p^2) of the product temperature."""
+    _nonnegative("A", A)
+    _nonnegative("omega", omega)
+    _positive("tau_p", tau_p)
+    return A / math.sqrt(1.0 + (omega * tau_p) ** 2)
+
+
+def lowpass_variance(A: float, omega: float, tau_p: float) -> float:
+    """v_p = A^2 / (2 (1 + omega^2 tau_p^2)) (Satz sb-lp)."""
+    return lowpass_amplitude(A, omega, tau_p) ** 2 / 2.0
+
+
+def lowpass_phase(omega: float, tau_p: float) -> float:
+    """Phase lag arctan(omega tau_p) of the product temperature (Satz sb-lp)."""
+    _nonnegative("omega", omega)
+    _positive("tau_p", tau_p)
+    return math.atan(omega * tau_p)
+
+
+def exponential_work(length: float, theta_inf: float, delta0: float, tau_p: float,
+                     article: ArticleParams, chi: float = 1.0) -> float:
+    """
+    Growth work for theta(t) = theta_inf + delta0 e^{-t/tau_p} on [0, l]
+    (eq. sb-expform): cooling of warm cargo (delta0 > 0), power failure
+    (theta_inf = ambient, delta0 = set - ambient < 0). Requires theta(t) >=
+    theta_min on the whole interval.
+    """
+    _nonnegative("length", length)
+    _positive("tau_p", tau_p)
+    _check_chi(chi)
+    c_inf = theta_inf - article.theta_min
+    if not c_inf > 0.0 or c_inf + delta0 < 0.0:
+        raise ValueError("exponential formula requires theta(t) >= theta_min")
+    bracket = (c_inf ** 2 * length
+               + 2.0 * c_inf * delta0 * tau_p * (1.0 - math.exp(-length / tau_p))
+               + delta0 ** 2 * tau_p / 2.0 * (1.0 - math.exp(-2.0 * length / tau_p)))
+    return chi * article.b ** 2 * bracket
+
+
+def exponential_fixed_cost(theta_inf: float, delta0: float, tau_p: float,
+                           article: ArticleParams, chi: float = 1.0) -> float:
+    """
+    Duration-independent extra cost of the transient, the l -> infinity limit
+    of exponential_work minus steady operation (Satz sb-exp):
+    chi b^2 (2 c_inf delta0 tau_p + delta0^2 tau_p / 2).
+    """
+    _positive("tau_p", tau_p)
+    _check_chi(chi)
+    c_inf = theta_inf - article.theta_min
+    _positive("theta_inf - theta_min", c_inf)
+    return chi * article.b ** 2 * (2.0 * c_inf * delta0 * tau_p
+                                   + delta0 ** 2 * tau_p / 2.0)
+
+
+def ramp_work(length: float, theta0: float, rate: float, article: ArticleParams,
+              chi: float = 1.0) -> float:
+    """
+    Growth work for the ramp theta(t) = theta0 + rate t, rate >= 0
+    (eq. sb-rampe), e.g. handling between cold stores.
+    """
+    _nonnegative("length", length)
+    _nonnegative("rate", rate)
+    _check_chi(chi)
+    c0 = theta0 - article.theta_min
+    _nonnegative("theta0 - theta_min", c0)
+    return chi * article.b ** 2 * (c0 ** 2 * length + c0 * rate * length ** 2
+                                   + rate ** 2 * length ** 3 / 3.0)
+
+
+# ----------------------------------------------------------------------------
+# Shelf-life budget (Satz sb-budget, sb-regime, sb-grenzdauer)
+# ----------------------------------------------------------------------------
+
+def freshness_reserve(omega_total: float, omega_s: float) -> float:
+    """F = Omega_s - Omega (Definition sb-budget)."""
+    _nonnegative("omega_total", omega_total)
+    _positive("omega_s", omega_s)
+    return omega_s - omega_total
+
+
+def freshness_degree(omega_total: float, omega_s: float) -> float:
+    """phi = max{0, F} / Omega_s in [0, 1] (Definition sb-budget)."""
+    return max(0.0, freshness_reserve(omega_total, omega_s)) / omega_s
+
+
+def is_fresh(omega_total: float, omega_s: float) -> bool:
+    """y <= y_s  iff  Omega <= Omega_s (Satz sb-budget 1)."""
+    return freshness_reserve(omega_total, omega_s) >= 0.0
+
+
+def exhaustion_time(omega_s: float, mu: float) -> float:
+    """t* = Omega_s / mu at constant rate (Satz sb-budget 3); inf for mu = 0."""
+    _positive("omega_s", omega_s)
+    _nonnegative("mu", mu)
+    if mu == 0.0:
+        return math.inf
+    return omega_s / mu
+
+
+def residual_life(f_arrival: float, mu_hold: float) -> float:
+    """R = F_ank / mu_R (Satz sb-budget 4); 0 for a spoiled arrival."""
+    _nonnegative("mu_hold", mu_hold)
+    if f_arrival <= 0.0:
+        return 0.0
+    if mu_hold == 0.0:
+        return math.inf
+    return f_arrival / mu_hold
+
+
+def limit_duration(omega_s: float, omega_before: float, omega_after: float,
+                   mu_sea: float) -> float:
+    """
+    Limit duration tau_S* = (Omega_s - Omega_vor - Omega_nach)^+ / mu_S
+    (eq. sb-tauS); infinite for mu_S = 0 (frozen cargo, Korollar sb-gefroren).
+    """
+    _positive("omega_s", omega_s)
+    _nonnegative("omega_before", omega_before)
+    _nonnegative("omega_after", omega_after)
+    _nonnegative("mu_sea", mu_sea)
+    if mu_sea == 0.0:
+        return math.inf
+    return max(omega_s - omega_before - omega_after, 0.0) / mu_sea
+
+
+# ----------------------------------------------------------------------------
+# Transport profiles and vehicle comparison (Definition sb-profil, Satz sb-vergleich)
+# ----------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class TransportSegment:
+    """
+    One segment (l_j, theta_bar_j, v_j, chi_j) of a transport profile
+    (Definition sb-profil). `exposure` optionally replaces chi * l by the
+    integral of chi dt of a closing atmosphere (atmosphere_exposure).
+    """
+    length: float
+    theta_bar: float
+    variance: float = 0.0
+    chi: float = 1.0
+    exposure: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        _positive("length", self.length)
+        _nonnegative("variance", self.variance)
+        _check_chi(self.chi)
+        if self.exposure is not None:
+            _nonnegative("exposure", self.exposure)
+
+
+def profile_duration(segments: Sequence[TransportSegment]) -> float:
+    """tau_m = sum of the segment durations."""
+    if len(segments) == 0:
+        raise ValueError("a profile needs at least one segment")
+    return float(sum(s.length for s in segments))
+
+
+def profile_work(segments: Sequence[TransportSegment], article: ArticleParams) -> float:
+    """Omega_m = sum of the segment works (eq. sb-Om, additive: Satz sb-budget 2)."""
+    if len(segments) == 0:
+        raise ValueError("a profile needs at least one segment")
+    return float(sum(segment_work(s.length, s.theta_bar, s.variance, article,
+                                  s.chi, s.exposure) for s in segments))
+
+
+def mean_rate(segments: Sequence[TransportSegment], article: ArticleParams) -> float:
+    """Mean rate mu_m = Omega_m / tau_m."""
+    return profile_work(segments, article) / profile_duration(segments)
+
+
+def sea_temperature_threshold(theta_air: float, tau_air: float, tau_sea: float,
+                              theta_min: float) -> float:
+    """
+    Highest constant sea temperature with Omega_S <= Omega_A against a constant
+    air chain (eq. sb-gleich): theta_min + sqrt(tau_A / tau_S) (theta_A - theta_min).
+    Independent of b, h0 and delta_s.
+    """
+    _positive("tau_air", tau_air)
+    _positive("tau_sea", tau_sea)
+    _positive("theta_air - theta_min", theta_air - theta_min)
+    return theta_min + math.sqrt(tau_air / tau_sea) * (theta_air - theta_min)
+
+
+def sea_not_worse_than_air(omega_sea: float, omega_air: float) -> bool:
+    """Omega_S <= Omega_A (Satz sb-vergleich 1); then y_S <= y_A in every regime."""
+    _nonnegative("omega_sea", omega_sea)
+    _nonnegative("omega_air", omega_air)
+    return omega_sea <= omega_air
+
+
+def sea_suitability(omega_s: float, mu_sea: float, tau_sea: float) -> float:
+    """
+    sigma_a = Omega_s / (mu_a tau_S) (Satz sb-artikel); the voyage alone is fresh
+    iff sigma_a >= 1, and sigma_a = inf for frozen/dry cargo (mu_a = 0).
+    """
+    _positive("omega_s", omega_s)
+    _nonnegative("mu_sea", mu_sea)
+    _positive("tau_sea", tau_sea)
+    if mu_sea == 0.0:
+        return math.inf
+    return omega_s / (mu_sea * tau_sea)
+
+
+def sea_voyage_feasible(sigma: float) -> bool:
+    """The voyage can be made fresh (without pre/post chain) iff sigma_a >= 1."""
+    return sigma >= 1.0
+
+
+# ----------------------------------------------------------------------------
+# Closed atmosphere and dominance change (Lemma sb-gas, Sätze sb-chi, sb-dominanz)
+# ----------------------------------------------------------------------------
+
+def gas_equilibrium(c_amb: float, source: float, leak: float) -> float:
+    """c_inf = c_amb + s / k (Lemma sb-gas)."""
+    _nonnegative("c_amb", c_amb)
+    _nonnegative("source", source)
+    _positive("leak", leak)
+    return c_amb + source / leak
+
+
+def gas_concentration(t: float, c0: float, c_inf: float, leak: float) -> float:
+    """c(t) = c_inf + (c0 - c_inf) e^{-k t} (Lemma sb-gas)."""
+    _nonnegative("t", t)
+    _nonnegative("c0", c0)
+    _nonnegative("c_inf", c_inf)
+    _positive("leak", leak)
+    return c_inf + (c0 - c_inf) * math.exp(-leak * t)
+
+
+def equilibrium_fraction(leak: float, duration: float) -> float:
+    """Reached fraction 1 - e^{-k t} of the equilibrium atmosphere (Korollar sb-zeitskala)."""
+    _positive("leak", leak)
+    _nonnegative("duration", duration)
+    return 1.0 - math.exp(-leak * duration)
+
+
+def atmosphere_exposure(length: float, c0: float, c_inf: float, leak: float,
+                        kappa: float) -> float:
+    """
+    X(l) = integral_0^l chi(c(t)) dt = ln((A e^{kl} + B) / (A + B)) / (A k)
+    with A = 1 + kappa c_inf, B = kappa (c0 - c_inf) (eq. sb-X). Then
+    Omega = mu_0 X(l) at constant product temperature.
+    """
+    _nonnegative("length", length)
+    _nonnegative("c0", c0)
+    _nonnegative("c_inf", c_inf)
+    _positive("leak", leak)
+    _nonnegative("kappa", kappa)
+    a = 1.0 + kappa * c_inf
+    b = kappa * (c0 - c_inf)
+    # ln(A e^{kl} + B) = kl + ln(A + B e^{-kl}): no overflow for long voyages
+    return (leak * length + math.log(a + b * math.exp(-leak * length))
+            - math.log(a + b)) / (a * leak)
+
+
+def rate_ratio(c: float, rho0: float, kappa1: float, kappa2: float) -> float:
+    """rho(c) = rho0 (1 + kappa2 c) / (1 + kappa1 c): ratio mu_1 / mu_2 (Satz sb-dominanz 1)."""
+    _nonnegative("c", c)
+    _positive("rho0", rho0)
+    _nonnegative("kappa1", kappa1)
+    _nonnegative("kappa2", kappa2)
+    return rho0 * (1.0 + kappa2 * c) / (1.0 + kappa1 * c)
+
+
+def critical_co2(rho0: float, kappa1: float, kappa2: float) -> Optional[float]:
+    """
+    c* = (rho0 - 1) / (kappa1 - rho0 kappa2) (eq. sb-cstar), where the
+    dominating group changes; None if group 1 dominates for every c
+    (kappa1 <= rho0 kappa2). Requires rho0 > 1 and kappa1 > kappa2.
+    """
+    if not rho0 > 1.0:
+        raise ValueError(f"rho0 must be > 1, got {rho0}")
+    _nonnegative("kappa2", kappa2)
+    if not kappa1 > kappa2:
+        raise ValueError(f"kappa1 must be > kappa2, got {kappa1}, {kappa2}")
+    if kappa1 <= rho0 * kappa2:
+        return None
+    return (rho0 - 1.0) / (kappa1 - rho0 * kappa2)
+
+
+def dominance_gap(t: float, y10: float, y20: float, h01: float, h02: float,
+                  mu1: float, mu2: float) -> float:
+    """(y1 - y2)(t) for constant rates, with the exact growth function (Satz sb-dominanz 3)."""
+    _nonnegative("t", t)
+    _nonnegative("mu1", mu1)
+    _nonnegative("mu2", mu2)
+    return (y10 + log_growth(mu1 * t, h01)) - (y20 + log_growth(mu2 * t, h02))
+
+
+def dominance_certain(t: float, y10: float, y20: float, h01: float, h02: float,
+                      mu1: float, mu2: float) -> bool:
+    """
+    Sufficient condition (eq. sb-dom4) for N_2(t) > N_1(t):
+    (y20 - y10) + mu2 t - h02 > (mu1 t - h01)^+ + ln 2.
+    """
+    _nonnegative("t", t)
+    _nonnegative("mu1", mu1)
+    _nonnegative("mu2", mu2)
+    _nonnegative("h01", h01)
+    _nonnegative("h02", h02)
+    return (y20 - y10) + mu2 * t - h02 > max(mu1 * t - h01, 0.0) + math.log(2.0)
+
+
+# ----------------------------------------------------------------------------
+# Pulse structure: age in the port store and freshness limit (Sätze sb-alter,
+# sb-LF, sb-chance, sb-klemme)
+# ----------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class AgeDistribution:
+    """Uniform storage-age distribution of one cargo (Satz sb-alter)."""
+    a_min: float
+    a_max: float
+    mean: float
+    arrival_interval: float
+
+
+def age_distribution(load: float, u_bar: float, y: float = 0.0) -> AgeDistribution:
+    """
+    FIFO storage age of the units of a cargo L released at rate u_bar with stock
+    y before the call: uniform on [y/u_bar, (y + L)/u_bar], width T_s = L/u_bar
+    (Satz sb-alter). For y = 0 the mean is T_s / 2.
+    """
+    _positive("load", load)
+    _positive("u_bar", u_bar)
+    _nonnegative("y", y)
+    a_min = y / u_bar
+    a_max = (y + load) / u_bar
+    return AgeDistribution(a_min=a_min, a_max=a_max, mean=(a_min + a_max) / 2.0,
+                           arrival_interval=load / u_bar)
+
+
+def effective_budget(omega_s: float, sigma_omega: float, delta: float,
+                     p: float) -> float:
+    """
+    Omega_s^eff = Omega_s - z_p sigma_Omega sqrt(delta(tau)) (eq. sb-Oseff),
+    z_p = Phi^-1(1 - p): budget reduced by the safety reserve.
+    """
+    _positive("omega_s", omega_s)
+    _nonnegative("sigma_omega", sigma_omega)
+    _positive("delta", delta)
+    if not 0.0 < p <= 0.5:
+        raise ValueError(f"p must be in (0, 0.5], got {p}")
+    return omega_s - float(norm.isf(p)) * sigma_omega * math.sqrt(delta)
+
+
+def admissible_storage_age(omega_s_eff: float, omega_before: float,
+                           omega_after: float, mu_store: float) -> float:
+    """
+    a_ok = (Omega_s^eff - Omega_vor - Omega_nach) / mu_st (eq. sb-aok). The value
+    is not truncated: a negative a_ok means that no unit can stay fresh.
+    """
+    _nonnegative("omega_before", omega_before)
+    _nonnegative("omega_after", omega_after)
+    _positive("mu_store", mu_store)
+    return (omega_s_eff - omega_before - omega_after) / mu_store
+
+
+def freshness_load_limit(u_bar: float, a_ok: float, y: float = 0.0) -> float:
+    """L_F = u_bar a_ok - y (eq. sb-LF): largest cargo of which every unit stays fresh."""
+    _positive("u_bar", u_bar)
+    _nonnegative("y", y)
+    return u_bar * a_ok - y
+
+
+def spoiled_fraction(load: float, l_f: float) -> float:
+    """w(L) = min{1, (1 - L_F / L)^+} (eq. sb-w); 1 if L_F < 0."""
+    _positive("load", load)
+    if l_f < 0.0:
+        return 1.0
+    return min(1.0, max(0.0, 1.0 - l_f / load))
+
+
+def min_departures_for_freshness(T: float, a_ok: float, u_bar: float,
+                                 y: float = 0.0) -> Optional[float]:
+    """
+    N_F = T / (a_ok - y/u_bar) (Satz sb-LF 3): perishable cargo forces more,
+    smaller calls. None if a_ok <= y/u_bar (no call frequency is fresh).
+    """
+    _positive("T", T)
+    _positive("u_bar", u_bar)
+    _nonnegative("y", y)
+    spare = a_ok - y / u_bar
+    if spare <= 0.0:
+        return None
+    return T / spare
+
+
+def fresh_and_worthwhile(l_f: float, just_worth: Optional[float]) -> bool:
+    """
+    Korollar sb-F-wirtschaft: a cargo that is fresh and just worthwhile exists
+    iff 0 < L_F and L_eps^- <= L_F (and L_eps^- exists).
+    """
+    if just_worth is None:
+        return False
+    return l_f > 0.0 and just_worth <= l_f
+
+
+def critical_voyage_duration(params: ShipMarketParams, mu_sea: float, mu_store: float,
+                             omega_s: float, omega_fixed: float, tau0_days: float = 0.0,
+                             y: float = 0.0, sigma_omega: float = 0.0,
+                             days_per_horizon_unit: float = 365.0) -> Optional[float]:
+    """
+    Critical voyage duration tau_S^krit of the double clamp (Satz sb-klemme):
+    the largest tau_S (days) with L_eps(tau)^- <= L_F(tau_S), where
+        tau = tau0 + tau_S                      (planning horizon),
+        Omega_vor + Omega_nach = omega_fixed + mu_S tau_S
+                                                (omega_fixed = all work that does
+                                                 not scale with the voyage),
+        L_F = u_bar a_ok - y,  u_bar = G / T  (kt per day; T converted to days),
+    and eps(tau) from the degradation function of `params`; L_eps^- uses the
+    economic parameters of `params`. `days_per_horizon_unit` converts days to
+    the time unit of tau (the economic chapter uses years, hence 365).
+    Returns None if no duration is feasible (already tau_S = 0 fails, or no
+    load is viable). With sigma_omega = 0 no uncertainty discount is applied.
+    """
+    _positive("mu_store", mu_store)
+    _nonnegative("mu_sea", mu_sea)
+    _positive("omega_s", omega_s)
+    _nonnegative("omega_fixed", omega_fixed)
+    _nonnegative("tau0_days", tau0_days)
+    _nonnegative("y", y)
+    _nonnegative("sigma_omega", sigma_omega)
+    _positive("days_per_horizon_unit", days_per_horizon_unit)
+    P = params
+    u_bar = P.G / (P.T * days_per_horizon_unit)  # kt per day (T is in horizon units)
+
+    def gap_to_economics(tau_s: float) -> float:
+        horizon = (tau0_days + tau_s) / days_per_horizon_unit
+        delta = degradation_exponential(horizon, P.delta_max, P.lam)
+        eps = safety_margin(P.sigma_m, delta, P.p)
+        l_minus = just_worth_load(P.a0, eps, P.Cf, P.kappa)
+        if l_minus is None:
+            return -math.inf
+        budget = omega_s
+        if sigma_omega > 0.0:
+            budget = effective_budget(omega_s, sigma_omega, delta, P.p)
+        a_ok = admissible_storage_age(budget, omega_fixed + mu_sea * tau_s, 0.0,
+                                      mu_store)
+        return freshness_load_limit(u_bar, a_ok, y) - l_minus
+
+    if gap_to_economics(0.0) < 0.0:
+        return None
+    hi = 1.0
+    while gap_to_economics(hi) >= 0.0:
+        hi *= 2.0
+    lo = 0.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if gap_to_economics(mid) >= 0.0:
+            lo = mid
+        else:
+            hi = mid
+    return lo
+
+
+# ----------------------------------------------------------------------------
+# Correlated failure risk (Lemma sb-dstar, Satz sb-risiko)
+# ----------------------------------------------------------------------------
+
+def failure_work(duration: float, theta_set: float, theta_amb: float, tau_p: float,
+                 article: ArticleParams, chi: float = 1.0) -> float:
+    """
+    Growth work of a cooling failure of length D: eq. sb-expform with
+    theta_inf = theta_amb and delta0 = theta_set - theta_amb (Lemma sb-dstar).
+    """
+    return exponential_work(duration, theta_amb, theta_set - theta_amb, tau_p,
+                            article, chi)
+
+
+def failure_tolerance(reserve: float, theta_set: float, theta_amb: float, tau_p: float,
+                      article: ArticleParams, chi: float = 1.0) -> float:
+    """
+    Tolerance duration D*(F) with Omega_fail(D*) = F (Lemma sb-dstar); strictly
+    increasing in the reserve F > 0, so it falls during the voyage (Korollar
+    sb-verwund).
+    """
+    _positive("reserve", reserve)
+    hi = tau_p
+    while failure_work(hi, theta_set, theta_amb, tau_p, article, chi) < reserve:
+        hi *= 2.0
+    return float(brentq(
+        lambda d: failure_work(d, theta_set, theta_amb, tau_p, article, chi) - reserve,
+        0.0, hi))
+
+
+def ship_failure_mean(p_s: float, p_c: float) -> float:
+    """E[X] = p_s + (1 - p_s) p_c (eq. sb-EX)."""
+    _check_prob("p_s", p_s)
+    _check_prob("p_c", p_c)
+    return p_s + (1.0 - p_s) * p_c
+
+
+def ship_failure_variance(p_s: float, p_c: float, n: int) -> float:
+    """Var X = (1-p_s)(1-p_c)[p_s(1-p_c) + p_c/n] (eq. sb-VarX)."""
+    _check_prob("p_s", p_s)
+    _check_prob("p_c", p_c)
+    if n < 1:
+        raise ValueError(f"n must be >= 1, got {n}")
+    return (1.0 - p_s) * (1.0 - p_c) * (p_s * (1.0 - p_c) + p_c / n)
+
+
+def ship_failure_variance_limit(p_s: float, p_c: float) -> float:
+    """Non-diversifiable rest p_s (1 - p_s)(1 - p_c)^2 for n -> infinity (eq. sb-VarLim)."""
+    _check_prob("p_s", p_s)
+    _check_prob("p_c", p_c)
+    return p_s * (1.0 - p_s) * (1.0 - p_c) ** 2
+
+
+# ----------------------------------------------------------------------------
+# Combined evaluation of one chain
+# ----------------------------------------------------------------------------
+
+@dataclass
+class ChainResult:
+    """Evaluation of one transport chain for one article (Beispiel sb-modi)."""
+    duration: float
+    omega: float
+    log_increase: float
+    growth_factor: float
+    budget_ratio: float
+    fresh: bool
+    residual_life: float
+
+
+def evaluate_chain(segments: Sequence[TransportSegment], article: ArticleParams,
+                   mu_hold: float) -> ChainResult:
+    """
+    Growth work, log increase y - y0 = g_h0(Omega), factor N/N0, Omega/Omega_s and
+    the residual life R = (Omega_s - Omega)^+ / mu_hold of a chain.
+    """
+    _nonnegative("mu_hold", mu_hold)
+    omega = profile_work(segments, article)
+    omega_s = article.omega_s
+    y = log_growth(omega, article.h0)
+    return ChainResult(
+        duration=profile_duration(segments),
+        omega=omega,
+        log_increase=y,
+        growth_factor=math.exp(y),
+        budget_ratio=omega / omega_s,
+        fresh=is_fresh(omega, omega_s),
+        residual_life=residual_life(omega_s - omega, mu_hold),
     )
