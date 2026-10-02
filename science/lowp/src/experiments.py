@@ -15,15 +15,20 @@ d. h. PDF und JSON sind garantiert konsistent.
 
 Experimente
 -----------
- 1  leibniz_basis          Leibniz-Reihe, O(1/N)-Konvergenz, asymmetrische Zerlegung
- 2  beschleunigung         Euler / Mitteln / Shanks / Formeln der Arbeit im Vergleich
- 3  dirichlet_beta         β(s) auf ℝ, Funktionalgleichung, Sonderwerte (β ist ganz!)
- 4  catalan                Darstellungen der Catalan-Konstante G
- 5  parametrisierte_leibniz L(t;λ) = arctan(exp(-λt)), Integrodifferentialgleichung
- 6  e_funktion_taylor      Ableitung der Taylor-Reihe (Beobachtung 49): "ein Glied geht verloren"
- 7  rc_tiefpass            Bode-Diagramm, Sprung- und Sinusantwort des RC-Filters
- 8  rlc_daempfung          RLC-Sprungantworten, Überschwingen vs. Dämpfung ζ
- 9  formel_audit           Numerische Prüfung der Formeln in Arbeit und Modulen
+ 1  leibniz_basis           Leibniz-Reihe und asymmetrische Zerlegung
+ 2  beschleunigung          Beschleunigungsverfahren im Vergleich
+ 3  dirichlet_beta          Fortsetzung und Sonderwerte der Dirichlet-Betafunktion
+ 4  catalan                 Integral- und Reihendarstellungen der Catalan-Konstante
+ 5  parametrisierte_leibniz Gedämpfte Leibniz-Funktion und Differentialgleichung
+ 6  e_funktion_taylor       Ableitung der Taylor-Reihe
+ 7  rc_tiefpass             Frequenzgang, Sprung- und Sinusantwort
+ 8  rlc_daempfung           RLC-Sprungantwort und Dämpfung
+ 9  formel_audit            Numerische Prüfung von Aussagen und Formeln
+10  central_triangles       Zentraldreiecke, π-Einschließung und Reihenfehler
+11  circuit_cascade         Harmonische, Resonanzen und Kaskadenantworten
+12  circuit_uncertainty     Monte-Carlo-Stabilität und Empfindlichkeit
+13  economic_dynamics       Gedämpfte Zyklen und wirtschaftliche Schockmodelle
+14  resonance_window       Goldener Schnitt und harmonisches Resonanzfenster
 
 Aufruf
 ------
@@ -67,6 +72,11 @@ from convergence_acceleration import EulerTransformation, RichardsonExtrapolatio
 from dirichlet_beta import DirichletBeta
 from lowpass_filter import RCLowpassFilter, RLCFilter
 from special_functions import BetaFunction, IntegralRepresentations
+import central_triangles as ct
+import circuit_cascade as cc
+import circuit_uncertainty as cu
+import economic_dynamics as ed
+import resonance_window as rw
 
 try:  # enthält L_odd(t, λ) – optional, nur für Gegenprobe
     from leibniz_analysis import ParametrizedLeibniz
@@ -893,6 +903,466 @@ def plot_formel_audit(d, fig):
            title=f"{d['summary']['n_ok']} von {d['summary']['n_items']} Aussagen numerisch bestätigt (grün), "
                  f"{d['summary']['n_fail']} nicht (rot)")
     ax.tick_params(axis="y", labelsize=7.5)
+
+
+# ========================================================================
+# Experiment 10 – Zentraldreiecke und π-Einschließung
+# ========================================================================
+@experiment(10, "central_triangles", "Zentraldreiecke: Geometrie, π-Einschließung und Reihen")
+def exp_central_triangles() -> dict:
+    rows = ct.refine_bounds(m_start=2, steps=7)
+    n_values = np.array([row[0] for row in rows], dtype=int)
+    lower = np.array([row[1] for row in rows])
+    upper = np.array([row[2] for row in rows])
+    terms = np.array([1, 2, 4, 8, 16, 32, 64])
+    quadrant = np.array([ct.central_triangle_series(4, int(n)) for n in terms])
+    octant = np.array([ct.central_triangle_series(8, int(n)) for n in terms])
+    return {
+        "geometry": {
+            "n": 8,
+            "vertices": [[z.real, z.imag] for z in ct.vertices(8)],
+            "triangle_area": ct.triangle_area(8),
+            "polygon_area": ct.polygon_area(8),
+            "fill_ratio": ct.fill_ratio(8),
+            "angle_sums": ct.angle_sums(8),
+            "pi_bounds": ct.pi_bounds(8),
+            "exact_values": ct.exact_values(),
+        },
+        "refinement": {
+            "n": n_values,
+            "lower": lower,
+            "upper": upper,
+            "lower_error": PI - lower,
+            "upper_error": upper - PI,
+            "width": upper - lower,
+        },
+        "series": {
+            "terms": terms,
+            "quadrant": quadrant,
+            "octant": octant,
+            "quadrant_error_bound": np.array([
+                ct.central_triangle_error_bound(4, int(n)) for n in terms
+            ]),
+            "octant_error_bound": np.array([
+                ct.central_triangle_error_bound(8, int(n)) for n in terms
+            ]),
+            "quadrant_identity": ct.leibniz_partial(64),
+            "octant_identity": ct.octant_partial(64),
+        },
+        "reference_pi": PI,
+    }
+
+
+@exp_central_triangles.plot
+def plot_central_triangles(d, fig):
+    ax = fig.subplots(2, 2)
+    refinement = d["refinement"]
+    n, lower, upper = A(refinement["n"]), A(refinement["lower"]), A(refinement["upper"])
+    ax[0, 0].fill_between(n, lower, upper, color=C[0], alpha=0.2, label="Einschließung")
+    ax[0, 0].plot(n, lower, "o-", color=C[0], label=r"$A_n$ einbeschrieben")
+    ax[0, 0].plot(n, upper, "s-", color=C[1], label=r"$B_n$ umbeschrieben")
+    ax[0, 0].axhline(PI, color="k", ls="--", label=r"$\pi$")
+    ax[0, 0].set(xscale="log", xlabel="Eckenzahl n", ylabel="Fläche", title="Einschließung von π")
+    ax[0, 0].legend(fontsize=8)
+
+    ax[0, 1].loglog(n, A(refinement["lower_error"]), "o-", label=r"$\pi-A_n$")
+    ax[0, 1].loglog(n, A(refinement["upper_error"]), "s-", label=r"$B_n-\pi$")
+    ax[0, 1].set(xlabel="Eckenzahl n", ylabel="Absoluter Fehler", title="Fehler der Flächenschranken")
+    ax[0, 1].legend()
+
+    series = d["series"]
+    terms = A(series["terms"])
+    ax[1, 0].loglog(terms, np.maximum(np.abs(PI - A(series["quadrant"])), FLOOR), "o-", label="Quadrant n=4")
+    ax[1, 0].loglog(terms, np.maximum(np.abs(PI - A(series["octant"])), FLOOR), "s-", label="Oktant n=8")
+    ax[1, 0].loglog(terms, np.maximum(A(series["quadrant_error_bound"]), FLOOR), ":", label="Schranke n=4")
+    ax[1, 0].loglog(terms, np.maximum(A(series["octant_error_bound"]), FLOOR), "--", label="Schranke n=8")
+    ax[1, 0].set(xlabel="Reihenterme", ylabel="Fehler / Schranke", title="Konvergenz der Zentraldreiecksreihen")
+    ax[1, 0].legend(fontsize=8)
+
+    geometry = d["geometry"]
+    vertices = np.asarray(geometry["vertices"], dtype=float)
+    circle = np.linspace(0.0, 2.0 * PI, 400)
+    ax[1, 1].plot(np.cos(circle), np.sin(circle), color="black", ls="--", lw=1, label="Einheitskreis")
+    for k in range(geometry["n"]):
+        triangle = np.vstack(([0.0, 0.0], vertices[k], vertices[(k + 1) % geometry["n"]]))
+        ax[1, 1].fill(triangle[:, 0], triangle[:, 1], alpha=0.32, edgecolor="white")
+    ax[1, 1].set(xlim=(-1.1, 1.1), ylim=(-1.1, 1.1), xlabel="Re", ylabel="Im",
+                 title=f"Acht Zentraldreiecke; Flächenanteil {geometry['fill_ratio']:.3f}")
+    ax[1, 1].set_aspect("equal")
+    ax[1, 1].legend(fontsize=8)
+
+
+# ========================================================================
+# Experiment 11 – Harmonische und Schaltungskaskaden
+# ========================================================================
+@experiment(11, "circuit_cascade", "Schaltungskaskade: Harmonische, Resonanzen und Abklingen")
+def exp_circuit_cascade() -> dict:
+    orders = cc.odd_harmonic_numbers(6)
+    spectrum = cc.converter_spectrum(10.0, 50.0, orders)
+    filtered = cc.apply_filter_bank(spectrum, attenuation=0.85, filtered_orders=orders[1:])
+    harmonics_before = [row["amplitude"] for row in spectrum[1:]]
+    harmonics_after = [row["amplitude"] for row in filtered[1:]]
+    cascade = cc.design_cascade(f0=50.0, c=1e-6, r=100.0, n_stages=6)
+    t_over_tau = np.linspace(0.0, 5.0, 101)
+    standard_taus = cc.standard_rc_taus(10.0, 0.1, 6)
+    leibniz_taus = cc.leibniz_rc_taus(10.0, 0.1, 6)
+    cascade_time = t_over_tau * standard_taus[0]
+    impulse_time = np.geomspace(0.02, 5.0, 100) / cascade.alpha
+    return {
+        "spectrum": {
+            "orders": orders,
+            "frequency_hz": [row["frequency"] for row in spectrum],
+            "before": [row["amplitude"] for row in spectrum],
+            "after": [row["amplitude"] for row in filtered],
+            "fundamental_amplitude": spectrum[0]["amplitude"],
+            "distortion_before": cc.distortion_factor(spectrum[0]["amplitude"], harmonics_before),
+            "distortion_after": cc.distortion_factor(filtered[0]["amplitude"], harmonics_after),
+            "reduction_percent": cc.reduction_percent(harmonics_before, harmonics_after),
+        },
+        "resonances": {
+            "stage": list(range(cascade.n_stages)),
+            "l1": cascade.L1,
+            "c": cascade.C,
+            "r": cascade.R,
+            "omega0": cascade.omega0,
+            "ratio": cascade.resonance_ratios(),
+            "ideal_ratio": cc.odd_harmonic_numbers(cascade.n_stages),
+            "inductance_ratio": cc.inductance_ratios(cascade.n_stages),
+            "quality_factor": [cascade.quality_factor(n) for n in range(cascade.n_stages)],
+            "verified": cascade.verify_resonances(),
+        },
+        "impulse": {
+            "alpha": cascade.alpha,
+            "t_over_tau": impulse_time * cascade.alpha,
+            "unsigned_partial": [cc.impulse_response(float(t), cascade.alpha, cascade.n_stages) for t in impulse_time],
+            "unsigned_closed": [cc.impulse_response_closed_form(float(t), cascade.alpha) for t in impulse_time],
+            "signed_partial": [cc.impulse_response(float(t), cascade.alpha, cascade.n_stages, signed=True) for t in impulse_time],
+            "signed_closed": [cc.impulse_response_closed_form(float(t), cascade.alpha, signed=True) for t in impulse_time],
+        },
+        "rc_decay": {
+            "t_over_tau": t_over_tau,
+            "standard": [cc.rc_decay(float(t), standard_taus[0]) for t in cascade_time],
+            "leibniz": [cc.weighted_decay_sum(float(t), leibniz_taus, normalize=True) for t in cascade_time],
+            "standard_taus": standard_taus,
+            "leibniz_taus": leibniz_taus,
+        },
+    }
+
+
+@exp_circuit_cascade.plot
+def plot_circuit_cascade(d, fig):
+    ax = fig.subplots(2, 2)
+    spectrum = d["spectrum"]
+    orders = np.asarray(spectrum["orders"])
+    width = 0.36
+    ax[0, 0].bar(orders - width / 2, A(spectrum["before"]), width, label="ungefiltert", color=C[0])
+    ax[0, 0].bar(orders + width / 2, A(spectrum["after"]), width, label="gefiltert", color=C[1])
+    ax[0, 0].set(xlabel="Harmonische k", ylabel="Amplitude [A]", title="Stromrichter-Spektrum")
+    ax[0, 0].legend()
+    ax[0, 0].text(0.98, 0.95, f"Klirrfaktor: {spectrum['distortion_before']:.3f} → {spectrum['distortion_after']:.3f}",
+                  ha="right", va="top", transform=ax[0, 0].transAxes, fontsize=8)
+
+    resonances = d["resonances"]
+    stage = A(resonances["stage"])
+    ax[0, 1].plot(stage, A(resonances["ratio"]), "o-", label="berechnet")
+    ax[0, 1].plot(stage, A(resonances["ideal_ratio"]), "k--", label="1, 3, 5, ...")
+    ax[0, 1].set(xlabel="Stufe n", ylabel=r"$\omega_n/\omega_0$", title="Ungerade Kaskadenresonanzen")
+    ax[0, 1].legend()
+
+    impulse = d["impulse"]
+    x = A(impulse["t_over_tau"])
+    ax[1, 0].plot(x, A(impulse["unsigned_partial"]), label="positiv: Partialsumme")
+    ax[1, 0].plot(x, A(impulse["unsigned_closed"]), "--", label=r"positiv: $\mathrm{artanh}$")
+    ax[1, 0].plot(x, A(impulse["signed_partial"]), label="alternierend: Partialsumme")
+    ax[1, 0].plot(x, A(impulse["signed_closed"]), "--", label=r"alternierend: $\arctan$")
+    ax[1, 0].set(xlabel=r"$\alpha t$", ylabel="Impulsantwort", title="Vorzeichenkonvention der Kaskade")
+    ax[1, 0].legend(fontsize=8)
+
+    decay = d["rc_decay"]
+    ax[1, 1].plot(A(decay["t_over_tau"]), A(decay["standard"]), label="Standard-RC")
+    ax[1, 1].plot(A(decay["t_over_tau"]), A(decay["leibniz"]), label="Leibniz-RC, normiert")
+    ax[1, 1].set(xlabel=r"$t/\tau_1$", ylabel="normierte Antwort", title="Vergleich der RC-Kaskaden")
+    ax[1, 1].legend()
+
+
+# ========================================================================
+# Experiment 12 – Robustheit und Schaltungsunsicherheit
+# ========================================================================
+@experiment(12, "circuit_uncertainty", "Schaltungsunsicherheit: Stabilität, Resonanz und Empfindlichkeit")
+def exp_circuit_uncertainty() -> dict:
+    r0, l0, c0 = 4.0, 1.0, 1.0
+    deltas = np.linspace(0.0, 0.6, 13)
+    stable = np.array([
+        cu.stable_fraction(r0, l0, c0, float(delta), n_samples=4000, rng=2026 + i)
+        for i, delta in enumerate(deltas)
+    ])
+    corners = np.array([cu.corner_overdamped(r0, l0, c0, float(delta)) for delta in deltas])
+    relative_gain = np.array([
+        r0 * cu.worst_case_gain_deviation(l0, r0, c0, float(delta)) for delta in deltas
+    ])
+    phase_degrees = np.degrees([
+        cu.worst_case_phase_deviation(l0, r0, c0, float(delta)) for delta in deltas
+    ])
+    deviation = np.array([
+        np.max(np.abs(cu.resonance_deviation(l0, c0, 6, float(delta), rng=4026 + i)))
+        for i, delta in enumerate(deltas)
+    ])
+    time = np.linspace(0.0, 20.0, 1001)
+    signal = np.sin(0.8 * time) + 0.3 * np.sin(1.7 * time + 0.2)
+    omega = cu.omega_circuit_from_signal(signal, float(time[1] - time[0]))
+    return {
+        "nominal": {"R": r0, "L": l0, "C": c0, "critical_resistance": cu.critical_resistance(l0, c0)},
+        "robustness": {
+            "delta": deltas,
+            "stable_fraction": stable,
+            "all_corners_overdamped": corners,
+            "delta_max_corners": cu.delta_max_corners(r0, l0, c0),
+            "delta_max_tex": cu.delta_max_tex(r0, l0, c0),
+            "delta_max_derived": cu.delta_max_derived(r0, l0, c0),
+        },
+        "frequency_sensitivity": {
+            "delta": deltas,
+            "worst_relative_gain_deviation": relative_gain,
+            "worst_phase_deviation_degrees": phase_degrees,
+            "resonance_deviation": deviation,
+            "resonance_deviation_bound": [cu.resonance_deviation_bound(float(x)) for x in deltas],
+            "leibniz_regime": [cu.leibniz_regime(float(x)) for x in deltas],
+        },
+        "signal_index": {
+            "time": time,
+            "signal": signal,
+            "omega": omega,
+            "normalized_entropy": cu.normalized_entropy(omega, bins=16),
+        },
+        "monte_carlo": {"samples_per_delta": 4000, "seed_start": 2026},
+    }
+
+
+@exp_circuit_uncertainty.plot
+def plot_circuit_uncertainty(d, fig):
+    ax = fig.subplots(2, 2)
+    robustness = d["robustness"]
+    delta = A(robustness["delta"])
+    ax[0, 0].plot(delta, A(robustness["stable_fraction"]), "o-", label="Monte-Carlo-Anteil stabil")
+    ax[0, 0].step(delta, A(robustness["all_corners_overdamped"]), where="mid", label="alle 8 Ecken überdämpft")
+    ax[0, 0].axvline(robustness["delta_max_corners"], color="k", ls="--", label=r"$\delta_{\max}$ (Ecken)")
+    ax[0, 0].set(xlabel="relative Parametertoleranz δ", ylabel="Anteil / Status", ylim=(-0.05, 1.05),
+                 title="Robuste Stabilität")
+    ax[0, 0].legend(fontsize=8)
+
+    sensitivity = d["frequency_sensitivity"]
+    ax[0, 1].plot(delta, 100 * A(sensitivity["worst_relative_gain_deviation"]), "o-", label="Gain-Abweichung [%]")
+    phase_ax = ax[0, 1].twinx()
+    phase_ax.plot(delta, A(sensitivity["worst_phase_deviation_degrees"]), "s--", color=C[3], label="Phase [°]")
+    ax[0, 1].set(xlabel="relative Parametertoleranz δ", ylabel="Gain-Abweichung [%]", title="Empfindlichkeit bei Resonanz")
+    phase_ax.set_ylabel("Phasenabweichung [°]")
+    lines, labels = ax[0, 1].get_legend_handles_labels()
+    other_lines, other_labels = phase_ax.get_legend_handles_labels()
+    ax[0, 1].legend(lines + other_lines, labels + other_labels, fontsize=8)
+
+    ax[1, 0].plot(delta, 100 * A(sensitivity["resonance_deviation"]), "o-", label="max. simulierte Abweichung")
+    ax[1, 0].plot(delta, 100 * A(sensitivity["resonance_deviation_bound"]), "--", label="theoretische Schranke")
+    ax[1, 0].set(xlabel="relative Parametertoleranz δ", ylabel="Resonanzabweichung [%]", title="Gestörte Leibniz-Kaskade")
+    ax[1, 0].legend(fontsize=8)
+
+    signal = d["signal_index"]
+    ax[1, 1].plot(A(signal["time"]), A(signal["signal"]), color=C[0], label="Signal")
+    omega_ax = ax[1, 1].twinx()
+    omega_ax.plot(A(signal["time"])[1:-1], A(signal["omega"])[1:-1], color=C[1], alpha=0.8, label=r"$\Omega_{circuit}$")
+    ax[1, 1].set(xlabel="Zeit", ylabel="Signal", title=f"Unsicherheitsindex; Entropie {signal['normalized_entropy']:.3f}")
+    omega_ax.set_ylabel(r"$\Omega_{circuit}$")
+    lines, labels = ax[1, 1].get_legend_handles_labels()
+    other_lines, other_labels = omega_ax.get_legend_handles_labels()
+    ax[1, 1].legend(lines + other_lines, labels + other_labels, fontsize=8)
+
+
+# ========================================================================
+# Experiment 13 – Wirtschaftsdynamik und Tiefpassmodelle
+# ========================================================================
+@experiment(13, "economic_dynamics", "Wirtschaftsdynamik: Tiefpass, Zyklen und Schockkriterien")
+def exp_economic_dynamics() -> dict:
+    alpha, period, eta, p0 = 0.3, 25.0, 5.0, 100.0
+    time, price = ed.simulate_price(85.0, p0, eta, alpha, period, t_end=80.0, steps=4000)
+    limit_cycle = np.array([ed.limit_cycle(float(t), p0, eta, alpha, period) for t in time])
+    periods = np.linspace(5.0, 50.0, 100)
+    tau = 1.0 / alpha
+    market_time = np.linspace(0.0, 20.0, 201)
+    lam = ed.market_damping_rate(tau_market=4.0)
+    demand = lambda _: 1.2
+    supply = lambda _: 1.0
+    resource_time = np.linspace(0.0, 50.0, 101)
+    resource_level = np.array([
+        ed.resource_level(12.0, demand, supply, float(t)) for t in resource_time
+    ])
+    scenario_periods = [10.0, 20.0, 40.0]
+    scenarios = [{
+        "period": t,
+        "classification": ed.shock_classification(t, tau),
+        "damping": ed.period_damping(t, tau),
+        "stability_condition": ed.stability_condition(alpha, t),
+        "will_collapse": ed.will_collapse(alpha, t, 0.02, 200.0, 5.0, 30.0),
+    } for t in scenario_periods]
+    return {
+        "parameters": {"alpha": alpha, "tau": tau, "period": period, "eta": eta, "p0": p0,
+                       "critical_period": ed.critical_period(alpha)},
+        "forced_cycle": {
+            "time": time,
+            "price": price,
+            "limit_cycle": limit_cycle,
+            "steady_amplitude": ed.forced_amplitude(alpha, period, eta),
+            "phase_radians": ed.forced_phase(alpha, period),
+            "stability_condition": ed.stability_condition(alpha, period),
+        },
+        "frequency_response": {
+            "period": periods,
+            "damping": [ed.period_damping(float(t), tau) for t in periods],
+            "amplitude": [ed.forced_amplitude(alpha, float(t), eta) for t in periods],
+            "phase_degrees": [math.degrees(ed.forced_phase(alpha, float(t))) for t in periods],
+            "classification": [ed.shock_classification(float(t), tau) for t in periods],
+        },
+        "market_damping": {
+            "time": market_time,
+            "lambda": lam,
+            "partial": [ed.l_odd(float(t), lam, n_terms=200) for t in market_time],
+            "closed_form": [ed.l_odd_closed_form(float(t), lam) for t in market_time],
+        },
+        "resources": {"time": resource_time, "level": resource_level, "initial": 12.0,
+                      "demand": 1.2, "supply": 1.0},
+        "collapse_scenarios": scenarios,
+        "interpretation": "Modellrechnungen; keine empirischen Prognosen.",
+    }
+
+
+@exp_economic_dynamics.plot
+def plot_economic_dynamics(d, fig):
+    ax = fig.subplots(2, 2)
+    forced = d["forced_cycle"]
+    time = A(forced["time"])
+    ax[0, 0].plot(time, A(forced["price"]), color=C[0], lw=1.5, label="RK4-Simulation")
+    ax[0, 0].plot(time, A(forced["limit_cycle"]), "--", color=C[1], label="analytischer Grenzzyklus")
+    ax[0, 0].set(xlabel="Zeit", ylabel="Preisindex", title="Gedämpfte Antwort auf periodischen Schock")
+    ax[0, 0].legend()
+
+    response = d["frequency_response"]
+    periods = A(response["period"])
+    ax[0, 1].plot(periods, A(response["damping"]), color=C[0], label="Tiefpass-Dämpfung")
+    amplitude_ax = ax[0, 1].twinx()
+    amplitude_ax.plot(periods, A(response["amplitude"]), color=C[2], ls="--", label="Grenzzyklus-Amplitude")
+    ax[0, 1].axvline(d["parameters"]["critical_period"], color="k", ls=":", label="kritische Periode")
+    ax[0, 1].set(xlabel="Schockperiode T", ylabel="Dämpfungsfaktor", title="Frequenzabhängige Schockwirkung")
+    amplitude_ax.set_ylabel("Amplitude")
+    lines, labels = ax[0, 1].get_legend_handles_labels()
+    other_lines, other_labels = amplitude_ax.get_legend_handles_labels()
+    ax[0, 1].legend(lines + other_lines, labels + other_labels, fontsize=8)
+
+    market = d["market_damping"]
+    ax[1, 0].plot(A(market["time"]), A(market["partial"]), label="Leibniz-Partialsumme")
+    ax[1, 0].plot(A(market["time"]), A(market["closed_form"]), "--", label=r"$\arctan(e^{-\lambda t})$")
+    ax[1, 0].set(xlabel="Zeit", ylabel=r"$L_{odd}(t)$", title="Abklingende ungerade Harmonische")
+    ax[1, 0].legend()
+
+    resources = d["resources"]
+    ax[1, 1].plot(A(resources["time"]), A(resources["level"]), color=C[3])
+    ax[1, 1].axhline(0.0, color="k", ls="--", label="Erschöpfungsschwelle")
+    ax[1, 1].set(xlabel="Zeit", ylabel="Ressourcenbestand", title="Ressourcenbilanz bei konstantem Überbedarf")
+    ax[1, 1].legend()
+
+
+# ========================================================================
+# Experiment 14 – Goldener Schnitt und Resonanzfenster
+# ========================================================================
+@experiment(14, "resonance_window", "Resonanzfenster: Goldener Schnitt, Zonen und Fallstudien")
+def exp_resonance_window() -> dict:
+    omega = np.linspace(0.05, 0.95, 181)
+    lower, upper = rw.window_bounds()
+    ratios = np.asarray(rw.fibonacci_ratios(18))
+    switzerland = rw.SWITZERLAND
+    argentina = rw.ARGENTINA
+    corn_law = rw.CORN_LAW_OMEGAS
+    return {
+        "constants": {
+            "phi": rw.phi(),
+            "phi_inverse": rw.phi_inv(),
+            "harmonic_difference": rw.harmonic_difference(),
+            "theta_sym": rw.theta_sym(),
+            "window": [lower, upper],
+            "center": rw.window_center(),
+            "symmetric": rw.window_is_symmetric(),
+            "identities": rw.golden_identities(),
+        },
+        "models": {
+            "omega": omega,
+            "freedom": [rw.freedom(float(x)) for x in omega],
+            "productivity": [rw.productivity(float(x)) for x in omega],
+            "predictability": [rw.predictability(float(x)) for x in omega],
+            "innovation": [rw.innovation_rate(float(x)) for x in omega],
+            "price_variance": [rw.price_variance(float(x)) for x in omega],
+            "zone": [rw.economic_zone(float(x)) for x in omega],
+        },
+        "fibonacci": {
+            "n": np.arange(1, len(ratios) + 1),
+            "ratio": ratios,
+            "error": np.abs(ratios - rw.phi()),
+        },
+        "case_studies": {
+            "switzerland": {
+                "period": [row["period"] for row in switzerland],
+                "omega": [row["omega"] for row in switzerland],
+                "growth": [row["growth"] for row in switzerland],
+                "in_window_fraction": rw.switzerland_in_window_fraction(),
+            },
+            "argentina": {
+                "period": [row["period"] for row in argentina],
+                "omega": [row["omega"] for row in argentina],
+                "crisis": [row["crisis"] for row in argentina],
+                "growth": [row["growth"] for row in argentina],
+                "crises_above_window_match": rw.crises_above_window(argentina),
+            },
+            "corn_law": {
+                "labels": list(corn_law.keys()),
+                "omega": list(corn_law.values()),
+                "left_window": rw.corn_law_left_window(),
+            },
+        },
+        "model_caveat": "Die Zuordnung des Resonanzfensters zu Stabilität ist eine Modellannahme; die Konstanten sind exakt.",
+    }
+
+
+@exp_resonance_window.plot
+def plot_resonance_window(d, fig):
+    ax = fig.subplots(2, 2)
+    constants = d["constants"]
+    lower, upper = constants["window"]
+    models = d["models"]
+    omega = A(models["omega"])
+    ax[0, 0].axvspan(lower, upper, color=C[2], alpha=0.18, label="Resonanzfenster")
+    ax[0, 0].plot(omega, A(models["freedom"]), label="Freiheit F")
+    ax[0, 0].plot(omega, A(models["productivity"]), label="Produktivität P")
+    ax[0, 0].set(xlabel=r"Unsicherheit $\Omega$", ylabel="Modellwert", title="Freiheit und Produktivität")
+    ax[0, 0].legend(fontsize=8)
+
+    ax[0, 1].axvspan(lower, upper, color=C[2], alpha=0.18)
+    ax[0, 1].plot(omega, A(models["predictability"]), label="Vorhersagbarkeit")
+    ax[0, 1].plot(omega, A(models["price_variance"]), label="Preisvarianz")
+    ax[0, 1].plot(omega, A(models["innovation"]), label="Innovationsrate")
+    ax[0, 1].set(xlabel=r"Unsicherheit $\Omega$", ylabel="Modellwert", title="Weitere Wirtschaftsmodelle")
+    ax[0, 1].legend(fontsize=8)
+
+    fibonacci = d["fibonacci"]
+    ax[1, 0].semilogy(A(fibonacci["n"]), np.maximum(A(fibonacci["error"]), FLOOR), "o-")
+    ax[1, 0].set(xlabel="n", ylabel=r"$|F_{n+1}/F_n-\phi|$", title="Fibonacci-Quotienten gegen φ")
+
+    cases = d["case_studies"]
+    sw = cases["switzerland"]
+    ar = cases["argentina"]
+    x_sw = np.arange(len(sw["omega"]))
+    x_ar = np.arange(len(ar["omega"])) + len(sw["omega"]) + 1
+    ax[1, 1].axhspan(lower, upper, color=C[2], alpha=0.18, label="Resonanzfenster")
+    ax[1, 1].scatter(x_sw, A(sw["omega"]), marker="o", label="Schweiz")
+    ax[1, 1].scatter(x_ar, A(ar["omega"]), marker="s", c=[BAD_COLOR if crisis else C[0] for crisis in ar["crisis"]], label="Argentinien (Krise rot)")
+    ax[1, 1].set_xticks(list(x_sw) + list(x_ar), sw["period"] + ar["period"], rotation=45, ha="right")
+    ax[1, 1].set(xlabel="Fallstudienperiode", ylabel=r"Unsicherheit $\Omega$", title="Fallstudien und Modellfenster")
+    ax[1, 1].legend(fontsize=8)
 
 
 # ==========================================================================

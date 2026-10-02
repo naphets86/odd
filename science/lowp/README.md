@@ -56,6 +56,11 @@ d. h. PDF und JSON sind garantiert konsistent.
 | 7 | `rc_tiefpass` | RC-Tiefpass: Frequenzgang, Sprung- und Sinusantwort |
 | 8 | `rlc_daempfung` | RLC-Kreis: Sprungantworten und Überschwingen im Vergleich zur Dämpfung ζ |
 | 9 | `formel_audit` | Formel-Audit: Numerische Prüfung der Aussagen in Arbeit und Modulen |
+| 10 | `central_triangles` | Zentraldreiecke, π-Einschließung und Konvergenz der Reihen |
+| 11 | `circuit_cascade` | Harmonisches Spektrum, RLC-Resonanzen und Kaskadenantworten |
+| 12 | `circuit_uncertainty` | Monte-Carlo-Stabilität, Frequenzempfindlichkeit und Unsicherheitsindex |
+| 13 | `economic_dynamics` | Gedämpfte Wirtschaftszyklen, Schockantwort und Ressourcenmodell |
+| 14 | `resonance_window` | Goldener Schnitt, Resonanzfenster und Fallstudienmodelle |
 
 ```python
 python src/experiments.py
