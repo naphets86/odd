@@ -1,6 +1,6 @@
 \documentclass[a4paper,12pt,twoside]{report}
 \usepackage[utf8]{inputenc}
-\usepackage[german]{babel}
+\usepackage[ngerman]{babel}
 \usepackage{lmodern}
 \usepackage[T1]{fontenc}
 \usepackage{amsmath}
@@ -13,6 +13,7 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{tikz}
 \usepackage{circuitikz}
+\usepackage{siunitx}
 \usepackage{pgfplots}
 \usepackage{placeins}
 \usepackage{titlesec}
@@ -49,6 +50,251 @@
 \tableofcontents
 
 \newpage
+
+% Hilfsbefehl: zeichnet ein Sinussignal (grau) und das Ausgangssignal (rot)
+% #1 = Anzahl Perioden im Bild (also relative Frequenz)
+% #2 = Verstärkung |U_aus/U_ein|
+% #3 = Phasenverschiebung in Grad
+\newcommand{\signalbild}[3]{%
+  \begin{tikzpicture}[xscale=8, yscale=1]
+    \draw[->] (0,0) -- (1.06,0) node[right] {$t$};
+    \draw[->] (0,-1.25) -- (0,1.35) node[above] {$U$};
+    \draw[gray, thick, domain=0:1, samples=300]
+      plot (\x, {sin(360*#1*\x)});
+    \draw[red!70!black, very thick, domain=0:1, samples=300]
+      plot (\x, {#2*sin(360*#1*\x-#3)});
+    \draw[dashed, gray] (0,1) -- (1,1);
+    \draw[dashed, gray] (0,-1) -- (1,-1);
+    \node[left] at (0,1) {\small $1$};
+    \node[left] at (0,-1) {\small $-1$};
+  \end{tikzpicture}%
+}
+
+\section*{Einleitung}
+\phantomsection
+
+\subsection*{Der Tiefpassfilter: Was darf durch, was nicht?}
+
+\subsection*{Die Grundidee in einem Bild}
+
+Stell dir ein Sieb vor. Sand (feine Körner) rieselt hindurch, Steine
+(grobe Körner) bleiben oben liegen. Ein Filter in der Elektronik macht
+genau das, nur nicht mit Körnern, sondern mit \emph{Frequenzen}.
+
+Beim \textbf{Tiefpassfilter} gilt:
+\begin{itemize}
+  \item \textbf{Tiefe} Frequenzen (langsame Schwankungen) \textbf{dürfen passieren}.
+  \item \textbf{Hohe} Frequenzen (schnelle Schwankungen) \textbf{werden abgeschwächt}.
+\end{itemize}
+
+Die Grenze zwischen \glqq darf durch\grqq{} und \glqq wird gebremst\grqq{}
+heißt \textbf{Grenzfrequenz} $f_\mathrm{g}$.
+
+\subsection*{Die einfachste Schaltung: der RC-Tiefpass}
+
+Ein Tiefpass besteht im einfachsten Fall nur aus zwei Bauteilen:
+einem Widerstand $R$ und einem Kondensator $C$.
+
+\begin{figure}[ht]
+  \centering
+  \begin{circuitikz}
+    % obere Leitung mit Widerstand
+    \draw (0,2) to[R, l=$R$, o-*] (3,2) to[short, -o] (5,2);
+    % Kondensator nach unten
+    \draw (3,2) to[C, l=$C$] (3,0);
+    % untere Leitung (Masse)
+    \draw (0,0) to[short, o-*] (3,0) to[short, -o] (5,0);
+    % Spannungspfeile
+    \draw[-latex, thick, blue!70!black] (-0.5,0) -- (-0.5,2)
+      node[midway, left] {$U_\mathrm{ein}$};
+    \draw[-latex, thick, red!70!black] (5.5,0) -- (5.5,2)
+      node[midway, right] {$U_\mathrm{aus}$};
+    % Beschriftung der Seiten
+    \node[align=center] at (0.2,-0.9) {Eingang\\(Signal kommt rein)};
+    \node[align=center] at (4.8,-0.9) {Ausgang\\(Signal kommt raus)};
+  \end{circuitikz}
+  \caption{RC-Tiefpass: Das Eingangssignal $U_\mathrm{ein}$ wird links
+  angelegt, das gefilterte Signal $U_\mathrm{aus}$ wird rechts am
+  Kondensator abgegriffen.}
+\end{figure}
+
+\subsection*{Warum funktioniert das? Der Trick mit dem Kondensator}
+
+Der Widerstand $R$ hat immer denselben Widerstandswert, egal wie schnell
+sich das Signal ändert. Der Kondensator dagegen verhält sich wie ein
+\emph{frequenzabhängiger Widerstand}:
+\begin{equation}
+  X_C = \frac{1}{2\pi f C}
+\end{equation}
+
+Das bedeutet:
+\begin{itemize}
+  \item \textbf{Tiefe Frequenz} $\Rightarrow$ $X_C$ ist \textbf{groß}.
+        Der Kondensator wirkt fast wie eine Unterbrechung. Fast die
+        ganze Spannung bleibt am Ausgang erhalten.
+  \item \textbf{Hohe Frequenz} $\Rightarrow$ $X_C$ ist \textbf{klein}.
+        Der Kondensator wirkt fast wie ein Kurzschluss nach unten. Das
+        Signal wird gegen Masse abgeleitet und am Ausgang bleibt kaum
+        etwas übrig.
+\end{itemize}
+
+Man kann sich das wie einen Spannungsteiler vorstellen: Wer den
+größeren Widerstand hat, bekommt den größeren Anteil der Spannung. Bei
+tiefen Frequenzen \glqq gewinnt\grqq{} der Kondensator, also kommt am
+Ausgang viel an. Bei hohen Frequenzen \glqq gewinnt\grqq{} der
+Widerstand $R$, also kommt am Ausgang wenig an.
+
+Das Verhältnis von Ausgangs- zu Eingangsspannung (die
+\emph{Verstärkung}) ist
+\begin{equation}
+  \left|\frac{U_\mathrm{aus}}{U_\mathrm{ein}}\right|
+  = \frac{1}{\sqrt{1+\left(\dfrac{f}{f_\mathrm{g}}\right)^{2}}}
+  \qquad\text{mit}\qquad
+  f_\mathrm{g} = \frac{1}{2\pi R C}.
+\end{equation}
+
+\emph{Beispiel:} Mit $R = \SI{1}{\kilo\ohm}$ und $C = \SI{159}{\nano\farad}$
+ergibt sich $f_\mathrm{g} \approx \SI{1}{\kilo\hertz}$.
+
+\subsection*{Das Wichtigste: der Frequenzgang}
+
+Das folgende Bild zeigt, \emph{wie viel} von einem Signal bei welcher
+Frequenz durchgelassen wird. Auf der waagerechten Achse steht die
+Frequenz (in Vielfachen der Grenzfrequenz), auf der senkrechten Achse
+steht der Anteil, der am Ausgang ankommt. Der Wert $1$ bedeutet
+\glqq alles kommt durch\grqq, der Wert $0$ bedeutet \glqq nichts kommt
+durch\grqq.
+
+\begin{figure}[ht]
+  \centering
+  \begin{tikzpicture}[xscale=2.4, yscale=4]
+    % Bereiche einfärben
+    \fill[green!25] (0,0) rectangle (1,1.15);
+    \fill[red!15]   (1,0) rectangle (5,1.15);
+
+    % Achsen
+    \draw[->, thick] (0,0) -- (5.25,0)
+      node[right] {$f/f_\mathrm{g}$};
+    \draw[->, thick] (0,0) -- (0,1.3)
+      node[above] {$|U_\mathrm{aus}/U_\mathrm{ein}|$};
+
+    % Teilstriche
+    \foreach \x in {1,2,3,4,5}
+      \draw (\x,0.02) -- (\x,-0.02) node[below] {\small $\x$};
+    \draw (0.02,1) -- (-0.02,1) node[left] {\small $1$};
+    \draw (0.02,0.5) -- (-0.02,0.5) node[left] {\small $0{,}5$};
+
+    % Kurve
+    \draw[very thick, blue!70!black, domain=0:5, samples=100]
+      plot (\x, {1/sqrt(1+\x*\x)});
+
+    % Grenzfrequenz markieren
+    \draw[dashed] (1,0) -- (1,{1/sqrt(2)}) -- (0,{1/sqrt(2)});
+    \node[circle, fill=red!70!black, inner sep=1.8pt]
+      at (1,{1/sqrt(2)}) {};
+    \node[left] at (0,{1/sqrt(2)}) {\small $0{,}707$};
+    \node[above right, red!70!black] at (1,{1/sqrt(2)})
+      {\small Grenzfrequenz $f_\mathrm{g}$};
+
+    % Bereichsbeschriftung
+    \node[align=center, green!40!black] at (0.5,0.2)
+      {\small Durchlass-\\\small bereich};
+    \node[align=center, red!60!black] at (3,0.8)
+      {\small Sperrbereich\\\small (Signal wird immer\\\small stärker abgeschwächt)};
+  \end{tikzpicture}
+  \caption{Frequenzgang eines RC-Tiefpasses. Links der Grenzfrequenz
+  (grün) wird das Signal fast unverändert durchgelassen, rechts davon
+  (rot) wird es immer stärker abgeschwächt.}
+\end{figure}
+
+\paragraph{Was darf passieren (grüner Bereich)?}
+Alle Signale mit einer Frequenz \emph{unterhalb} von $f_\mathrm{g}$
+kommen (fast) unverändert am Ausgang an. Ganz links, bei $f = 0$
+(Gleichspannung), kommt \emph{alles} durch.
+
+\paragraph{Was passiert an der Grenze?}
+Bei $f = f_\mathrm{g}$ kommt noch $\frac{1}{\sqrt{2}} \approx 70{,}7\,\%$
+der Spannung an. Das entspricht $-3\,\mathrm{dB}$ und ist die
+übliche Definition der Grenzfrequenz.
+
+\paragraph{Was darf nicht passieren (roter Bereich)?}
+Signale mit einer Frequenz \emph{oberhalb} von $f_\mathrm{g}$ werden
+abgeschwächt, und zwar umso stärker, je höher die Frequenz ist. Bei
+$f = 4\,f_\mathrm{g}$ kommen nur noch etwa $24\,\%$ an, bei
+$f = 10\,f_\mathrm{g}$ nur noch etwa $10\,\%$.
+
+\paragraph{Wichtig:}
+Die Grenze ist \emph{nicht scharf}. Ein echter RC-Tiefpass hat keine
+Mauer bei $f_\mathrm{g}$, sondern eine sanfte Rampe. Ein Signal knapp
+über der Grenzfrequenz wird nur ein bisschen gebremst, ein Signal weit
+darüber dagegen stark.
+
+\subsection*{Was passiert mit einem Sinussignal? Drei Beispiele}
+
+Jetzt schauen wir uns an, was der Filter mit echten Signalen macht. In
+den folgenden Bildern ist das \textcolor{gray}{\textbf{Eingangssignal grau}}
+und das \textcolor{red!70!black}{\textbf{Ausgangssignal rot}}. Alle drei
+Bilder zeigen denselben Zeitabschnitt. Es ändert sich nur die Frequenz
+des Eingangssignals.
+
+\subsubsection*{Beispiel 1: tiefe Frequenz ($f = 0{,}5\,f_\mathrm{g}$)}
+
+\begin{center}
+  \signalbild{1}{0.894}{26.6}
+\end{center}
+
+Das Signal ist langsam. Der Filter lässt fast alles durch: Die Amplitude
+sinkt nur auf etwa $89\,\%$. Das rote Signal ist leicht nach rechts
+verschoben (die Phase hinkt etwas hinterher).
+
+\subsubsection*{Beispiel 2: Grenzfrequenz ($f = f_\mathrm{g}$)}
+
+\begin{center}
+  \signalbild{2}{0.707}{45}
+\end{center}
+
+Genau an der Grenze ist die Amplitude auf $70{,}7\,\%$ gesunken. Die
+Verschiebung beträgt $45^\circ$, also eine achtel Periode.
+
+\subsubsection*{Beispiel 3: hohe Frequenz ($f = 4\,f_\mathrm{g}$)}
+
+\begin{center}
+  \signalbild{8}{0.243}{76}
+\end{center}
+
+Das Signal ist schnell. Der Kondensator leitet fast alles nach Masse ab:
+Nur etwa $24\,\%$ der Amplitude kommen am Ausgang an. Das Ergebnis
+ist ein deutlich kleineres, aber immer noch sinusförmiges Signal.
+
+\subsection*{Zusammenfassung}
+
+Ein Tiefpassfilter lässt langsame Schwankungen (tiefe Frequenzen) passieren und schwächt schnelle Schwankungen (hohe
+Frequenzen) ab. Wo genau der Übergang liegt, legt die Grenzfrequenz $f_\mathrm{g} = \frac{1}{2\pi RC}$ fest.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{|l|c|c|l|}
+  \hline
+  \textbf{Frequenz} & \textbf{Anteil am Ausgang} & \textbf{Phase} & \textbf{Bewertung} \\
+  \hline
+  $0$ (Gleichspannung)      & $100\,\%$   & $0^\circ$   & kommt komplett durch \\
+  $0{,}5\,f_\mathrm{g}$     & $\approx 89\,\%$ & $-27^\circ$ & kommt gut durch \\
+  $f_\mathrm{g}$            & $\approx 71\,\%$ & $-45^\circ$ & Grenze ($-3\,\mathrm{dB}$) \\
+  $4\,f_\mathrm{g}$         & $\approx 24\,\%$ & $-76^\circ$ & wird stark gedämpft \\
+  $10\,f_\mathrm{g}$        & $\approx 10\,\%$ & $-84^\circ$ & wird fast gesperrt \\
+  \hline
+\end{tabular}
+\end{center}
+
+\begin{quote}
+\textit{Genial, es wurde also ein Ausdruck gefunden, der es erlaubt, nur noch die Frequenzen zu betrachten. Dabei wurde aber zunächst davon ausgegangen und durchdacht mit den grundlegenden elektronischen Bausteinen, Widerstand, Kondensator und Spule, eine Schaltung zu finden, die genau das ermöglicht. Und dies ist erst mit dem Tiefpassfilter so geglückt. Daher lohnt sich für uns dieses Verhältnis der Frequenzen genauer zu beobachten und zu sehen, wie sich Veränderungen der Frequenz aufeinander auswirken.}
+\end{quote}
+
+$(\frac{1}{2})^{\frac{1}{2}}$. Im Exponenten bewegen wir uns auf dem stärksten Weg der Vervielfachung. Wieso wird auf diesem Weg selbst wieder halbiert? Der Halbierung kommt mit diesem Ausdruck eine besondere Bedeutung zu. Wenn wir so tun, als ob wir nach einer Konvergenz fragen, probieren wir aus, ob wir es nicht damit erreichen. Es könnte nämlich sein, dass wir damit nicht falsch liegen oder nicht so sehr daneben, denn damit bringen wir unsere stärkste Absicht, mathematisch oder berechnet, zum Ausdruck. Nein, nein, es ist nur ein Versuch. Wir wissen noch nicht, ob dies wirklich zum Ziel führt, das wir suchen. Aber es kommt unserer Intention sehr nahe, das ist sicher.
+
+Indem wir Sinus anwenden, übertragen wir systematisch, in etwa so, wie als würden wir die elektronische Schaltung als ein System sehen, welches die Eingangsspannung überträgt zur Ausgangsspannung. Dass es Sinus ist, das ist Zufall. Wir kennen Sinus sehr gut und wissen, es beginnt mit Sinus im Ursprung einer jeden Schwingung, die wir als fundamentale Schwingung für die Übertragung zur Beschreibung eines Systems irgendwie benötigen.
+
+Wenn wir von einer Eingangsfrequenz ausgehen und einer Spannung, die ab dem Zeitpunkt $t \geq 0$ anliegt, dann wählen wir Cosinus als Schwingung, die die Eingangsfrequenz beschreibt. Denn wir wissen, dass der Cosinus dem Sinus vorauseilt und sehen daher, weil der Sinus nacheilt, dass so die Wahl für die Übertragung in Abhängigkeit der Eingangsfrequenz erfolgen muss. Gerade diese verzögerte Verschiebung zwischen Cosinus und Sinus eignet sich besonders für die physikalische Beschreibung des Auf- oder Entladeverhaltens des Kondensators.
 
 \section{Einführung}
 Diese Arbeit behandelt eines der tiefsten Rätsel der mathematischen Signaltheorie: die e-Funktion. Insbesondere beschäftigen wir uns mit einer kritischen Frage aus \textit{Beobachtung 49} in der Arbeit von \cite{epp_signal} \textit{Signaltheorie: Das Wunder der e-Funktion}:
